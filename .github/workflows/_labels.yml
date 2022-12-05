@@ -7,7 +7,7 @@ on:
       - develop
     paths:
       - .github/labels.yml
-      - .github/workflows/labels.yml
+      - .github/workflows/_labels.yml
 
 permissions:
   contents: read
