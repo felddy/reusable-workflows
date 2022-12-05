@@ -27,6 +27,12 @@ jobs:
       actions: read
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@2e205a28d0e1da00c5f53b161f4067b052c61f34
+        with:
+          # TODO: change to 'egress-policy: block' after couple of runs
+          egress-policy: audit
+
       - name: "Checkout code"
         uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8  # tag=v3.0.0
         with:
