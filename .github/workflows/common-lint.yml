@@ -54,6 +54,7 @@ jobs:
         with:
           egress-policy: block
           allowed-endpoints: >
+            files.pythonhosted.org:443
             github.com:443
             proxy.golang.org:443
             pypi.org:443
