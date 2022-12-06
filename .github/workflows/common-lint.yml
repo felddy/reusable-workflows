@@ -58,6 +58,7 @@ jobs:
             github.com:443
             proxy.golang.org:443
             pypi.org:443
+            registry.npmjs.org:443
             sum.golang.org:443
 
       - id: setup-python
