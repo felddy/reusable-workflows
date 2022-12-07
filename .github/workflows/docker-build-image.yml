@@ -22,6 +22,7 @@ on:
         type: string
       # Optional inputs
       artifact_name:
+        default: ""
         description: "Upload the image archive as an artifact if specified"
         required: false
         type: string
@@ -121,14 +122,14 @@ jobs:
           exit $return_code
 
       - name: Login to Docker Hub
-        if: inputs.push == 'true'
+        if: inputs.push == true
         uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
         with:
           username: ${{ secrets.docker_username }}
           password: ${{ secrets.docker_password }}
 
       - name: Login to GitHub Container Registry
-        if: inputs.push == 'true'
+        if: inputs.push == true
         uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
         with:
           registry: ghcr.io
@@ -182,7 +183,7 @@ jobs:
           fi
 
       - name: Build image for push
-        if: inputs.push == 'true'
+        if: inputs.push == true
         uses: docker/build-push-action@c56af957549030174b10d6867f20e78cfd7debc5
         with:
           build-args: ${{ secrets.build_args }}
@@ -196,7 +197,7 @@ jobs:
           tags: ${{ steps.tag_suffix.outputs.tags }}
 
       - name: Build image for archive
-        if: inputs.push != 'true'
+        if: inputs.push == false
         uses: docker/build-push-action@c56af957549030174b10d6867f20e78cfd7debc5
         with:
           build-args: ${{ secrets.build_args }}
@@ -212,7 +213,7 @@ jobs:
 
       - name: Check if artifact key is available
         id: check_artifact_key
-        if: inputs.push != 'true'
+        if: inputs.push == false
         run: |
           if [ -n "${{ secrets.artifact_key }}" ]; then
             echo "do_encryption=true" >> $GITHUB_OUTPUT
@@ -223,14 +224,14 @@ jobs:
           fi
 
       - name: Encrypt image archive
-        if: ${{ (inputs.push == 'false') && (steps.check_artifact_key.outputs.do_encryption == 'true') }}
+        if: ${{ (inputs.push == false) && (steps.check_artifact_key.outputs.do_encryption == 'true') }}
         run: |
           7za a -p${{ secrets.artifact_key }} \
           ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_tarball_name }}.7z \
           ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_tarball_name }}
 
       - name: Upload artifacts
-        if: ${{ (inputs.push == 'false') && (inputs.artifact_name != '') }}
+        if: ${{ (inputs.push == false) && (inputs.artifact_name != '') }}
         uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
         with:
           name: ${{ inputs.artifact_name }}
