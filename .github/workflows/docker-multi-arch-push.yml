@@ -103,9 +103,11 @@ jobs:
               else
                   load_output=$(docker load -i "${tarball}")
               fi
+              echo "Docker load output: ${load_output}"
 
               # Get the id of the image that was just loaded
               image_id=$(echo "${load_output}" | awk '{print $NF}')
+              echo "Extracted image id: ${image_id}"
 
               # Tag the image with the localhost registry
               docker tag "${image_id}" "localhost:5000/single_arch:latest"
