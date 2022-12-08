@@ -124,8 +124,7 @@ jobs:
 
               # Clean up the local Docker image store
               echo "Cleaning up local Docker image store"
-              docker rmi "localhost:5000/single_arch:latest"
-              docker rmi "${image_id}" || true
+              docker rmi "${image_id}"
 
               # Set the append flag for next iteration
               append="--append"
