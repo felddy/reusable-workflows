@@ -70,6 +70,7 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             auth.docker.io:443
+            files.pythonhosted.org:443
             github.com:443
             production.cloudflare.docker.com:443
             pypi.org:443
