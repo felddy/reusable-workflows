@@ -99,7 +99,7 @@ jobs:
               echo "::group::Loading image from $tarball"
               # If the filename ends in 7z, then decrypt it first
               if [[ "${tarball}" == *".7z" ]]; then
-                  load_output=$(7za x -p${{ inputs.artifact_key }} -so "${tarball}" | docker load)
+                  load_output=$(7za x -p${{ secrets.artifact_key }} -so "${tarball}" | docker load)
               else
                   load_output=$(docker load -i "${tarball}")
               fi
