@@ -55,9 +55,9 @@ on:
         description: "The tags to apply to the image"
         required: false
         type: string
-      image_tarball_name_stem:
+      image_archive_name_stem:
         default: image
-        description: "The stem of the image tarball name (will be cleaned)"
+        description: "The stem of the image archive name (will be cleaned)"
         required: false
         type: string
       push:
@@ -71,11 +71,11 @@ on:
         required: false
         type: string
     outputs:
-      image_tarball_name:
-        description: "The name of the image tarball"
-        value: ${{ jobs.build-image.outputs.image_tarball_name }}
+      image_archive_name:
+        description: "The name of the image archive"
+        value: ${{ jobs.build-image.outputs.image_archive_name }}
     secrets:
-      artifact_key:
+      image_archive_key:
         description: "Enables encryption of the image archive if specified"
         required: false
       build_args:
@@ -96,7 +96,7 @@ jobs:
     name: "Build image"
     runs-on: ubuntu-latest
     outputs:
-      image_tarball_name: ${{ steps.check_artifact_key.outputs.file_name }}
+      image_archive_name: ${{ steps.check_image_archive_key.outputs.file_name }}
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@ebacdc22ef6c2cfb85ee5ded8f2e640f4c776dd5
@@ -153,8 +153,8 @@ jobs:
           echo cache_from_scopes=$(echo "${{ inputs.cache_from_scopes }}" | sed -e 's/[^a-zA-Z0-9.,_-]/_/g') >> $GITHUB_OUTPUT
           # Replace illegal characters in cache to scope
           echo cache_to_scope=$(echo "${{ inputs.cache_to_scope }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
-          # Replace illegal characters in image tarball name
-          echo image_tarball_name_stem=$(echo "${{ inputs.image_tarball_name_stem }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
+          # Replace illegal characters in image archive name
+          echo image_archive_name_stem=$(echo "${{ inputs.image_archive_name_stem }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
           # Replace illegal characters in tag suffix
           echo suffix=$(echo "${{ inputs.tag_suffix }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
 
@@ -212,34 +212,34 @@ jobs:
           context: .
           file: ${{ inputs.docker_file}}
           labels: ${{ inputs.image_labels }}
-          outputs: type=docker,dest=${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_tarball_name_stem }}.tar
+          outputs: type=docker,dest=${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar
           platforms: ${{ inputs.platforms }}
           push: false
           tags: ${{ steps.tag_suffix.outputs.tags }}
 
-      - name: Check if artifact key is available
-        id: check_artifact_key
+      - name: Check if archive key is available
+        id: check_image_archive_key
         if: inputs.push == false
         run: |
-          if [ -n "${{ secrets.artifact_key }}" ]; then
+          if [ -n "${{ secrets.image_archive_key }}" ]; then
             echo "do_encryption=true" >> $GITHUB_OUTPUT
-            echo "file_name=${{ steps.clean.outputs.image_tarball_name_stem }}.tar.7z" >> $GITHUB_OUTPUT
+            echo "file_name=${{ steps.clean.outputs.image_archive_name_stem }}.tar.7z" >> $GITHUB_OUTPUT
           else
             echo "do_encryption=false" >> $GITHUB_OUTPUT
-            echo "file_name=${{ steps.clean.outputs.image_tarball_name_stem }}".tar >> $GITHUB_OUTPUT
+            echo "file_name=${{ steps.clean.outputs.image_archive_name_stem }}".tar >> $GITHUB_OUTPUT
           fi
 
       - name: Encrypt image archive
-        if: ${{ (inputs.push == false) && (steps.check_artifact_key.outputs.do_encryption == 'true') }}
+        if: ${{ (inputs.push == false) && (steps.check_image_archive_key.outputs.do_encryption == 'true') }}
         run: |
-          7za a -p${{ secrets.artifact_key }} \
-          ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_tarball_name_stem }}.tar.7z \
-          ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_tarball_name_stem }}.tar
+          7za a -p${{ secrets.image_archive_key }} \
+          ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar.7z \
+          ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar
 
       - name: Upload artifacts
         if: ${{ (inputs.push == false) && (inputs.artifact_name != '') }}
         uses: actions/upload-artifact@83fd05a356d7e2593de66fc9913b3002723633cb
         with:
           name: ${{ inputs.artifact_name }}
-          path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.check_artifact_key.outputs.file_name }}
+          path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.check_image_archive_key.outputs.file_name }}
           retention-days: ${{ inputs.artifact_retention_days }}
