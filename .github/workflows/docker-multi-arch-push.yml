@@ -1,7 +1,7 @@
 ---
 name: "Push Multi-Architecture Image"
 
-# This reusable workflow reads OCI image tarballs from an artifact and publishes
+# This reusable workflow reads OCI image archives from an artifact and publishes
 # a multi-architecture images to one or more registries.
 
 on:
@@ -9,7 +9,7 @@ on:
     inputs:
       # Required inputs
       artifact_name:
-        description: "Artifact containing the image tarballs"
+        description: "Artifact containing the image archives"
         required: true
         type: string
       image_tags:
@@ -17,8 +17,8 @@ on:
         required: true
         type: string
     secrets:
-      artifact_key:
-        description: "Enables decryption of image tarballs"
+      image_archive_key:
+        description: "Enables decryption of image archives"
         required: false
       docker_password:
         description: "The password for the Docker hub account"
@@ -93,15 +93,15 @@ jobs:
 
           image_tags="${{ inputs.image_tags }}"
 
-          # Loop through all the tarballs in the directory
+          # Loop through all the archives in the directory
           append="" # skip appending the first image
-          for tarball in "${{ env.ARTIFACT_WORK_DIR }}"/*; do
-              echo "::group::Loading image from $tarball"
+          for archive in "${{ env.ARTIFACT_WORK_DIR }}"/*; do
+              echo "::group::Loading image from $archive"
               # If the filename ends in 7z, then decrypt it first
-              if [[ "${tarball}" == *".7z" ]]; then
-                  load_output=$(7za x -p${{ secrets.artifact_key }} -so "${tarball}" | docker load)
+              if [[ "${archive}" == *".7z" ]]; then
+                  load_output=$(7za x -p${{ secrets.image_archive_key }} -so "${archive}" | docker load)
               else
-                  load_output=$(docker load -i "${tarball}")
+                  load_output=$(docker load -i "${archive}")
               fi
               echo "Docker load output: ${load_output}"
 
