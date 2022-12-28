@@ -107,7 +107,7 @@ jobs:
           python-version: ${{ inputs.python_version }}
 
       - name: Cache testing environments
-        uses: actions/cache@c17f4bf4666a8001b1a45c09eb7a485c41aa64c3
+        uses: actions/cache@4723a57e26efda3a62cbde1812113b730952852d
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ steps.setup-python.outputs.python-version }}-"
