@@ -70,6 +70,38 @@ on:
         description: "Suffix to append to the image tags (name will be cleaned)"
         required: false
         type: string
+      build_arg_1_name:
+        description: "The name of the first build arg"
+        required: false
+        type: string
+      build_arg_2_name:
+        description: "The name of the second build arg"
+        required: false
+        type: string
+      build_arg_3_name:
+        description: "The name of the third build arg"
+        required: false
+        type: string
+      build_arg_4_name:
+        description: "The name of the fourth build arg"
+        required: false
+        type: string
+      build_arg_5_name:
+        description: "The name of the fifth build arg"
+        required: false
+        type: string
+      build_arg_6_name:
+        description: "The name of the sixth build arg"
+        required: false
+        type: string
+      build_arg_7_name:
+        description: "The name of the seventh build arg"
+        required: false
+        type: string
+      build_arg_8_name:
+        description: "The name of the eighth build arg"
+        required: false
+        type: string
     outputs:
       image_archive_name:
         description: "The name of the image archive"
@@ -78,8 +110,29 @@ on:
       image_archive_key:
         description: "Enables encryption of the image archive if specified"
         required: false
-      build_args:
-        description: "Build args to pass to the Dockerfile"
+      build_arg_1_value:
+        description: "The value of the first build arg"
+        required: false
+      build_arg_2_value:
+        description: "The value of the second build arg"
+        required: false
+      build_arg_3_value:
+        description: "The value of the third build arg"
+        required: false
+      build_arg_4_value:
+        description: "The value of the fourth build arg"
+        required: false
+      build_arg_5_value:
+        description: "The value of the fifth build arg"
+        required: false
+      build_arg_6_value:
+        description: "The value of the sixth build arg"
+        required: false
+      build_arg_7_value:
+        description: "The value of the seventh build arg"
+        required: false
+      build_arg_8_value:
+        description: "The value of the eighth build arg"
         required: false
       docker_password:
         description: "The password for the Docker hub account (required for push)"
@@ -171,6 +224,39 @@ jobs:
           fi
           echo "${delimiter}" >> $GITHUB_OUTPUT
 
+      - name: Prepare build args
+        id: prepare-build-args
+        env:
+          ARG_1_NAME: ${{ inputs.build_arg_1_name }}
+          ARG_1_VALUE: ${{ secrets.build_arg_1_value }}
+          ARG_2_NAME: ${{ inputs.build_arg_2_name }}
+          ARG_2_VALUE: ${{ secrets.build_arg_2_value }}
+          ARG_3_NAME: ${{ inputs.build_arg_3_name }}
+          ARG_3_VALUE: ${{ secrets.build_arg_3_value }}
+          ARG_4_NAME: ${{ inputs.build_arg_4_name }}
+          ARG_4_VALUE: ${{ secrets.build_arg_4_value }}
+          ARG_5_NAME: ${{ inputs.build_arg_5_name }}
+          ARG_5_VALUE: ${{ secrets.build_arg_5_value }}
+          ARG_6_NAME: ${{ inputs.build_arg_6_name }}
+          ARG_6_VALUE: ${{ secrets.build_arg_6_value }}
+          ARG_7_NAME: ${{ inputs.build_arg_7_name }}
+          ARG_7_VALUE: ${{ secrets.build_arg_7_value }}
+          ARG_8_NAME: ${{ inputs.build_arg_8_name }}
+          ARG_8_VALUE: ${{ secrets.build_arg_8_value }}
+        run: |
+          delimiter="$(openssl rand -hex 8)"
+          echo "build_args<<${delimiter}" >> $GITHUB_OUTPUT
+          for i in {1..8}; do
+            arg_name_var="ARG_${i}_NAME"
+            arg_value_var="ARG_${i}_VALUE"
+            arg_name=${!arg_name_var}
+            arg_value=${!arg_value_var}
+            if [[ -n "$arg_name" && -n "$arg_value" ]]; then
+              echo "${arg_name}=${arg_value}" >> $GITHUB_OUTPUT
+            fi
+          done
+          echo "${delimiter}" >> $GITHUB_OUTPUT
+
       - name: Calculate GitHub Actions cache scopes
         id: cache_scopes
         run: |
@@ -192,7 +278,7 @@ jobs:
         if: inputs.push == true
         uses: docker/build-push-action@44ea916f6c540f9302d50c2b1e5a8dc071f15cdf
         with:
-          build-args: ${{ secrets.build_args }}
+          build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
           cache-to: ${{ steps.cache_scopes.outputs.to }}
           context: .
@@ -206,7 +292,7 @@ jobs:
         if: inputs.push == false
         uses: docker/build-push-action@44ea916f6c540f9302d50c2b1e5a8dc071f15cdf
         with:
-          build-args: ${{ secrets.build_args }}
+          build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
           cache-to: ${{ steps.cache_scopes.outputs.to }}
           context: .
