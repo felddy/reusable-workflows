@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@8ca2b8b2ece13480cda6dacd3511b49857a23c09
+        uses: step-security/harden-runner@8ca2b8b2ece13480cda6dacd3511b49857a23c09  # tag=v2.5.1
         with:
           allowed-endpoints: >
             auth.docker.io:443
@@ -60,23 +60,23 @@ jobs:
           fi
           exit $return_code
 
-      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744  # tag=v3.6.0
 
       - name: Login to Docker Hub
-        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc  # tag=v2.2.0
         with:
           username: ${{ secrets.docker_username }}
           password: ${{ secrets.docker_password }}
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc  # tag=v2.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Docker images artifact
-        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a
+        uses: actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a  # tag=v2.1.1
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ env.ARTIFACT_WORK_DIR }}
