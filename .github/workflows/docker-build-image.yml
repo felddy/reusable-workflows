@@ -152,19 +152,19 @@ jobs:
       image_archive_name: ${{ steps.check_image_archive_key.outputs.file_name }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@8ca2b8b2ece13480cda6dacd3511b49857a23c09
+        uses: step-security/harden-runner@8ca2b8b2ece13480cda6dacd3511b49857a23c09  # tag=v2.5.1
         with:
           disable-sudo: true
           egress-policy: audit
 
       - name: Checkout
-        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+        uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744  # tag=v3.6.0
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@2b82ce82d56a2a04d2637cd93a637ae1b359c0a7
+        uses: docker/setup-qemu-action@2b82ce82d56a2a04d2637cd93a637ae1b359c0a7  # tag=v2.2.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@885d1462b80bc1c1c7f0b00334ad271f09369c55
+        uses: docker/setup-buildx-action@885d1462b80bc1c1c7f0b00334ad271f09369c55  # tag=v2.10.0
 
       - name: Docker credentials available for push
         if: inputs.push == true
@@ -182,14 +182,14 @@ jobs:
 
       - name: Login to Docker Hub
         if: inputs.push == true
-        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc  # tag=v2.2.0
         with:
           username: ${{ secrets.docker_username }}
           password: ${{ secrets.docker_password }}
 
       - name: Login to GitHub Container Registry
         if: inputs.push == true
-        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc  # tag=v2.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -276,7 +276,7 @@ jobs:
 
       - name: Build image for push
         if: inputs.push == true
-        uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825
+        uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825  # tag=v4.1.1
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
@@ -290,7 +290,7 @@ jobs:
 
       - name: Build image for archive
         if: inputs.push == false
-        uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825
+        uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825  # tag=v4.1.1
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
@@ -324,7 +324,7 @@ jobs:
 
       - name: Upload artifacts
         if: ${{ (inputs.push == false) && (inputs.artifact_name != '') }}
-        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce  # tag=v3.1.2
         with:
           name: ${{ inputs.artifact_name }}
           path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.check_image_archive_key.outputs.file_name }}
