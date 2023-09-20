@@ -276,7 +276,7 @@ jobs:
 
       - name: Build image for push
         if: inputs.push == true
-        uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825  # tag=v4.1.1
+        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09  # tag=v5.0.0
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
@@ -290,7 +290,7 @@ jobs:
 
       - name: Build image for archive
         if: inputs.push == false
-        uses: docker/build-push-action@2eb1c1961a95fc15694676618e422e8ba1d63825  # tag=v4.1.1
+        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09  # tag=v5.0.0
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
