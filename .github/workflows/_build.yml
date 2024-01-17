@@ -96,3 +96,58 @@ jobs:
     uses: ./.github/workflows/sbom-artifact.yml
     with:
       image_artifact_name: ${{ needs.config.outputs.image_archive_artifact_name }}
+
+  docker-secrets:
+    name: "Docker secrets"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@eb238b55efaa70779f274895e782ed17c84f2895  # tag=v2.6.1
+        with:
+          egress-policy: block
+
+      - name: Check docker.com credentials
+        run: |
+          return_code=0
+          if [ -z "${{ secrets.DOCKER_USERNAME }}" ]; then
+            echo "::warning::Set the DOCKER_USERNAME secret."
+            return_code=1
+          fi
+          if [ -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
+            echo "::warning::Set the DOCKER_PASSWORD secret."
+            return_code=1
+          fi
+          exit $return_code
+
+  build-multi-arch-image:
+    name: "Publish image"
+    needs:
+      - build-each-platform
+      - config
+      - docker-secrets
+      - metadata
+    if: github.event_name != 'pull_request'
+    permissions:
+      packages: write
+    uses: ./.github/workflows/docker-multi-arch-push.yml
+    with:
+      artifact_name: ${{ needs.config.outputs.image_archive_artifact_name }}
+      image_tags: ${{ needs.metadata.outputs.image_tags }}
+    secrets:
+      docker_password: ${{ secrets.DOCKER_PASSWORD }}
+      docker_username: ${{ secrets.DOCKER_USERNAME }}
+
+  publish-readme:
+    name: "Publish docs"
+    needs:
+      - build-multi-arch-image
+      - config
+      - docker-secrets
+      - metadata
+    if: needs.metadata.outputs.latest == 'true'
+    uses: ./.github/workflows/docker-publish-description.yml
+    with:
+      image_name: ${{ needs.config.outputs.image_name }}
+    secrets:
+      docker_password: ${{ secrets.DOCKER_PASSWORD }}
+      docker_username: ${{ secrets.DOCKER_USERNAME }}
