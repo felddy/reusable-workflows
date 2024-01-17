@@ -36,8 +36,6 @@ jobs:
 
   lint:
     name: "Lint"
-    needs:
-      - config
     uses: ./.github/workflows/common-lint.yml
 
   build-image-for-testing:
