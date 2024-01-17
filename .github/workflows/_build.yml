@@ -48,6 +48,7 @@ jobs:
       - metadata
     uses: ./.github/workflows/docker-build-image.yml
     with:
+      artifact_name: ${{ needs.config.outputs.image_archive_artifact_name }}
       cache_from_scopes: ${{ needs.config.outputs.test_platform }}
       cache_to_scope: ${{ needs.config.outputs.test_platform }}
       image_archive_name_stem: ${{ needs.config.outputs.test_platform }}
