@@ -85,3 +85,14 @@ jobs:
       image_labels: ${{ needs.metadata.outputs.image_labels }}
       image_archive_name_stem: ${{ matrix.platform }}
       platforms: ${{ matrix.platform }}
+
+  generate-sboms:
+    name: "Bill of Materials"
+    needs:
+      - build-each-platform
+      - config
+    permissions:
+      contents: write
+    uses: ./.github/workflows/sbom-artifact.yml
+    with:
+      image_artifact_name: ${{ needs.config.outputs.image_archive_artifact_name }}
