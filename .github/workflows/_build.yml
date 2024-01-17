@@ -19,9 +19,20 @@ permissions:
   contents: read
 
 jobs:
+  diagnostics:
+    name: "Diagnostics"
+    uses: ./.github/workflows/diagnostics.yml
+
   config:
     name: "Config"
     uses: ./.github/workflows/_config.yml
+
+  metadata:
+    name: "Metadata"
+    needs: [config]
+    uses: ./.github/workflows/docker-metadata.yml
+    with:
+      image_name: ${{ needs.config.outputs.image_name }}
 
   lint:
     name: "Lint"
