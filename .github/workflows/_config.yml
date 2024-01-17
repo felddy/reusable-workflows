@@ -19,6 +19,9 @@ on:
       platforms_json:
         description: "The platforms to build (JSON)"
         value: ${{ jobs.csv-to-json.outputs.json }}
+      test_platform:
+        description: "The platform to use for testing"
+        value: linux/amd64
 
 jobs:
   csv-to-json:

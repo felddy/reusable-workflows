@@ -39,3 +39,17 @@ jobs:
     needs:
       - config
     uses: ./.github/workflows/common-lint.yml
+
+  build-image-for-testing:
+    name: "Build image for testing"
+    needs:
+      - config
+      - lint
+      - metadata
+    uses: ./.github/workflows/docker-build-image.yml
+    with:
+      cache_from_scopes: ${{ needs.config.outputs.test_platform }}
+      cache_to_scope: ${{ needs.config.outputs.test_platform }}
+      image_archive_name_stem: ${{ needs.config.outputs.test_platform }}
+      image_labels: ${{ needs.metadata.outputs.image_labels }}
+      platforms: ${{ needs.config.outputs.test_platform }}
