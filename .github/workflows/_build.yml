@@ -63,6 +63,5 @@ jobs:
     uses: ./.github/workflows/docker-pytest-image.yml
     with:
       data_artifact_name: ${{ needs.config.outputs.data_artifact_name }}
-      data_artifact_path: ${{ needs.config.outputs.data_artifact_path }}
       image_artifact_name: ${{ needs.config.outputs.image_archive_artifact_name }}
       image_archive_name: ${{ needs.build-image-for-testing.outputs.image_archive_name }}

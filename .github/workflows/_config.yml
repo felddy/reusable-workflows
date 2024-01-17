@@ -10,6 +10,9 @@ on:
         required: false
         type: string
     outputs:
+      data_artifact_name:
+        description: "The name of the test data artifact"
+        value: test-output
       image_archive_artifact_name:
         description: "The name of the image archives artifact"
         value: image-archives
