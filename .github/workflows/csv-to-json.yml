@@ -1,0 +1,34 @@
+---
+name: "CSV to JSON"
+
+# This workflow converts a comma-separated list of platforms to a JSON array.
+
+on:
+  workflow_call:
+    inputs:
+      csv:
+        description: "Comma-separated list"
+        required: true
+        type: string
+    outputs:
+      json:
+        description: "JSON array"
+        value: ${{ jobs.convert.outputs.json }}
+
+jobs:
+  convert:
+    name: "Convert platforms CSV to JSON"
+    runs-on: ubuntu-latest
+    outputs:
+      json: ${{ steps.csv-to-json.outputs.json }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@eb238b55efaa70779f274895e782ed17c84f2895  # tag=v2.6.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+
+      - name: Convert CSV to JSON
+        id: csv-to-json
+        run: |
+          echo "json=$(echo -n ${{ inputs.csv }} | jq --raw-input --compact-output 'split(",")')" >> $GITHUB_OUTPUT

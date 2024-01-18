@@ -149,8 +149,9 @@ jobs:
           # Tag the image with the a test tag
           docker tag "${image_id}" "${{ env.TEST_IMAGE_TAG }}"
 
-      - name: Set data directory permissions
+      - name: Ensure data directory exists
         run: |
+          mkdir -p ${{ inputs.data_artifact_path }}
           chmod a+rwx ${{ inputs.data_artifact_path }}
 
       - name: Run tests
