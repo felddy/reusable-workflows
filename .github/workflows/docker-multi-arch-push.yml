@@ -8,8 +8,8 @@ on:
   workflow_call:
     inputs:
       # Required inputs
-      artifact_name:
-        description: "Artifact containing the image archives"
+      artifact_name_pattern:
+        description: "Pattern to match artifacts containing the image archives"
         required: true
         type: string
       image_tags:
@@ -75,11 +75,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download Docker images artifact
+      - name: Download Docker image artifacts
         uses: actions/download-artifact@6b208ae046db98c579e8a3aa621ab581ff575935  # tag=v4.1.1
         with:
-          name: ${{ inputs.artifact_name }}
+          merge-multiple: true
           path: ${{ env.ARTIFACT_WORK_DIR }}
+          pattern: ${{ inputs.artifact_name_pattern }}
 
       - name: Start local registry
         run: |

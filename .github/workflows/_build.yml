@@ -46,7 +46,7 @@ jobs:
       - metadata
     uses: ./.github/workflows/docker-build-image.yml
     with:
-      artifact_name: ${{ needs.config.outputs.image_archive_artifact_name }}-${{ needs.config.outputs.test_platform }}
+      artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ needs.config.outputs.test_platform }}
       cache_from_scopes: ${{ needs.config.outputs.test_platform }}
       cache_to_scope: ${{ needs.config.outputs.test_platform }}
       image_archive_name_stem: ${{ needs.config.outputs.test_platform }}
@@ -79,7 +79,7 @@ jobs:
           - platform: ${{ needs.config.outputs.test_platform }}
     uses: ./.github/workflows/docker-build-image.yml
     with:
-      artifact_name: ${{ needs.config.outputs.image_archive_artifact_name }}-${{ matrix.platform }}
+      artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
       cache_from_scopes: ${{ matrix.platform }}
       cache_to_scope: ${{ matrix.platform }}
       image_labels: ${{ needs.metadata.outputs.image_labels }}
@@ -93,9 +93,13 @@ jobs:
       - config
     permissions:
       contents: write
+    strategy:
+      matrix:
+        platform: ${{ fromJson(needs.config.outputs.platforms_json) }}
     uses: ./.github/workflows/sbom-artifact.yml
     with:
-      image_artifact_name: ${{ needs.config.outputs.image_archive_artifact_name }}
+      image_artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
+      sbom_artifact_name: ${{ needs.config.outputs.sbom_artifact_name_stem }}-${{ matrix.platform }}
 
   docker-secrets:
     name: "Docker secrets"
@@ -131,7 +135,7 @@ jobs:
       packages: write
     uses: ./.github/workflows/docker-multi-arch-push.yml
     with:
-      artifact_name: ${{ needs.config.outputs.image_archive_artifact_name }}
+      artifact_name_pattern: ${{ needs.config.outputs.image_artifact_name_stem }}-*
       image_tags: ${{ needs.metadata.outputs.image_tags }}
     secrets:
       docker_password: ${{ secrets.DOCKER_PASSWORD }}
