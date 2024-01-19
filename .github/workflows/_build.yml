@@ -65,7 +65,7 @@ jobs:
       image_archive_name: ${{ needs.build-image-for-testing.outputs.image_archive_name }}
 
   build-each-platform:
-    name: "Build platform"
+    name: "Build platforms"
     needs:
       - config
       - lint
