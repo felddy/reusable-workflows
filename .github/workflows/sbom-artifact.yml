@@ -25,7 +25,7 @@ on:
         required: false
         type: string
       syft_version:
-        default: "v0.76.0"
+        default: "v0.101.0"
         description: "The version of syft to use"
         required: false
         type: string
