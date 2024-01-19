@@ -10,7 +10,7 @@ on:
     inputs:
       # Required inputs
       image_artifact_name:
-        description: "The name of the artifact containing the image archives"
+        description: "The name of the artifact containing the image archives (will be cleaned)"
         required: true
         type: string
       # Optional inputs
@@ -21,7 +21,7 @@ on:
         type: number
       sbom_artifact_name:
         default: "sboms"
-        description: "The name of the artifact to store the SBOMs"
+        description: "The name of the artifact to store the SBOMs (will be cleaned)"
         required: false
         type: string
       syft_version:
@@ -65,6 +65,10 @@ jobs:
           echo repository=$(echo "${{ github.repository }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
           # Replace illegal characters in ref_name
           echo ref_name=$(echo "${{ github.ref_name }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
+          # Replace illegal characters in image_artifact_name
+          echo image_artifact_name=$(echo "${{ inputs.image_artifact_name }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
+          # Replace illegal characters in sbom_artifact_name
+          echo sbom_artifact_name=$(echo "${{ inputs.sbom_artifact_name }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
 
       - name: Calculate file variables
         # If this is a release, the version will be the clean ref_name.  Otherwise it will be the short SHA.
@@ -79,7 +83,7 @@ jobs:
       - name: Download images artifact
         uses: actions/download-artifact@6b208ae046db98c579e8a3aa621ab581ff575935  # tag=v4.1.1
         with:
-          name: ${{ inputs.image_artifact_name }}
+          name: ${{ steps.clean.outputs.image_artifact_name }}
 
       - name: Generate SBOMs
         run: |
@@ -94,7 +98,7 @@ jobs:
       - name: Upload SBOMs as artifact
         uses: actions/upload-artifact@694cdabd8bdb0f10b2cea11669e1bf5453eed0a6  # tag=v4.2.0
         with:
-          name: ${{ inputs.sbom_artifact_name }}
+          name: ${{ steps.clean.outputs.sbom_artifact_name }}
           path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}
           retention-days: ${{ inputs.artifact_retention_days }}
 
