@@ -1,8 +1,8 @@
 # reusable-workflows #
 
-[![GitHub Build Status](https://github.com/felddy/reusable-workflows/workflows/build/badge.svg)](https://github.com/felddy/reusable-workflows/actions)
+[![Build](https://github.com/felddy/reusable-workflows/actions/workflows/_build.yml/badge.svg)](https://github.com/felddy/reusable-workflows/actions/workflows/_build.yml)
 
-This repository contains reusable GitHub Actions workflows that can be
+This repository contains reusable GitHub Actions workflows for use in other repositories.
 
 ## Contributing ##
 
