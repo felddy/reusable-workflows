@@ -23,7 +23,7 @@ on:
       # Optional inputs
       artifact_name:
         default: ""
-        description: "Upload the image archive as an artifact if specified"
+        description: "Upload the image archive as an artifact if specified (name will be cleaned)"
         required: false
         type: string
       artifact_retention_days:
@@ -103,6 +103,9 @@ on:
         required: false
         type: string
     outputs:
+      artifact_name:
+        description: "The cleaned name of the artifact (if any)"
+        value: ${{ jobs.build-image.outputs.artifact_name }}
       image_archive_name:
         description: "The name of the image archive"
         value: ${{ jobs.build-image.outputs.image_archive_name }}
@@ -149,6 +152,7 @@ jobs:
     name: "Build image"
     runs-on: ubuntu-latest
     outputs:
+      artifact_name: ${{ steps.clean.outputs.artifact_name }}
       image_archive_name: ${{ steps.check_image_archive_key.outputs.file_name }}
     steps:
       - name: Harden Runner
@@ -202,6 +206,8 @@ jobs:
       - name: Clean variables
         id: clean
         run: |
+          # Replace illegal characters in artifact name
+          echo artifact_name=$(echo "${{ inputs.artifact_name }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
           # Replace illegal characters in cache from scope list
           echo cache_from_scopes=$(echo "${{ inputs.cache_from_scopes }}" | sed -e 's/[^a-zA-Z0-9.,_-]/_/g') >> $GITHUB_OUTPUT
           # Replace illegal characters in cache to scope
@@ -323,9 +329,9 @@ jobs:
           ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar
 
       - name: Upload artifacts
-        if: ${{ (inputs.push == false) && (inputs.artifact_name != '') }}
+        if: ${{ (inputs.push == false) && (steps.clean.outputs.artifact_name != '') }}
         uses: actions/upload-artifact@694cdabd8bdb0f10b2cea11669e1bf5453eed0a6  # tag=v4.2.0
         with:
-          name: ${{ inputs.artifact_name }}
+          name: ${{ steps.clean.outputs.artifact_name }}
           path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.check_image_archive_key.outputs.file_name }}
           retention-days: ${{ inputs.artifact_retention_days }}
