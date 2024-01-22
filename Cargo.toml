@@ -1,0 +1,23 @@
+[package]
+authors = ["Mark Feldhousen <markf@geekpad.com>"]
+categories = ["command-line-utilities"]
+description = "A tool to determine the architecture of a system."
+documentation = "https://github.com/felddy/reusable-workflows/blob/develop/README.md"
+edition = "2021"
+homepage = "https://github.com/felddy/reusable-workflows"
+keywords = ["architecture", "system", "cross-platform"]
+license = "CC0-1.0"
+name = "arch-info"
+repository = "https://github.com/felddy/reusable-workflows"
+version = "0.0.1"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[dev-dependencies]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 'z'   # Optimize for size.
