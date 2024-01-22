@@ -10,6 +10,9 @@ COPY --from=xx / /
 # Set up the working directory
 WORKDIR /workspace
 
+# Set RUSTFLAGS for static linking with the GNU toolchain
+ENV RUSTFLAGS='-C target-feature=+crt-static'
+
 # Install clang and other necessary tools
 RUN apt-get update && \
     apt-get install -y clang lld
@@ -27,7 +30,7 @@ RUN xx-cargo build --release --target-dir ./build
 RUN xx-verify ./build/$(xx-cargo --print-target-triple)/release/arch-info
 
 # Link the compiled binary into the workspace root
-RUN ln ./build/$(xx-cargo --print-target-triple)/release/arch-info .
+RUN ln -v ./build/$(xx-cargo --print-target-triple)/release/arch-info .
 
 # Stage 2: Create the final minimal output image
 FROM scratch
