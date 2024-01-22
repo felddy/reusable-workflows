@@ -10,7 +10,8 @@ Based on:
 
 # Standard Python Libraries
 from glob import glob
-from os.path import basename, splitext
+from os.path import basename, dirname, join, splitext
+import re
 
 # Third-Party Libraries
 from setuptools import find_packages, setup
@@ -22,18 +23,23 @@ def readme():
         return f.read()
 
 
-def package_vars(version_file):
-    """Read in and return the variables defined by the version_file."""
-    pkg_vars = {}
-    with open(version_file) as f:
-        exec(f.read(), pkg_vars)  # nosec
-    return pkg_vars
+def cargo_version():
+    """Manually extract version from Cargo.toml."""
+    cargo_toml_path = join(dirname(__file__), "Cargo.toml")
+    version_pattern = r'^version\s*=\s*"(.*?)"$'
+    with open(cargo_toml_path, encoding="utf-8") as f:
+        for line in f:
+            match = re.match(version_pattern, line.strip())
+            if match:
+                return match.group(1)
+    # Raise an exception if version is not found
+    raise RuntimeError("Version not found in Cargo.toml")
 
 
 setup(
     name="reusable-workflows",
     # Versions should comply with PEP440
-    version=package_vars("src/_version.py")["__version__"],
+    version=cargo_version(),
     description="reusable workflows for GitHub Actions",
     long_description=readme(),
     long_description_content_type="text/markdown",
