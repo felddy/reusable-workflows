@@ -2,7 +2,7 @@
 FROM --platform=$BUILDPLATFORM tonistiigi/xx:latest AS xx
 
 # Base image for the build
-FROM --platform=$BUILDPLATFORM rust:alpine AS build
+FROM --platform=$BUILDPLATFORM rust:bookworm AS build
 
 # Copy the xx scripts for setting up the cross-compilation environment
 COPY --from=xx / /
@@ -11,7 +11,8 @@ COPY --from=xx / /
 WORKDIR /workspace
 
 # Install clang and other necessary tools
-RUN apk add clang lld
+RUN apt-get update && \
+    apt-get install -y clang lld
 
 # Copy the Cargo.toml (and Cargo.lock if available) and source file into the image
 COPY Cargo.toml Cargo.lock* ./
@@ -21,9 +22,9 @@ COPY src/main.rs ./src/
 
 # Compile the program for the target platform
 ARG TARGETPLATFORM
-
-RUN xx-cargo build --release --target-dir ./build && \
-    xx-verify ./build/$(xx-cargo --print-target-triple)/release/arch-info
+RUN xx-apt install -y gcc libc6-dev
+RUN xx-cargo build --release --target-dir ./build
+RUN xx-verify ./build/$(xx-cargo --print-target-triple)/release/arch-info
 
 # Link the compiled binary into the workspace root
 RUN ln ./build/$(xx-cargo --print-target-triple)/release/arch-info .
