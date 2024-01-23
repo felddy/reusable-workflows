@@ -1,7 +1,7 @@
 # reusable-workflows #
 
 [![Build](https://github.com/felddy/reusable-workflows/actions/workflows/_build.yml/badge.svg)](https://github.com/felddy/reusable-workflows/actions/workflows/_build.yml)
-[![Platforms](https://img.shields.io/badge/platforms-386%20%7C%20amd64%20%7C%20arm%2Fv5%20%7C%20arm%2Fv6%20%7C%20arm%2Fv7%20%7C%20arm%2Fv8%20%7C%20arm64%20%7C%20ppc64le%20%7C%20s390x-blue)](https://hub.docker.com/r/felddy/reusable-workflows/tags)
+[![Platforms](https://img.shields.io/badge/platforms-386%20%7C%20amd64%20%7C%20arm%2Fv5%20%7C%20arm%2Fv6%20%7C%20arm%2Fv7%20%7C%20arm%2Fv8%20%7C%20arm64%2Fv8%20%7C%20ppc64le%20%7C%20s390x-blue)](https://hub.docker.com/r/felddy/reusable-workflows/tags)
 
 This repository contains reusable GitHub Actions workflows for use in other repositories.
 
