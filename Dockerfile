@@ -32,6 +32,9 @@ RUN xx-verify ./build/$(xx-cargo --print-target-triple)/release/arch-info
 # Link the compiled binary into the workspace root
 RUN ln -v ./build/$(xx-cargo --print-target-triple)/release/arch-info .
 
+# Inspect the compiled binary
+RUN file arch-info
+
 # Stage 2: Create the final minimal output image
 FROM scratch
 
