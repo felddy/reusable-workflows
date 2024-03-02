@@ -9,3 +9,6 @@ __pycache__
 .python-version
 *.egg-info
 venv
+
+## Rust ##
+target
