@@ -96,7 +96,7 @@ jobs:
           done
 
       - name: Upload SBOMs as artifact
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3  # tag=v4.3.1
+        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808  # tag=v4.3.3
         with:
           name: ${{ steps.clean.outputs.sbom_artifact_name }}
           path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}
