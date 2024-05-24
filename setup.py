@@ -81,7 +81,7 @@ setup(
     extras_require={
         "test": [
             "coverage == 6.5.0",
-            "coveralls == 4.0.0",
+            "coveralls == 4.0.1",
             "docker == 7.1.0",
             "pre-commit == 3.7.1",
             "pytest == 8.2.0",
