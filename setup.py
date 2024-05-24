@@ -82,7 +82,7 @@ setup(
         "test": [
             "coverage == 6.5.0",
             "coveralls == 4.0.0",
-            "docker == 7.0.0",
+            "docker == 7.1.0",
             "pre-commit == 3.7.1",
             "pytest == 8.2.0",
             "pytest-cov == 5.0.0",
