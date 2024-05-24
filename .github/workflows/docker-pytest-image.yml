@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@a4aa98b93cab29d9b1101a6143fb8bce00e2eac4  # tag=v2.7.1
+        uses: step-security/harden-runner@f086349bfa2bd1361f7909c78558e816508cdc10  # tag=v2.8.0
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -101,7 +101,7 @@ jobs:
             echo "do_decryption=false" >> $GITHUB_OUTPUT
           fi
 
-      - uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b  # tag=v4.1.4
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29  # tag=v4.1.6
       - id: setup-python
         uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d  # tag=v5.1.0
         with:
