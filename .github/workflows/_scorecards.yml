@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@a4aa98b93cab29d9b1101a6143fb8bce00e2eac4  # tag=v2.7.1
+        uses: step-security/harden-runner@f086349bfa2bd1361f7909c78558e816508cdc10  # tag=v2.8.0
         with:
           disable-sudo: true
           egress-policy: block
@@ -47,12 +47,12 @@ jobs:
             www.bestpractices.dev:443
 
       - name: "Checkout code"
-        uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b  # tag=v4.1.4
+        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29  # tag=v4.1.6
         with:
           persist-credentials: false
 
       - name: "Run analysis"
-        uses: ossf/scorecard-action@0864cf19026789058feabb7e87baa5f140aac736  # tag=v2.3.1
+        uses: ossf/scorecard-action@dc50aa9510b46c811795eb24b2f1ba02a914e534  # tag=v2.3.3
         with:
           results_file: results.sarif
           results_format: sarif
@@ -79,6 +79,6 @@ jobs:
 
       # Upload the results to GitHub's code scanning dashboard.
       - name: "Upload to code-scanning"
-        uses: github/codeql-action/upload-sarif@cdcdbb579706841c47f7063dda365e292e5cad7a  # tag=codeql-bundle-v2.13.4
+        uses: github/codeql-action/upload-sarif@9fdb3e49720b44c48891d036bb502feb25684276  # tag=codeql-bundle-v3.25.6
         with:
           sarif_file: results.sarif
