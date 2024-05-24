@@ -16,6 +16,20 @@ updates:
         patterns:
           - "*"
 
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "bot :robot:"
+      - "dependencies :game_die:"
+      - "docker :whale:"
+    groups:
+      docker-all:
+        applies-to: "version-updates"
+        patterns:
+          - "*"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
