@@ -156,13 +156,13 @@ jobs:
       image_archive_name: ${{ steps.check_image_archive_key.outputs.file_name }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@f086349bfa2bd1361f7909c78558e816508cdc10  # tag=v2.8.0
+        uses: step-security/harden-runner@17d0e2bd7d51742c71671bd19fa12bdc9d40a3d6  # tag=v2.8.1
         with:
           disable-sudo: true
           egress-policy: audit
 
       - name: Checkout
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29  # tag=v4.1.6
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # tag=v4.1.7
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@68827325e0b33c7199eb31dd4e31fbe9023e06e3  # tag=v3.0.0
@@ -282,7 +282,7 @@ jobs:
 
       - name: Build image for push
         if: inputs.push == true
-        uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0  # tag=v5.3.0
+        uses: docker/build-push-action@15560696de535e4014efeff63c48f16952e52dd1  # tag=v6.2.0
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
@@ -296,7 +296,7 @@ jobs:
 
       - name: Build image for archive
         if: inputs.push == false
-        uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0  # tag=v5.3.0
+        uses: docker/build-push-action@15560696de535e4014efeff63c48f16952e52dd1  # tag=v6.2.0
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
