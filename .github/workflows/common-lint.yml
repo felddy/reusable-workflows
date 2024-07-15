@@ -67,13 +67,13 @@ jobs:
             sum.golang.org:443
 
       - id: setup-python
-        uses: actions/setup-python@82c7e631bb3cdc910f68e0081d67478d79c6982d  # tag=v5.1.0
+        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f  # tag=v5.1.1
         with:
           python-version: ${{ inputs.python_version }}
 
       # We need the Go version and Go cache location for the actions/cache step,
       # so the Go installation must happen before that.
-      - uses: actions/setup-go@cdcb36043654635271a94b9a6d1392de5bb323a7  # tag=v5.0.1
+      - uses: actions/setup-go@0a12ed9d6a96ab950c8f026ed9f722fe0da7ef32  # tag=v5.0.2
         with:
           go-version: ${{ inputs.go_version }}
 
