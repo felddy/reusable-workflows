@@ -34,9 +34,9 @@ jobs:
           disable-sudo: true
           egress-policy: block
           allowed-endpoints: >
-            actions-results-receiver-production.githubapp.com:443
             api.github.com:443
             api.osv.dev:443
+            api.scorecard.dev:443
             api.securityscorecards.dev:443
             bestpractices.coreinfrastructure.org:443
             fulcio.sigstore.dev:443
