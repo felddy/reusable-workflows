@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@0d381219ddf674d61a7572ddd19d7941e271515c  # tag=v2.9.0
+        uses: step-security/harden-runner@91182cccc01eb5e619899d80e4e971d6181294a7  # tag=v2.10.1
         with:
           allowed-endpoints: >
             auth.docker.io:443
@@ -60,7 +60,7 @@ jobs:
           fi
           exit $return_code
 
-      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # tag=v4.1.7
+      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938  # tag=v4.2.0
 
       - name: Login to Docker Hub
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567  # tag=v3.3.0
