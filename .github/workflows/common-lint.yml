@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@0d381219ddf674d61a7572ddd19d7941e271515c  # tag=v2.9.0
+        uses: step-security/harden-runner@91182cccc01eb5e619899d80e4e971d6181294a7  # tag=v2.10.1
         with:
           disable-sudo: true
           egress-policy: block
@@ -67,7 +67,7 @@ jobs:
             sum.golang.org:443
 
       - id: setup-python
-        uses: actions/setup-python@39cd14951b08e74b54015e9e001cdefcf80e669f  # tag=v5.1.1
+        uses: actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3  # tag=v5.2.0
         with:
           python-version: ${{ inputs.python_version }}
 
@@ -87,7 +87,7 @@ jobs:
         run: |
           echo "dir=$(go env GOCACHE)" >> $GITHUB_OUTPUT
 
-      - uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9  # tag=v4.0.2
+      - uses: actions/cache@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2  # tag=v4.1.0
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ inputs.python_version }}-\
@@ -112,7 +112,7 @@ jobs:
         run: go install mvdan.cc/sh/v3/cmd/shfmt@${{ inputs.shfmt_version }}
 
       - name: Checkout source
-        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332  # tag=v4.1.7
+        uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938  # tag=v4.2.0
 
       - name: Install dependencies
         run: |
