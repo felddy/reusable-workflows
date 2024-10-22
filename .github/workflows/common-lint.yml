@@ -59,11 +59,13 @@ jobs:
             files.pythonhosted.org:443
             github.com:443
             golang.org:443
+            index.crates.io:443
             objects.githubusercontent.com:443
             proxy.golang.org:443
             pypi.org:443
             raw.githubusercontent.com:443
             registry.npmjs.org:443
+            static.crates.io:443
             sum.golang.org:443
 
       - id: setup-python
