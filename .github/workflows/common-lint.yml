@@ -89,7 +89,7 @@ jobs:
         run: |
           echo "dir=$(go env GOCACHE)" >> $GITHUB_OUTPUT
 
-      - uses: actions/cache@3624ceb22c1c5a301c8db4169662070a689d9ea8  # tag=v4.1.1
+      - uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a  # tag=v4.1.2
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ inputs.python_version }}-\
@@ -114,7 +114,7 @@ jobs:
         run: go install mvdan.cc/sh/v3/cmd/shfmt@${{ inputs.shfmt_version }}
 
       - name: Checkout source
-        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871  # tag=v4.2.1
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # tag=v4.2.2
 
       - name: Install dependencies
         run: |
