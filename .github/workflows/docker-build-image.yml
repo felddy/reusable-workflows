@@ -102,6 +102,39 @@ on:
         description: "The name of the eighth build arg"
         required: false
         type: string
+      build_secret_1_name:
+        description: "The name of the first build secret"
+        required: false
+        type: string
+      build_secret_2_name:
+        description: "The name of the second build secret"
+        required: false
+        type: string
+      build_secret_3_name:
+        description: "The name of the third build secret"
+        required: false
+        type: string
+      build_secret_4_name:
+        description: "The name of the fourth build secret"
+        required: false
+        type: string
+      build_secret_5_name:
+        description: "The name of the fifth build secret"
+        required: false
+        type: string
+      build_secret_6_name:
+        description: "The name of the sixth build secret"
+        required: false
+        type: string
+      build_secret_7_name:
+        description: "The name of the seventh build secret"
+        required: false
+        type: string
+      build_secret_8_name:
+        description: "The name of the eighth build secret"
+        required: false
+        type: string
+
     outputs:
       artifact_name:
         description: "The cleaned name of the artifact (if any)"
@@ -136,6 +169,30 @@ on:
         required: false
       build_arg_8_value:
         description: "The value of the eighth build arg"
+        required: false
+      build_secret_1_value:
+        description: "The value of the first build secret"
+        required: false
+      build_secret_2_value:
+        description: "The value of the second build secret"
+        required: false
+      build_secret_3_value:
+        description: "The value of the third build secret"
+        required: false
+      build_secret_4_value:
+        description: "The value of the fourth build secret"
+        required: false
+      build_secret_5_value:
+        description: "The value of the fifth build secret"
+        required: false
+      build_secret_6_value:
+        description: "The value of the sixth build secret"
+        required: false
+      build_secret_7_value:
+        description: "The value of the seventh build secret"
+        required: false
+      build_secret_8_value:
+        description: "The value of the eighth build secret"
         required: false
       docker_password:
         description: "The password for the Docker hub account (required for push)"
@@ -263,6 +320,39 @@ jobs:
           done
           echo "${delimiter}" >> $GITHUB_OUTPUT
 
+      - name: Prepare build secrets
+        id: prepare-build-secrets
+        env:
+          SECRET_1_NAME: ${{ inputs.build_secret_1_name }}
+          SECRET_1_VALUE: ${{ secrets.build_secret_1_value }}
+          SECRET_2_NAME: ${{ inputs.build_secret_2_name }}
+          SECRET_2_VALUE: ${{ secrets.build_secret_2_value }}
+          SECRET_3_NAME: ${{ inputs.build_secret_3_name }}
+          SECRET_3_VALUE: ${{ secrets.build_secret_3_value }}
+          SECRET_4_NAME: ${{ inputs.build_secret_4_name }}
+          SECRET_4_VALUE: ${{ secrets.build_secret_4_value }}
+          SECRET_5_NAME: ${{ inputs.build_secret_5_name }}
+          SECRET_5_VALUE: ${{ secrets.build_secret_5_value }}
+          SECRET_6_NAME: ${{ inputs.build_secret_6_name }}
+          SECRET_6_VALUE: ${{ secrets.build_secret_6_value }}
+          SECRET_7_NAME: ${{ inputs.build_secret_7_name }}
+          SECRET_7_VALUE: ${{ secrets.build_secret_7_value }}
+          SECRET_8_NAME: ${{ inputs.build_secret_8_name }}
+          SECRET_8_VALUE: ${{ secrets.build_secret_8_value }}
+        run: |
+          delimiter="$(openssl rand -hex 8)"
+          echo "build_secrets<<${delimiter}" >> $GITHUB_OUTPUT
+          for i in {1..3}; do
+            secret_name_var="SECRET_${i}_NAME"
+            secret_value_var="SECRET_${i}_VALUE"
+            secret_name=${!secret_name_var}
+            secret_value=${!secret_value_var}
+            if [[ -n "$secret_name" && -n "$secret_value" ]]; then
+              echo "\"${secret_name}=${secret_value}\"" >> $GITHUB_OUTPUT
+            fi
+          done
+          echo "${delimiter}" >> $GITHUB_OUTPUT
+
       - name: Calculate GitHub Actions cache scopes
         id: cache_scopes
         run: |
@@ -292,6 +382,7 @@ jobs:
           labels: ${{ inputs.image_labels }}
           platforms: ${{ inputs.platforms }}
           push: true
+          secrets: ${{ steps.prepare-build-secrets.outputs.build_secrets }}
           tags: ${{ steps.tag_suffix.outputs.tags }}
 
       - name: Build image for archive
@@ -307,6 +398,7 @@ jobs:
           outputs: type=docker,dest=${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar
           platforms: ${{ inputs.platforms }}
           push: false
+          secrets: ${{ steps.prepare-build-secrets.outputs.build_secrets }}
           tags: ${{ steps.tag_suffix.outputs.tags }}
 
       - name: Check if archive key is available
