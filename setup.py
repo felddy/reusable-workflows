@@ -75,8 +75,8 @@ setup(
     py_modules=[splitext(basename(path))[0] for path in glob("src/*.py")],
     install_requires=[
         "semver == 3.0.2",
-        "setuptools == 75.2.0",
-        "wheel == 0.44.0",
+        "setuptools == 75.6.0",
+        "wheel == 0.45.0",
     ],
     extras_require={
         "test": [
@@ -86,7 +86,7 @@ setup(
             "docker == 7.1.0",
             "pre-commit == 4.0.1",
             "pytest == 8.3.3",
-            "pytest-cov == 5.0.0",
+            "pytest-cov == 6.0.0",
             "pytest-lazy-fixture == 0.6.3",
         ]
     },
