@@ -1,0 +1,52 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools", "wheel"]
+
+[project]
+authors = [{ name = "Mark Feldhousen", email = "markf@geekpad.com" }]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Other Environment",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Build Tools",
+]
+dependencies = ["semver"]
+description = "reusable workflows for GitHub Actions"
+keywords = [
+    "actions",
+    "docker",
+    "github",
+    "pre-commit",
+    "pytest",
+    "reusable",
+    "workflows",
+]
+license = { file = "LICENSE" }
+name = "reusable-workflows"
+readme = "README.md"
+requires-python = ">=3.10"
+version = "0.0.1" # TODO dynamic read from Cargo.toml
+
+[project.urls]
+homepage = "https://github.com/felddy"
+issues = "https://github.com/felddy/reusable-workflows/issues"
+source = "https://github.com/felddy/reusable-workflows"
+
+[project.optional-dependencies]
+test = [
+    "coverage",
+    "coveralls",
+    "docker",
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+    "pytest-lazy-fixture",
+]
