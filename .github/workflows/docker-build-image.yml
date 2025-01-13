@@ -213,7 +213,7 @@ jobs:
       image_archive_name: ${{ steps.check_image_archive_key.outputs.file_name }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f  # tag=v2.10.2
+        uses: step-security/harden-runner@c95a14d0e5bab51a9f56296a4eb0e416910cd350  # tag=v2.10.3
         with:
           disable-sudo: true
           egress-policy: audit
@@ -222,7 +222,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # tag=v4.2.2
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf  # tag=v3.2.0
+        uses: docker/setup-qemu-action@53851d14592bedcffcf25ea515637cff71ef929a  # tag=v3.3.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@6524bf65af31da8d45b59e8c27de4bd072b392f5  # tag=v3.8.0
@@ -372,7 +372,7 @@ jobs:
 
       - name: Build image for push
         if: inputs.push == true
-        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355  # tag=v6.10.0
+        uses: docker/build-push-action@b32b51a8eda65d6793cd0494a773d4f6bcef32dc  # tag=v6.11.0
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
@@ -387,7 +387,7 @@ jobs:
 
       - name: Build image for archive
         if: inputs.push == false
-        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355  # tag=v6.10.0
+        uses: docker/build-push-action@b32b51a8eda65d6793cd0494a773d4f6bcef32dc  # tag=v6.11.0
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
@@ -422,7 +422,7 @@ jobs:
 
       - name: Upload artifacts
         if: ${{ (inputs.push == false) && (steps.clean.outputs.artifact_name != '') }}
-        uses: actions/upload-artifact@6f51ac03b9356f520e9adb1b1b7802705f340c2b  # tag=v4.5.0
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # tag=v4.6.0
         with:
           name: ${{ steps.clean.outputs.artifact_name }}
           path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.check_image_archive_key.outputs.file_name }}
