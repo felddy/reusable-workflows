@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@0080882f6c36860b6ba35c610c98ce87d4e2f26f  # tag=v2.10.2
+        uses: step-security/harden-runner@cb605e52c26070c328afc4562f0b4ada7618a84e  # tag=v2.10.4
         with:
           disable-sudo: true
           egress-policy: block
@@ -69,13 +69,13 @@ jobs:
             sum.golang.org:443
 
       - id: setup-python
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # tag=v5.3.0
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38  # tag=v5.4.0
         with:
           python-version: ${{ inputs.python_version }}
 
       # We need the Go version and Go cache location for the actions/cache step,
       # so the Go installation must happen before that.
-      - uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a  # tag=v5.2.0
+      - uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34  # tag=v5.3.0
         with:
           go-version: ${{ inputs.go_version }}
 
