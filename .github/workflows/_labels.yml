@@ -31,4 +31,4 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # tag=v4.2.2
 
       - name: Run Labeler
-        uses: crazy-max/ghaction-github-labeler@b54af0c25861143e7c8813d7cbbf46d2c341680c  # tag=v5.1.0
+        uses: crazy-max/ghaction-github-labeler@31674a3852a9074f2086abcf1c53839d466a47e7  # tag=v5.2.0
