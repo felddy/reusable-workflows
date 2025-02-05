@@ -40,6 +40,7 @@ jobs:
         with:
           allowed-endpoints: >
             auth.docker.io:443
+            docker-images-prod.*.r2.cloudflarestorage.com
             docker.io:443
             ghcr.io:443
             github.com:443
