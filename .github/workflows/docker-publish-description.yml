@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf  # tag=v2.11.1
+        uses: step-security/harden-runner@0634a2670c59f64b4a01f0f96f84700a4088b9f0  # tag=v2.12.0
         with:
           egress-policy: audit  # TODO: change to 'egress-policy: block' after couple of runs
 
@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # tag=v4.2.2
 
       - name: Docker Hub Description
-        uses: peter-evans/dockerhub-description@0505d8b04853a30189aee66f5bb7fd1511bbac71  # tag=v4.0.1
+        uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77  # tag=v4.0.2
         with:
           password: ${{ secrets.docker_password }}
           readme-filepath: ${{ inputs.filepath }}
