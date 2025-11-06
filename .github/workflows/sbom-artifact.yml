@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a  # tag=v2.13.1
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2  # tag=v2.13.2
         with:
           disable-sudo: true
           egress-policy: audit
@@ -81,7 +81,7 @@ jobs:
           fi
 
       - name: Download images artifact
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0  # tag=v5.0.0
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # tag=v6.0.0
         with:
           name: ${{ steps.clean.outputs.image_artifact_name }}
 
@@ -96,7 +96,7 @@ jobs:
           done
 
       - name: Upload SBOMs as artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # tag=v4.6.2
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # tag=v5.0.0
         with:
           name: ${{ steps.clean.outputs.sbom_artifact_name }}
           path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}
