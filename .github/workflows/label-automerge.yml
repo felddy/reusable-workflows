@@ -6,7 +6,7 @@ on:
     types: [auto_merge_enabled, auto_merge_disabled]
 
 env:
-  LABEL_NAME: 'automerge :bell:'
+  LABEL_NAME: "automerge"
 
 jobs:
   add-remove-label:
