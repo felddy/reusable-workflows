@@ -23,17 +23,17 @@ on: # yamllint disable-line rule:truthy
         required: false
         type: string
       go_version:
-        default: "1.19"
+        default: "1.24"
         description: The version of Go to use.
         required: false
         type: string
       python_version:
-        default: "3.10"
+        default: "3.13"
         description: The version of Python to use.
         required: false
         type: string
       shfmt_version:
-        default: v3.5.1
+        default: v3.12.0
         description: The version of shfmt (shell format) to use.
         required: false
         type: string
