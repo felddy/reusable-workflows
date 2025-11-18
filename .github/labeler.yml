@@ -44,6 +44,10 @@ python:
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.py"
+rust:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.rs"
 shell script:
   - changed-files:
       - any-glob-to-any-file:
