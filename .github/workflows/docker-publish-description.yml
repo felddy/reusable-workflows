@@ -1,29 +1,29 @@
 ---
-name: "Publish README"
+name: Publish README
 
 # This reusable workflow publishes the description of a Docker image to the
 # Docker Hub.
 
-on:
+on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       # Required inputs
       image_name:
-        description: "The Docker image name"
+        description: The Docker image name
         required: true
         type: string
       # Optional inputs
       filepath:
         default: ./README.md
-        description: "The path to the file to publish"
+        description: The path to the file to publish
         required: false
         type: string
     secrets:
       docker_password:
-        description: "The password for the Docker hub account"
+        description: The password for the Docker hub account
         required: true
       docker_username:
-        description: "The username for the Docker hub account"
+        description: The username for the Docker hub account
         required: true
 
 jobs:
@@ -31,15 +31,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2  # tag=v2.13.2
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # tag=v2.13.2
         with:
-          egress-policy: audit  # TODO: change to 'egress-policy: block' after couple of runs
+          egress-policy: audit # TODO: change to 'egress-policy: block' after couple of runs
 
       - name: Checkout
-        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # tag=v5.0.1
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # tag=v5.0.1
 
       - name: Docker Hub Description
-        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa  # tag=v5.0.0
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # tag=v5.0.0
         with:
           password: ${{ secrets.docker_password }}
           readme-filepath: ${{ inputs.filepath }}

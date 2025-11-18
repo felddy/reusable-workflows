@@ -14,6 +14,9 @@
 - color: "000000"
   description: This issue or pull request involves changes to existing functionality
   name: breaking change
+- color: 69cde9
+  description: This issue or pull request was created by a bot
+  name: bot
 - color: d73a4a
   description: This issue or pull request addresses broken functionality
   name: bug
@@ -71,6 +74,9 @@
 - color: ef476c
   description: This issue is a request for information or needs discussion
   name: question
+- color: dea584
+  description: Pull requests that update Rust code
+  name: rust
 - color: d73a4a
   description: This issue or pull request addresses a security issue
   name: security

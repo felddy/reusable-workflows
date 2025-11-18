@@ -1,9 +1,9 @@
 ---
-name: "Diagnostics"
+name: Diagnostics
 
 # This workflow outputs diagnostic information about the runner and the environment
 
-on:
+on: # yamllint disable-line rule:truthy
   workflow_call:
 
 permissions:
@@ -11,11 +11,11 @@ permissions:
 
 jobs:
   diagnostics:
-    name: "Diagnostics"
+    name: Diagnostics
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2  # tag=v2.13.2
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # tag=v2.13.2
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -28,10 +28,10 @@ jobs:
             www.githubstatus.com:443
 
       - name: Check GitHub Status
-        uses: crazy-max/ghaction-github-status@fa6ac37620bc5d44b93e15caed498629665e9ff5  # tag=v4.2.0
+        uses: crazy-max/ghaction-github-status@fa6ac37620bc5d44b93e15caed498629665e9ff5 # tag=v4.2.0
         with:
           overall_threshold: major
           packages_threshold: major_outage
 
       - name: Dump context
-        uses: crazy-max/ghaction-dump-context@5355a8e5e6ac5a302e746a1c4b7747a0393863c8  # tag=v2.3.0
+        uses: crazy-max/ghaction-dump-context@5355a8e5e6ac5a302e746a1c4b7747a0393863c8 # tag=v2.3.0

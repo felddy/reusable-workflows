@@ -1,30 +1,30 @@
 ---
-name: "Push Multi-Architecture Image"
+name: Push Multi-Architecture Image
 
 # This reusable workflow reads OCI image archives from an artifact and publishes
 # a multi-architecture images to one or more registries.
 
-on:
+on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       # Required inputs
       artifact_name_pattern:
-        description: "Pattern to match artifacts containing the image archives"
+        description: Pattern to match artifacts containing the image archives
         required: true
         type: string
       image_tags:
-        description: "The tags to apply to the image"
+        description: The tags to apply to the image
         required: true
         type: string
     secrets:
       image_archive_key:
-        description: "Enables decryption of image archives"
+        description: Enables decryption of image archives
         required: false
       docker_password:
-        description: "The password for the Docker hub account"
+        description: The password for the Docker hub account
         required: true
       docker_username:
-        description: "The username for the Docker hub account"
+        description: The username for the Docker hub account
         required: true
 
 env:
@@ -32,11 +32,11 @@ env:
 
 jobs:
   publish:
-    name: "Load and push multi-arch image"
+    name: Load and push multi-arch image
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2  # tag=v2.13.2
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # tag=v2.13.2
         with:
           allowed-endpoints: >
             auth.docker.io:443
@@ -61,23 +61,23 @@ jobs:
           fi
           exit $return_code
 
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # tag=v5.0.1
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # tag=v5.0.1
 
       - name: Login to Docker Hub
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # tag=v3.6.0
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
         with:
           username: ${{ secrets.docker_username }}
           password: ${{ secrets.docker_password }}
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # tag=v3.6.0
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Docker image artifacts
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # tag=v6.0.0
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # tag=v6.0.0
         with:
           merge-multiple: true
           path: ${{ env.ARTIFACT_WORK_DIR }}

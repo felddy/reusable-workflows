@@ -1,4 +1,3 @@
-#!/usr/bin/env pytest -vs
 """Tests for Docker container."""
 
 # Standard Python Libraries

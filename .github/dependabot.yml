@@ -6,58 +6,58 @@
 
 version: 2
 updates:
-  - package-ecosystem: "cargo"
-    directory: "/"
+  - package-ecosystem: cargo
+    directory: /
     schedule:
-      interval: "daily"
+      interval: daily
     labels:
-      - "bot :robot:"
-      - "dependencies :game_die:"
-      - "rust :crab:"
+      - bot
+      - dependencies
+      - rust
     groups:
       cargo-all:
-        applies-to: "version-updates"
+        applies-to: version-updates
         patterns:
           - "*"
 
-  - package-ecosystem: "docker"
-    directory: "/"
+  - package-ecosystem: docker
+    directory: /
     schedule:
-      interval: "daily"
+      interval: daily
     labels:
-      - "bot :robot:"
-      - "dependencies :game_die:"
-      - "docker :whale:"
+      - bot
+      - dependencies
+      - docker
     groups:
       docker-all:
-        applies-to: "version-updates"
+        applies-to: version-updates
         patterns:
           - "*"
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: github-actions
+    directory: /
     schedule:
-      interval: "daily"
+      interval: daily
     labels:
-      - "bot :robot:"
-      - "dependencies :game_die:"
-      - "github-actions :octocat:"
+      - bot
+      - dependencies
+      - github-actions
     groups:
       github-actions-all:
-        applies-to: "version-updates"
+        applies-to: version-updates
         patterns:
           - "*"
 
-  - package-ecosystem: "pip"
-    directory: "/"
+  - package-ecosystem: pip
+    directory: /
     schedule:
-      interval: "daily"
+      interval: daily
     labels:
-      - "bot :robot:"
-      - "dependencies :game_die:"
-      - "python :snake:"
+      - bot
+      - dependencies
+      - python
     groups:
       pip-all:
-        applies-to: "version-updates"
+        applies-to: version-updates
         patterns:
           - "*"

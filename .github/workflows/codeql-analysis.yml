@@ -8,7 +8,7 @@ name: CodeQL
 
 # The use of on here as a key is part of the GitHub actions syntax.
 # yamllint disable-line rule:truthy
-on:
+on: # yamllint disable-line rule:truthy
   merge_group:
     types:
       - checks_requested
