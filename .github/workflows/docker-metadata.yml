@@ -73,7 +73,6 @@ jobs:
           flavor: |
             latest=false
           images: |
-            ${{ inputs.image_name }}
             ghcr.io/${{ inputs.image_name }}
           labels: |
             org.opencontainers.image.version=${{ steps.source_values.outputs.source_version }}
