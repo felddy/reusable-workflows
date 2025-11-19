@@ -32,6 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image_labels: ${{ steps.docker_meta.outputs.labels }}
+      image_tag_names: ${{ steps.docker_meta.outputs.tag-names }}
       image_tags: ${{ steps.docker_meta.outputs.tags }}
       latest: ${{ steps.is_latest.outputs.latest }}
       source_version: ${{ steps.source_values.outputs.source_version }}
