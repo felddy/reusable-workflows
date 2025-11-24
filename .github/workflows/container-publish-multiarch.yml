@@ -52,7 +52,7 @@ jobs:
 
       - name: Start local registry
         run: |
-          docker run --detach --publish 5000:5000 --restart=always --name registry registry:2
+          docker run --detach --publish 5000:5000 --restart=always --name registry public.ecr.aws/docker/library/registry:3
 
       - name: Combine images and push
         run: |
