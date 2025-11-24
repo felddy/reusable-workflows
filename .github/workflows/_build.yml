@@ -102,28 +102,6 @@ jobs:
       image_artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
       sbom_artifact_name: ${{ needs.config.outputs.sbom_artifact_name_stem }}-${{ matrix.platform }}
 
-  docker-secrets:
-    name: Docker secrets
-    runs-on: ubuntu-latest
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # tag=v2.13.2
-        with:
-          egress-policy: block
-
-      - name: Check docker.com credentials
-        run: |
-          return_code=0
-          if [ -z "${{ secrets.DOCKER_USERNAME }}" ]; then
-            echo "::warning::Set the DOCKER_USERNAME secret."
-            return_code=1
-          fi
-          if [ -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
-            echo "::warning::Set the DOCKER_PASSWORD secret."
-            return_code=1
-          fi
-          exit $return_code
-
   build-multi-arch-image:
     name: Publish image
     needs:
@@ -143,7 +121,6 @@ jobs:
   #   needs:
   #     - build-multi-arch-image
   #     - config
-  #     - docker-secrets
   #     - metadata
   #   if: github.event_name == 'release'
   #   uses: ./.github/workflows/dockerhub-mirror.yml
@@ -159,7 +136,6 @@ jobs:
     needs:
       - build-multi-arch-image
       - config
-      - docker-secrets
       - metadata
     if: github.event_name == 'release' && needs.metadata.outputs.latest == 'true'
     uses: ./.github/workflows/dockerhub-description.yml
