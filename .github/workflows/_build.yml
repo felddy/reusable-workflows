@@ -123,6 +123,9 @@ jobs:
       - config
       - metadata
     if: github.event_name == 'release' && !github.event.release.prerelease
+    permissions:
+      contents: read
+      packages: read
     uses: ./.github/workflows/mirror-images.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
