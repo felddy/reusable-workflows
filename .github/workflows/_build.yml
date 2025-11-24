@@ -39,8 +39,8 @@ jobs:
     name: Lint
     uses: ./.github/workflows/common-lint.yml
 
-  build-image-for-testing:
-    name: Build image for testing
+  build-container-for-testing:
+    name: Build container for testing
     needs:
       - config
       - lint
@@ -54,24 +54,24 @@ jobs:
       image_labels: ${{ needs.metadata.outputs.image_labels }}
       platforms: ${{ needs.config.outputs.test_platform }}
 
-  test-image:
-    name: Test image
+  test-container:
+    name: Test container
     needs:
-      - build-image-for-testing
+      - build-container-for-testing
       - config
     uses: ./.github/workflows/container-test.yml
     with:
       data_artifact_name: ${{ needs.config.outputs.data_artifact_name }}
-      image_artifact_name: ${{ needs.build-image-for-testing.outputs.artifact_name }}
-      image_archive_name: ${{ needs.build-image-for-testing.outputs.image_archive_name }}
+      image_artifact_name: ${{ needs.build-container-for-testing.outputs.artifact_name }}
+      image_archive_name: ${{ needs.build-container-for-testing.outputs.image_archive_name }}
 
   build-each-platform:
-    name: Build platforms
+    name: Build container
     needs:
       - config
       - lint
       - metadata
-      - test-image
+      - test-container
     if: github.event_name != 'pull_request'
     strategy:
       matrix:
@@ -103,7 +103,7 @@ jobs:
       sbom_artifact_name: ${{ needs.config.outputs.sbom_artifact_name_stem }}-${{ matrix.platform }}
 
   build-multi-arch-image:
-    name: Publish image
+    name: Publish container
     needs:
       - build-each-platform
       - config
@@ -117,7 +117,7 @@ jobs:
       image_tags: ${{ needs.metadata.outputs.image_tags }}
 
   mirror-to-dockerhub:
-    name: Mirror to DockerHub
+    name: Mirror images to DockerHub
     needs:
       - build-multi-arch-image
       - config
@@ -136,7 +136,7 @@ jobs:
       registry_username: ${{ secrets.DOCKER_USERNAME }}
 
   publish-readme:
-    name: Publish docs
+    name: Publish docs to DockerHub
     needs:
       - build-multi-arch-image
       - config

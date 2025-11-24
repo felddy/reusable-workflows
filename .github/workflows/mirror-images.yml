@@ -45,7 +45,7 @@ jobs:
             production.cloudflare.docker.com:443
             registry-1.docker.io:443
 
-      - name: Set up Docker Buildx
+      - name: Set up buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to source registry (GHCR)

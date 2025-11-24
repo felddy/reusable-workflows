@@ -17,7 +17,7 @@ on: # yamllint disable-line rule:truthy
         description: The stem name for image artifacts
         value: image-archive
       image_name:
-        description: The Docker image name
+        description: The container image name
         value: felddy/reusable-workflow
       platforms_csv:
         description: The platforms to build (CSV)

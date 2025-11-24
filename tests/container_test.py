@@ -1,4 +1,4 @@
-"""Tests for Docker container."""
+"""Tests for container."""
 
 # Standard Python Libraries
 import time

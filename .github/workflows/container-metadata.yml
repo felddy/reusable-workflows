@@ -1,7 +1,7 @@
 ---
-name: Calculate Docker metadata
+name: Calculate container metadata
 
-# This reusable workflow calculates the labels and tags for a Docker image.
+# This reusable workflow calculates the labels and tags for a container image.
 # These tags will vary depending on the event that triggered the workflow.
 
 on: # yamllint disable-line rule:truthy
@@ -9,7 +9,7 @@ on: # yamllint disable-line rule:truthy
     inputs:
       # Required inputs
       image_name:
-        description: The Docker image name
+        description: The container image name
         required: true
         type: string
     outputs:
@@ -31,9 +31,9 @@ jobs:
     name: Calculate variables
     runs-on: ubuntu-latest
     outputs:
-      image_labels: ${{ steps.docker_meta.outputs.labels }}
-      image_tag_names: ${{ steps.docker_meta.outputs.tag-names }}
-      image_tags: ${{ steps.docker_meta.outputs.tags }}
+      image_labels: ${{ steps.container_meta.outputs.labels }}
+      image_tag_names: ${{ steps.container_meta.outputs.tag-names }}
+      image_tags: ${{ steps.container_meta.outputs.tags }}
       latest: ${{ steps.is_latest.outputs.latest }}
       source_version: ${{ steps.source_values.outputs.source_version }}
       tags: ${{ steps.prep.outputs.tags }}
@@ -67,8 +67,8 @@ jobs:
           fi
           echo "latest=false" >> $GITHUB_OUTPUT
 
-      - name: Calculate Docker metadata
-        id: docker_meta
+      - name: Calculate container metadata
+        id: container_meta
         uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893 # tag=v5.9.0
         with:
           flavor: |

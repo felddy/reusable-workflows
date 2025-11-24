@@ -1,15 +1,15 @@
 ---
 name: Publish README
 
-# This reusable workflow publishes the description of a Docker image to the
-# Docker Hub.
+# This reusable workflow publishes the description of a container image to
+# DockerHub.
 
 on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       # Required inputs
       image_name:
-        description: The Docker image name
+        description: The container image name
         required: true
         type: string
       # Optional inputs
@@ -20,10 +20,10 @@ on: # yamllint disable-line rule:truthy
         type: string
     secrets:
       docker_password:
-        description: The password for the Docker hub account
+        description: The password for the DockerHub account
         required: true
       docker_username:
-        description: The username for the Docker hub account
+        description: The username for the DockerHub account
         required: true
 
 jobs:
@@ -38,7 +38,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # tag=v5.0.1
 
-      - name: Docker Hub Description
+      - name: DockerHub Description
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # tag=v5.0.0
         with:
           password: ${{ secrets.docker_password }}

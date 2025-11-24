@@ -1,13 +1,13 @@
 ---
-name: Build image
+name: Build container image
 
-# This reusable workflow builds Docker images.  It allows images to be pushed to
-# Docker Hub and the GitHub Container Registry, or uploaded as an artifact for
-# later use by other workflows.
+# This reusable workflow builds container images.  It allows images to be pushed
+# to GitHub Container Registry, or uploaded as an artifact for later use by
+# other workflows.
 #
 # Additional workflow features include:
-# - Caching of Docker layers to Github Actions cache
-# - Optional encryption of Docker images stored as artifacts
+# - Caching of container layers to Github Actions cache
+# - Optional encryption of container images stored as artifacts
 # - Ability to suffix tags with additional information. For example, adding the
 #   platform identifier so the image can be later included in a multi-platform
 #   manifest.
@@ -194,12 +194,6 @@ on: # yamllint disable-line rule:truthy
       build_secret_8_value:
         description: The value of the eighth build secret
         required: false
-      docker_password:
-        description: The password for the Docker hub account (required for push)
-        required: false
-      docker_username:
-        description: The username for the Docker hub account (required for push)
-        required: false
 
 env:
   OUTPUT_ARTIFACT_WORK_DIR: /tmp/output-artifact-work
@@ -224,29 +218,8 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # tag=v3.7.0
 
-      - name: Set up Docker Buildx
+      - name: Set up buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # tag=v3.11.1
-
-      - name: Docker credentials available for push
-        if: inputs.push == true
-        run: |
-          return_code=0
-          if [ -z "${{ secrets.docker_username }}" ]; then
-            echo "::warning::Set the docker_username secret when using push=true."
-            return_code=1
-          fi
-          if [ -z "${{ secrets.docker_password }}" ]; then
-            echo "::warning::Set the docker_password secret when using push=true."
-            return_code=1
-          fi
-          exit $return_code
-
-      - name: Login to Docker Hub
-        if: inputs.push == true
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
-        with:
-          username: ${{ secrets.docker_username }}
-          password: ${{ secrets.docker_password }}
 
       - name: Login to GitHub Container Registry
         if: inputs.push == true
