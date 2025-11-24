@@ -31,7 +31,7 @@ jobs:
     name: Metadata
     needs:
       - config
-    uses: ./.github/workflows/docker-metadata.yml
+    uses: ./.github/workflows/container-metadata.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
 
@@ -45,7 +45,7 @@ jobs:
       - config
       - lint
       - metadata
-    uses: ./.github/workflows/docker-build-image.yml
+    uses: ./.github/workflows/container-build.yml
     with:
       artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ needs.config.outputs.test_platform }}
       cache_from_scopes: ${{ needs.config.outputs.test_platform }}
@@ -59,7 +59,7 @@ jobs:
     needs:
       - build-image-for-testing
       - config
-    uses: ./.github/workflows/docker-pytest-image.yml
+    uses: ./.github/workflows/container-test.yml
     with:
       data_artifact_name: ${{ needs.config.outputs.data_artifact_name }}
       image_artifact_name: ${{ needs.build-image-for-testing.outputs.artifact_name }}
@@ -78,7 +78,7 @@ jobs:
         platform: ${{ fromJson(needs.config.outputs.platforms_json) }}
         exclude:
           - platform: ${{ needs.config.outputs.test_platform }}
-    uses: ./.github/workflows/docker-build-image.yml
+    uses: ./.github/workflows/container-build.yml
     with:
       artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
       cache_from_scopes: ${{ matrix.platform }}
@@ -97,7 +97,7 @@ jobs:
     strategy:
       matrix:
         platform: ${{ fromJson(needs.config.outputs.platforms_json) }}
-    uses: ./.github/workflows/sbom-artifact.yml
+    uses: ./.github/workflows/container-sbom.yml
     with:
       image_artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
       sbom_artifact_name: ${{ needs.config.outputs.sbom_artifact_name_stem }}-${{ matrix.platform }}
@@ -134,7 +134,7 @@ jobs:
     if: github.event_name != 'pull_request'
     permissions:
       packages: write
-    uses: ./.github/workflows/docker-multi-arch-push.yml
+    uses: ./.github/workflows/container-publish-multiarch.yml
     with:
       artifact_name_pattern: ${{ needs.config.outputs.image_artifact_name_stem }}-*
       image_tags: ${{ needs.metadata.outputs.image_tags }}
@@ -150,7 +150,7 @@ jobs:
       - docker-secrets
       - metadata
     if: needs.metadata.outputs.latest == 'true'
-    uses: ./.github/workflows/docker-publish-description.yml
+    uses: ./.github/workflows/dockerhub-description.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
     secrets:
