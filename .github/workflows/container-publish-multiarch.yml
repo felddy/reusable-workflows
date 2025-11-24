@@ -20,12 +20,6 @@ on: # yamllint disable-line rule:truthy
       image_archive_key:
         description: Enables decryption of image archives
         required: false
-      docker_password:
-        description: The password for the Docker hub account
-        required: true
-      docker_username:
-        description: The username for the Docker hub account
-        required: true
 
 env:
   ARTIFACT_WORK_DIR: /tmp/artifact-work
@@ -39,36 +33,9 @@ jobs:
         uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # tag=v2.13.2
         with:
           allowed-endpoints: >
-            auth.docker.io:443
-            docker-images-prod.*.r2.cloudflarestorage.com
-            docker.io:443
             ghcr.io:443
             github.com:443
-            index.docker.io:443
-            production.cloudflare.docker.com:443
-            registry-1.docker.io:443
-
-      - name: Check Docker credentials
-        run: |
-          return_code=0
-          if [ -z "${{ secrets.docker_username }}" ]; then
-            echo "::warning::Set the docker_username secret."
-            return_code=1
-          fi
-          if [ -z "${{ secrets.docker_password }}" ]; then
-            echo "::warning::Set the docker_password secret."
-            return_code=1
-          fi
-          exit $return_code
-
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # tag=v5.0.1
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
-        with:
-          username: ${{ secrets.docker_username }}
-          password: ${{ secrets.docker_password }}
-
       - name: Login to GitHub Container Registry
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
         with:
@@ -76,7 +43,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download Docker image artifacts
+      - name: Download container image artifacts
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # tag=v6.0.0
         with:
           merge-multiple: true

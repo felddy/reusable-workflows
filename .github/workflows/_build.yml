@@ -129,7 +129,6 @@ jobs:
     needs:
       - build-each-platform
       - config
-      - docker-secrets
       - metadata
     if: github.event_name != 'pull_request'
     permissions:
@@ -138,9 +137,22 @@ jobs:
     with:
       artifact_name_pattern: ${{ needs.config.outputs.image_artifact_name_stem }}-*
       image_tags: ${{ needs.metadata.outputs.image_tags }}
-    secrets:
-      docker_password: ${{ secrets.DOCKER_PASSWORD }}
-      docker_username: ${{ secrets.DOCKER_USERNAME }}
+
+  # mirror-to-dockerhub:
+  #   name: Mirror to DockerHub
+  #   needs:
+  #     - build-multi-arch-image
+  #     - config
+  #     - docker-secrets
+  #     - metadata
+  #   if: github.event_name == 'release'
+  #   uses: ./.github/workflows/dockerhub-mirror.yml
+  #   with:
+  #     image_name: ${{ needs.config.outputs.image_name }}
+  #     image_tags: ${{ needs.metadata.outputs.image_tags }}
+  #   secrets:
+  #     docker_password: ${{ secrets.DOCKER_PASSWORD }}
+  #     docker_username: ${{ secrets.DOCKER_USERNAME }}
 
   publish-readme:
     name: Publish docs
@@ -149,7 +161,7 @@ jobs:
       - config
       - docker-secrets
       - metadata
-    if: needs.metadata.outputs.latest == 'true'
+    if: github.event_name == 'release' && needs.metadata.outputs.latest == 'true'
     uses: ./.github/workflows/dockerhub-description.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
