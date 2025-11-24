@@ -126,7 +126,7 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: ./.github/workflows/mirror-images.yml
+    uses: ./.github/workflows/container-mirror.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
       image_tags: ${{ needs.metadata.outputs.image_tags }}
