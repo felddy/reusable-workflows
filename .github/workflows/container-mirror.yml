@@ -8,7 +8,7 @@ on: # yamllint disable-line rule:truthy
         description: The image base name, e.g. felddy/foundryvtt-container
         required: true
         type: string
-      image_tags:
+      image_tag_names:
         description: Space-delimited list of tags to mirror, e.g. "13 13.351 latest"
         required: true
         type: string
@@ -68,7 +68,7 @@ jobs:
           SOURCE_REGISTRY: ghcr.io
           TARGET_REGISTRY: ${{ inputs.target_registry }}
           IMAGE_BASE: ${{ inputs.image_name }}
-          TAG_NAMES: ${{ inputs.image_tags }}
+          TAG_NAMES: ${{ inputs.image_tag_names }}
         run: |
           set -euo pipefail
 
@@ -84,4 +84,4 @@ jobs:
 
       - name: Inspect mirrored image
         run: |
-          docker buildx imagetools inspect "${{ inputs.target_registry }}/${{ inputs.image_name }}:$(echo "${{ inputs.image_tags }}" | awk '{print $1}')"
+          docker buildx imagetools inspect "${{ inputs.target_registry }}/${{ inputs.image_name }}:$(echo "${{ inputs.image_tag_names }}" | awk '{print $1}')"

@@ -16,8 +16,11 @@ on: # yamllint disable-line rule:truthy
       image_labels:
         description: The calculated image labels
         value: ${{ jobs.metadata.outputs.image_labels }}
+      image_tag_names:
+        description: The calculated image tag names (1.2.3, latest, etc)
+        value: ${{ jobs.metadata.outputs.image_tag_names }}
       image_tags:
-        description: The calculated image tags
+        description: The calculated image tags (full image references with tags)
         value: ${{ jobs.metadata.outputs.image_tags }}
       latest:
         description: True if the image is the latest version
