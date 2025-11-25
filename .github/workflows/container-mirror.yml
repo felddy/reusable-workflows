@@ -69,14 +69,14 @@ jobs:
         env:
           SOURCE_REGISTRY: ghcr.io
           TARGET_REGISTRY: ${{ inputs.target_registry }}
-          IMAGE_BASE: ${{ inputs.image_name }}
+          IMAGE_NAME: ${{ inputs.image_name }}
           TAG_NAMES: ${{ inputs.image_tag_names }}
         run: |
           set -euo pipefail
 
           for tag in ${TAG_NAMES}; do
-            src="${SOURCE_REGISTRY}/${IMAGE_BASE}:${tag}"
-            dst="${TARGET_REGISTRY}/${IMAGE_BASE}:${tag}"
+            src="${SOURCE_REGISTRY}/${IMAGE_NAME}:${tag}"
+            dst="${TARGET_REGISTRY}/${IMAGE_NAME}:${tag}"
 
             echo "Mirroring ${src} -> ${dst}"
             docker buildx imagetools create \
@@ -85,6 +85,10 @@ jobs:
           done
 
       - name: Inspect mirrored image
+        env:
+          TARGET_REGISTRY: ${{ inputs.target_registry }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG_NAMES: ${{ inputs.image_tag_names }}
         run: |
           set -euo pipefail
 
