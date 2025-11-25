@@ -26,6 +26,7 @@ on: # yamllint disable-line rule:truthy
 
 jobs:
   mirror:
+    name: Mirror images
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -85,4 +86,7 @@ jobs:
 
       - name: Inspect mirrored image
         run: |
-          docker buildx imagetools inspect "${{ inputs.target_registry }}/${{ inputs.image_name }}:$(echo "${{ inputs.image_tag_names }}" | awk '{print $1}')"
+          set -euo pipefail
+
+          first_tag=$(printf '%s\n' "$IMAGE_TAG_NAMES" | head -n1 | cut -d' ' -f1)
+          docker buildx imagetools inspect "$TARGET_REGISTRY/$IMAGE_NAME:$first_tag"
