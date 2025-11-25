@@ -23,12 +23,12 @@ on: # yamllint disable-line rule:truthy
         required: false
         type: string
       go_version:
-        default: "1.24"
+        default: "1.25"
         description: The version of Go to use.
         required: false
         type: string
       python_version:
-        default: "3.13"
+        default: "3.14"
         description: The version of Python to use.
         required: false
         type: string

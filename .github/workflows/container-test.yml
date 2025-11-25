@@ -41,7 +41,7 @@ on: # yamllint disable-line rule:truthy
         type: string
       python_version:
         description: The Python version to use
-        default: "3.10"
+        default: "3.14"
         required: false
         type: string
     secrets:
