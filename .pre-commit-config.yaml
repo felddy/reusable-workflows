@@ -231,6 +231,11 @@ repos:
           # made in requirements.txt in cisagov/skeleton-packer and
           # requirements-test.txt in cisagov/skeleton-ansible-role.
           - ansible-core>=2.17
+        # Forcing language_version back to python3 due to a bug introduced by a
+        # PR 4796 in ansible-lint which pinned to Python 3.13 which we are no
+        # longer using.
+        # https://github.com/ansible/ansible-lint/pull/4796
+        language_version: python3
 
   # Terraform hooks
   - repo: https://github.com/antonbabenko/pre-commit-terraform
