@@ -1,0 +1,96 @@
+---
+name: Mirror images to a registry
+
+on: # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      image_name:
+        description: The image base name, e.g. felddy/foundryvtt-container
+        required: true
+        type: string
+      image_tag_names:
+        description: Space-delimited list of tags to mirror, e.g. "13 13.351 latest"
+        required: true
+        type: string
+      target_registry:
+        description: The target registry hostname, e.g. docker.io
+        required: true
+        type: string
+    secrets:
+      registry_password:
+        description: The password for the target registry account
+        required: true
+      registry_username:
+        description: The username for the target registry account
+        required: true
+
+jobs:
+  mirror:
+    name: Mirror images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # tag=v2.13.2
+        with:
+          allowed-endpoints: >
+            auth.docker.io:443
+            docker-images-prod.*.r2.cloudflarestorage.com
+            docker.io:443
+            ghcr.io:443
+            github.com:443
+            *.githubusercontent.com:443
+            index.docker.io:443
+            production.cloudflare.docker.com:443
+            registry-1.docker.io:443
+
+      - name: Set up buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # tag=v3.11.1
+
+      - name: Log in to source registry (GHCR)
+        # Assumes source is GHCR and images are public or readable by GITHUB_TOKEN
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to target registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
+        with:
+          registry: ${{ inputs.target_registry }}
+          username: ${{ secrets.registry_username }}
+          password: ${{ secrets.registry_password }}
+
+      - name: Mirror images
+        env:
+          SOURCE_REGISTRY: ghcr.io
+          TARGET_REGISTRY: ${{ inputs.target_registry }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+          TAG_NAMES: ${{ inputs.image_tag_names }}
+        run: |
+          set -euo pipefail
+
+          for tag in ${TAG_NAMES}; do
+            src="${SOURCE_REGISTRY}/${IMAGE_NAME}:${tag}"
+            dst="${TARGET_REGISTRY}/${IMAGE_NAME}:${tag}"
+
+            echo "Mirroring ${src} -> ${dst}"
+            docker buildx imagetools create \
+              --tag "${dst}" \
+              "${src}"
+          done
+
+      - name: Inspect mirrored image
+        env:
+          TARGET_REGISTRY: ${{ inputs.target_registry }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG_NAMES: ${{ inputs.image_tag_names }}
+        run: |
+          set -euo pipefail
+
+          first_tag=$(printf '%s\n' "$IMAGE_TAG_NAMES" | head -n1 | cut -d' ' -f1)
+          docker buildx imagetools inspect "$TARGET_REGISTRY/$IMAGE_NAME:$first_tag"

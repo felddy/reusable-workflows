@@ -1,17 +1,17 @@
 ---
-name: "Build"
+name: Build
 
-on:
+on: # yamllint disable-line rule:truthy
   push:
     branches:
-      - '**'
+      - "**"
   pull_request:
   release:
     types:
       - edited
       - published
   schedule:
-    - cron: '0 10 * * *'  # everyday at 10am
+    - cron: 0 10 * * * # everyday at 10am
   workflow_dispatch:
 
 permissions:
@@ -20,31 +20,32 @@ permissions:
 
 jobs:
   diagnostics:
-    name: "Diagnostics"
+    name: Diagnostics
     uses: ./.github/workflows/diagnostics.yml
 
   config:
-    name: "Config"
+    name: Config
     uses: ./.github/workflows/_config.yml
 
   metadata:
-    name: "Metadata"
-    needs: [config]
-    uses: ./.github/workflows/docker-metadata.yml
+    name: Metadata
+    needs:
+      - config
+    uses: ./.github/workflows/container-metadata.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
 
   lint:
-    name: "Lint"
+    name: Lint
     uses: ./.github/workflows/common-lint.yml
 
-  build-image-for-testing:
-    name: "Build image for testing"
+  build-container-for-testing:
+    name: Build container for testing
     needs:
       - config
       - lint
       - metadata
-    uses: ./.github/workflows/docker-build-image.yml
+    uses: ./.github/workflows/container-build.yml
     with:
       artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ needs.config.outputs.test_platform }}
       cache_from_scopes: ${{ needs.config.outputs.test_platform }}
@@ -53,31 +54,31 @@ jobs:
       image_labels: ${{ needs.metadata.outputs.image_labels }}
       platforms: ${{ needs.config.outputs.test_platform }}
 
-  test-image:
-    name: "Test image"
+  test-container:
+    name: Test container
     needs:
-      - build-image-for-testing
+      - build-container-for-testing
       - config
-    uses: ./.github/workflows/docker-pytest-image.yml
+    uses: ./.github/workflows/container-test.yml
     with:
       data_artifact_name: ${{ needs.config.outputs.data_artifact_name }}
-      image_artifact_name: ${{ needs.build-image-for-testing.outputs.artifact_name }}
-      image_archive_name: ${{ needs.build-image-for-testing.outputs.image_archive_name }}
+      image_artifact_name: ${{ needs.build-container-for-testing.outputs.artifact_name }}
+      image_archive_name: ${{ needs.build-container-for-testing.outputs.image_archive_name }}
 
   build-each-platform:
-    name: "Build platforms"
+    name: Build container
     needs:
       - config
       - lint
       - metadata
-      - test-image
+      - test-container
     if: github.event_name != 'pull_request'
     strategy:
       matrix:
         platform: ${{ fromJson(needs.config.outputs.platforms_json) }}
         exclude:
           - platform: ${{ needs.config.outputs.test_platform }}
-    uses: ./.github/workflows/docker-build-image.yml
+    uses: ./.github/workflows/container-build.yml
     with:
       artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
       cache_from_scopes: ${{ matrix.platform }}
@@ -87,7 +88,7 @@ jobs:
       platforms: ${{ matrix.platform }}
 
   generate-sboms:
-    name: "Bill of Materials"
+    name: Bill of Materials
     needs:
       - build-each-platform
       - config
@@ -96,60 +97,52 @@ jobs:
     strategy:
       matrix:
         platform: ${{ fromJson(needs.config.outputs.platforms_json) }}
-    uses: ./.github/workflows/sbom-artifact.yml
+    uses: ./.github/workflows/container-sbom.yml
     with:
       image_artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
       sbom_artifact_name: ${{ needs.config.outputs.sbom_artifact_name_stem }}-${{ matrix.platform }}
 
-  docker-secrets:
-    name: "Docker secrets"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2  # tag=v2.13.2
-        with:
-          egress-policy: block
-
-      - name: Check docker.com credentials
-        run: |
-          return_code=0
-          if [ -z "${{ secrets.DOCKER_USERNAME }}" ]; then
-            echo "::warning::Set the DOCKER_USERNAME secret."
-            return_code=1
-          fi
-          if [ -z "${{ secrets.DOCKER_PASSWORD }}" ]; then
-            echo "::warning::Set the DOCKER_PASSWORD secret."
-            return_code=1
-          fi
-          exit $return_code
-
   build-multi-arch-image:
-    name: "Publish image"
+    name: Publish container
     needs:
       - build-each-platform
       - config
-      - docker-secrets
       - metadata
     if: github.event_name != 'pull_request'
     permissions:
       packages: write
-    uses: ./.github/workflows/docker-multi-arch-push.yml
+    uses: ./.github/workflows/container-publish-multiarch.yml
     with:
       artifact_name_pattern: ${{ needs.config.outputs.image_artifact_name_stem }}-*
       image_tags: ${{ needs.metadata.outputs.image_tags }}
-    secrets:
-      docker_password: ${{ secrets.DOCKER_PASSWORD }}
-      docker_username: ${{ secrets.DOCKER_USERNAME }}
 
-  publish-readme:
-    name: "Publish docs"
+  mirror-to-dockerhub:
+    name: Mirror images to DockerHub
     needs:
       - build-multi-arch-image
       - config
-      - docker-secrets
       - metadata
-    if: needs.metadata.outputs.latest == 'true'
-    uses: ./.github/workflows/docker-publish-description.yml
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/container-mirror.yml
+    with:
+      image_name: ${{ needs.config.outputs.image_name }}
+      image_tag_names: ${{ needs.metadata.outputs.image_tag_names }}
+      target_registry: docker.io
+    secrets:
+      registry_password: ${{ secrets.DOCKER_PASSWORD }}
+      registry_username: ${{ secrets.DOCKER_USERNAME }}
+
+  publish-readme:
+    name: Publish docs to DockerHub
+    needs:
+      - build-multi-arch-image
+      - config
+      - metadata
+    if: github.event_name == 'release' && needs.metadata.outputs.latest == 'true'
+    uses: ./.github/workflows/dockerhub-description.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
     secrets:

@@ -1,204 +1,198 @@
 ---
-name: "Build image"
+name: Build container image
 
-# This reusable workflow builds Docker images.  It allows images to be pushed to
-# Docker Hub and the GitHub Container Registry, or uploaded as an artifact for
-# later use by other workflows.
+# This reusable workflow builds container images.  It allows images to be pushed
+# to GitHub Container Registry, or uploaded as an artifact for later use by
+# other workflows.
 #
 # Additional workflow features include:
-# - Caching of Docker layers to Github Actions cache
-# - Optional encryption of Docker images stored as artifacts
+# - Caching of container layers to Github Actions cache
+# - Optional encryption of container images stored as artifacts
 # - Ability to suffix tags with additional information. For example, adding the
 #   platform identifier so the image can be later included in a multi-platform
 #   manifest.
 
-on:
+on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       # Required inputs
       platforms:
-        description: "The platform(s) to build (CSV)"
+        description: The platform(s) to build (CSV)
         required: true
         type: string
       # Optional inputs
       artifact_name:
         default: ""
-        description: "Upload the image archive as an artifact if specified (name will be cleaned)"
+        description: Upload the image archive as an artifact if specified (name will be cleaned)
         required: false
         type: string
       artifact_retention_days:
         default: 1
-        description: "Number of days to retain the artifact"
+        description: Number of days to retain the artifact
         required: false
         type: number
       cache_from_scopes:
-        default: "buildkit"
-        description: "The GitHub Action Cache scopes to read from (name will be cleaned, CSV)"
+        default: buildkit
+        description: The GitHub Action Cache scopes to read from (name will be cleaned, CSV)
         required: false
         type: string
       cache_to_scope:
-        default: "buildkit"
-        description: "The GitHub Action Cache scope to write to (name will be cleaned)"
+        default: buildkit
+        description: The GitHub Action Cache scope to write to (name will be cleaned)
         required: false
         type: string
       docker_file:
         default: ./Dockerfile
-        description: "The Dockerfile to use"
+        description: The Dockerfile to use
         required: false
         type: string
       image_labels:
-        description: "Image labels to apply to the image"
+        description: Image labels to apply to the image
         required: false
         type: string
       image_tags:
         default: ""
-        description: "The tags to apply to the image"
+        description: The tags to apply to the image
         required: false
         type: string
       image_archive_name_stem:
         default: image
-        description: "The stem of the image archive name (will be cleaned)"
+        description: The stem of the image archive name (will be cleaned)
         required: false
         type: string
       push:
         default: false
-        description: "Push the image to the registries (disables artifact upload)"
+        description: Push the image to the registries (disables artifact upload)
         required: false
         type: boolean
       tag_suffix:
         default: ""
-        description: "Suffix to append to the image tags (name will be cleaned)"
+        description: Suffix to append to the image tags (name will be cleaned)
         required: false
         type: string
       build_arg_1_name:
-        description: "The name of the first build arg"
+        description: The name of the first build arg
         required: false
         type: string
       build_arg_2_name:
-        description: "The name of the second build arg"
+        description: The name of the second build arg
         required: false
         type: string
       build_arg_3_name:
-        description: "The name of the third build arg"
+        description: The name of the third build arg
         required: false
         type: string
       build_arg_4_name:
-        description: "The name of the fourth build arg"
+        description: The name of the fourth build arg
         required: false
         type: string
       build_arg_5_name:
-        description: "The name of the fifth build arg"
+        description: The name of the fifth build arg
         required: false
         type: string
       build_arg_6_name:
-        description: "The name of the sixth build arg"
+        description: The name of the sixth build arg
         required: false
         type: string
       build_arg_7_name:
-        description: "The name of the seventh build arg"
+        description: The name of the seventh build arg
         required: false
         type: string
       build_arg_8_name:
-        description: "The name of the eighth build arg"
+        description: The name of the eighth build arg
         required: false
         type: string
       build_secret_1_name:
-        description: "The name of the first build secret"
+        description: The name of the first build secret
         required: false
         type: string
       build_secret_2_name:
-        description: "The name of the second build secret"
+        description: The name of the second build secret
         required: false
         type: string
       build_secret_3_name:
-        description: "The name of the third build secret"
+        description: The name of the third build secret
         required: false
         type: string
       build_secret_4_name:
-        description: "The name of the fourth build secret"
+        description: The name of the fourth build secret
         required: false
         type: string
       build_secret_5_name:
-        description: "The name of the fifth build secret"
+        description: The name of the fifth build secret
         required: false
         type: string
       build_secret_6_name:
-        description: "The name of the sixth build secret"
+        description: The name of the sixth build secret
         required: false
         type: string
       build_secret_7_name:
-        description: "The name of the seventh build secret"
+        description: The name of the seventh build secret
         required: false
         type: string
       build_secret_8_name:
-        description: "The name of the eighth build secret"
+        description: The name of the eighth build secret
         required: false
         type: string
 
     outputs:
       artifact_name:
-        description: "The cleaned name of the artifact (if any)"
+        description: The cleaned name of the artifact (if any)
         value: ${{ jobs.build-image.outputs.artifact_name }}
       image_archive_name:
-        description: "The name of the image archive"
+        description: The name of the image archive
         value: ${{ jobs.build-image.outputs.image_archive_name }}
     secrets:
       image_archive_key:
-        description: "Enables encryption of the image archive if specified"
+        description: Enables encryption of the image archive if specified
         required: false
       build_arg_1_value:
-        description: "The value of the first build arg"
+        description: The value of the first build arg
         required: false
       build_arg_2_value:
-        description: "The value of the second build arg"
+        description: The value of the second build arg
         required: false
       build_arg_3_value:
-        description: "The value of the third build arg"
+        description: The value of the third build arg
         required: false
       build_arg_4_value:
-        description: "The value of the fourth build arg"
+        description: The value of the fourth build arg
         required: false
       build_arg_5_value:
-        description: "The value of the fifth build arg"
+        description: The value of the fifth build arg
         required: false
       build_arg_6_value:
-        description: "The value of the sixth build arg"
+        description: The value of the sixth build arg
         required: false
       build_arg_7_value:
-        description: "The value of the seventh build arg"
+        description: The value of the seventh build arg
         required: false
       build_arg_8_value:
-        description: "The value of the eighth build arg"
+        description: The value of the eighth build arg
         required: false
       build_secret_1_value:
-        description: "The value of the first build secret"
+        description: The value of the first build secret
         required: false
       build_secret_2_value:
-        description: "The value of the second build secret"
+        description: The value of the second build secret
         required: false
       build_secret_3_value:
-        description: "The value of the third build secret"
+        description: The value of the third build secret
         required: false
       build_secret_4_value:
-        description: "The value of the fourth build secret"
+        description: The value of the fourth build secret
         required: false
       build_secret_5_value:
-        description: "The value of the fifth build secret"
+        description: The value of the fifth build secret
         required: false
       build_secret_6_value:
-        description: "The value of the sixth build secret"
+        description: The value of the sixth build secret
         required: false
       build_secret_7_value:
-        description: "The value of the seventh build secret"
+        description: The value of the seventh build secret
         required: false
       build_secret_8_value:
-        description: "The value of the eighth build secret"
-        required: false
-      docker_password:
-        description: "The password for the Docker hub account (required for push)"
-        required: false
-      docker_username:
-        description: "The username for the Docker hub account (required for push)"
+        description: The value of the eighth build secret
         required: false
 
 env:
@@ -206,51 +200,30 @@ env:
 
 jobs:
   build-image:
-    name: "Build image"
+    name: Build image
     runs-on: ubuntu-latest
     outputs:
       artifact_name: ${{ steps.clean.outputs.artifact_name }}
       image_archive_name: ${{ steps.check_image_archive_key.outputs.file_name }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2  # tag=v2.13.2
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # tag=v2.13.2
         with:
           disable-sudo: true
           egress-policy: audit
 
       - name: Checkout
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3  # tag=v6.0.0
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # tag=v6.0.0
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130  # tag=v3.7.0
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # tag=v3.7.0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # tag=v3.11.1
-
-      - name: Docker credentials available for push
-        if: inputs.push == true
-        run: |
-          return_code=0
-          if [ -z "${{ secrets.docker_username }}" ]; then
-            echo "::warning::Set the docker_username secret when using push=true."
-            return_code=1
-          fi
-          if [ -z "${{ secrets.docker_password }}" ]; then
-            echo "::warning::Set the docker_password secret when using push=true."
-            return_code=1
-          fi
-          exit $return_code
-
-      - name: Login to Docker Hub
-        if: inputs.push == true
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # tag=v3.6.0
-        with:
-          username: ${{ secrets.docker_username }}
-          password: ${{ secrets.docker_password }}
+      - name: Set up buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # tag=v3.11.1
 
       - name: Login to GitHub Container Registry
         if: inputs.push == true
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef  # tag=v3.6.0
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -372,7 +345,7 @@ jobs:
 
       - name: Build image for push
         if: inputs.push == true
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # tag=v6.18.0
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # tag=v6.18.0
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
@@ -387,7 +360,7 @@ jobs:
 
       - name: Build image for archive
         if: inputs.push == false
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # tag=v6.18.0
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # tag=v6.18.0
         with:
           build-args: ${{ steps.prepare-build-args.outputs.build_args }}
           cache-from: ${{ steps.cache_scopes.outputs.from }}
@@ -422,7 +395,7 @@ jobs:
 
       - name: Upload artifacts
         if: ${{ (inputs.push == false) && (steps.clean.outputs.artifact_name != '') }}
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # tag=v5.0.0
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # tag=v5.0.0
         with:
           name: ${{ steps.clean.outputs.artifact_name }}
           path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.check_image_archive_key.outputs.file_name }}

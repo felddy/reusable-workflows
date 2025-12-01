@@ -1,51 +1,55 @@
 ---
-name: "Calculate Docker metadata"
+name: Calculate container metadata
 
-# This reusable workflow calculates the labels and tags for a Docker image.
+# This reusable workflow calculates the labels and tags for a container image.
 # These tags will vary depending on the event that triggered the workflow.
 
-on:
+on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       # Required inputs
       image_name:
-        description: "The Docker image name"
+        description: The container image name
         required: true
         type: string
     outputs:
       image_labels:
-        description: "The calculated image labels"
+        description: The calculated image labels
         value: ${{ jobs.metadata.outputs.image_labels }}
+      image_tag_names:
+        description: The calculated image tag names (1.2.3, latest, etc)
+        value: ${{ jobs.metadata.outputs.image_tag_names }}
       image_tags:
-        description: "The calculated image tags"
+        description: The calculated image tags (full image references with tags)
         value: ${{ jobs.metadata.outputs.image_tags }}
       latest:
-        description: "True if the image is the latest version"
+        description: True if the image is the latest version
         value: ${{ jobs.metadata.outputs.latest }}
       source_version:
-        description: "The version declared in the source code"
+        description: The version declared in the source code
         value: ${{ jobs.metadata.outputs.source_version }}
 
 jobs:
   metadata:
-    name: "Calculate variables"
+    name: Calculate variables
     runs-on: ubuntu-latest
     outputs:
-      image_labels: ${{ steps.docker_meta.outputs.labels }}
-      image_tags: ${{ steps.docker_meta.outputs.tags }}
+      image_labels: ${{ steps.container_meta.outputs.labels }}
+      image_tag_names: ${{ steps.container_meta.outputs.tag-names }}
+      image_tags: ${{ steps.container_meta.outputs.tags }}
       latest: ${{ steps.is_latest.outputs.latest }}
       source_version: ${{ steps.source_values.outputs.source_version }}
       tags: ${{ steps.prep.outputs.tags }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2  # tag=v2.13.2
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # tag=v2.13.2
         with:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
             github.com:443
 
-      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3  # tag=v6.0.0
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # tag=v6.0.0
 
       - name: Calculate values from source
         id: source_values
@@ -66,14 +70,13 @@ jobs:
           fi
           echo "latest=false" >> $GITHUB_OUTPUT
 
-      - name: Calculate Docker metadata
-        id: docker_meta
-        uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893  # tag=v5.9.0
+      - name: Calculate container metadata
+        id: container_meta
+        uses: docker/metadata-action@318604b99e75e41977312d83839a89be02ca4893 # tag=v5.9.0
         with:
           flavor: |
             latest=false
           images: |
-            ${{ inputs.image_name }}
             ghcr.io/${{ inputs.image_name }}
           labels: |
             org.opencontainers.image.version=${{ steps.source_values.outputs.source_version }}

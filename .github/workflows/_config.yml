@@ -1,40 +1,40 @@
 ---
-name: "Config"
+name: Config
 
-on:
+on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       platforms:
-        description: "The platforms to build (CSV)"
+        description: The platforms to build (CSV)
         default: linux/386,linux/amd64,linux/arm/v5,linux/arm/v6,linux/arm/v7,linux/arm/v8,linux/arm64/v8,linux/ppc64le,linux/s390x
         required: false
         type: string
     outputs:
       data_artifact_name:
-        description: "The name of the test data artifact"
+        description: The name of the test data artifact
         value: test-output
       image_artifact_name_stem:
-        description: "The stem name for image artifacts"
+        description: The stem name for image artifacts
         value: image-archive
       image_name:
-        description: "The Docker image name"
+        description: The container image name
         value: felddy/reusable-workflow
       platforms_csv:
-        description: "The platforms to build (CSV)"
+        description: The platforms to build (CSV)
         value: ${{ inputs.platforms }}
       platforms_json:
-        description: "The platforms to build (JSON)"
+        description: The platforms to build (JSON)
         value: ${{ jobs.csv-to-json.outputs.json }}
       sbom_artifact_name_stem:
-        description: "The stem name for sbom artifacts"
+        description: The stem name for sbom artifacts
         value: sbom
       test_platform:
-        description: "The platform to use for testing"
+        description: The platform to use for testing
         value: linux/amd64
 
 jobs:
   csv-to-json:
-    name: "Convert CSV to JSON"
+    name: Convert CSV to JSON
     uses: ./.github/workflows/csv-to-json.yml
     with:
       csv: ${{ inputs.platforms }}

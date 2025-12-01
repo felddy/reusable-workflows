@@ -1,7 +1,7 @@
 ---
-name: "Labels"
+name: Labels
 
-on:
+on: # yamllint disable-line rule:truthy
   push:
     branches:
       - develop
@@ -15,12 +15,12 @@ permissions:
 jobs:
   labeler:
     permissions:
-      contents: read  # for actions/checkout to fetch code
-      issues: write  # for crazy-max/ghaction-github-labeler to create, rename, update and delete label
+      contents: read # for actions/checkout to fetch code
+      issues: write # for crazy-max/ghaction-github-labeler to create, rename, update and delete label
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2  # tag=v2.13.2
+        uses: step-security/harden-runner@95d9a5deda9de15063e7595e9719c11c38c90ae2 # tag=v2.13.2
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -28,7 +28,7 @@ jobs:
             github.com:443
 
       - name: Checkout
-        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3  # tag=v6.0.0
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # tag=v6.0.0
 
       - name: Run Labeler
-        uses: crazy-max/ghaction-github-labeler@24d110aa46a59976b8a7f35518cb7f14f434c916  # tag=v5.3.0
+        uses: crazy-max/ghaction-github-labeler@24d110aa46a59976b8a7f35518cb7f14f434c916 # tag=v5.3.0
