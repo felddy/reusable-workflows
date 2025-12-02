@@ -1,7 +1,7 @@
 ---
 name: Dependency review
 
-on:  # yamllint disable-line rule:truthy
+on: # yamllint disable-line rule:truthy
   merge_group:
     types:
       - checks_requested
@@ -25,7 +25,7 @@ jobs:
       # Note that a duplicate of this step must be added at the top of
       # each job.
       - name: Apply standard cisagov job preamble
-        uses: cisagov/action-job-preamble@v1
+        uses: cisagov/action-job-preamble@f3e1d43556bc9fef1fa4d6f27fa88b1b5c82c788 # tag=v1.2.0
         with:
           check_github_status: "true"
           # This functionality is poorly implemented and has been
@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Apply standard cisagov job preamble
-        uses: cisagov/action-job-preamble@v1
+        uses: cisagov/action-job-preamble@f3e1d43556bc9fef1fa4d6f27fa88b1b5c82c788 # tag=v1.2.0
         with:
           # This functionality is poorly implemented and has been
           # causing problems due to the MITM implementation hogging or
@@ -89,7 +89,7 @@ jobs:
           permissions_monitoring_config: ${{ vars.ACTIONS_PERMISSIONS_CONFIG }}
       - id: checkout-repo
         name: Checkout the repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # tag=v6.0.0
       - id: dependency-review
         name: Review dependency changes for vulnerabilities and license changes
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # tag=v4.8.2
