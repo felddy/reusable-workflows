@@ -76,7 +76,7 @@ jobs:
 
       # We need the Go version and Go cache location for the actions/cache step,
       # so the Go installation must happen before that.
-      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # tag=v6.1.0
+      - uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # tag=v6.2.0
         with:
           go-version: ${{ inputs.go_version }}
 
@@ -90,7 +90,7 @@ jobs:
         run: |
           echo "dir=$(go env GOCACHE)" >> $GITHUB_OUTPUT
 
-      - uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # tag=v5.0.1
+      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # tag=v5.0.2
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ inputs.python_version }}-\
