@@ -52,14 +52,14 @@ jobs:
 
       - name: Log in to source registry (GHCR)
         # Assumes source is GHCR and images are public or readable by GITHUB_TOKEN
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to target registry
-        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # tag=v3.6.0
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ${{ inputs.target_registry }}
           username: ${{ secrets.registry_username }}
