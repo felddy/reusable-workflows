@@ -688,7 +688,10 @@ jobs:
 
               # Get the digest of the manifest (same for all tags)
               if [[ -z "$MANIFEST_DIGEST" ]]; then
-                MANIFEST_DIGEST=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')
+                MANIFEST_DIGEST=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}' 2>/dev/null || echo "")
+                if [[ -z "$MANIFEST_DIGEST" ]]; then
+                  echo "::warning::Could not extract manifest digest from $tag"
+                fi
               fi
             fi
           done
@@ -705,7 +708,9 @@ jobs:
       - name: Inspect manifest
         run: |
           FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
-          docker buildx imagetools inspect "$FIRST_TAG"
+          echo "::group::Manifest Details"
+          docker buildx imagetools inspect "$FIRST_TAG" || true
+          echo "::endgroup::"
 
       - name: Output manifest summary
         run: |
