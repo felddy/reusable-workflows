@@ -17,9 +17,6 @@ on: # yamllint disable-line rule:truthy
 permissions:
   actions: read
   contents: read
-  packages: write
-  id-token: write
-  attestations: write
 
 jobs:
   diagnostics:
@@ -30,61 +27,101 @@ jobs:
     name: Config
     uses: ./.github/workflows/_config.yml
 
+  metadata:
+    name: Metadata
+    needs:
+      - config
+    uses: ./.github/workflows/container-metadata.yml
+    with:
+      image_name: ${{ needs.config.outputs.image_name }}
+
   lint:
     name: Lint
     uses: ./.github/workflows/common-lint.yml
 
-  build:
-    name: Build and Publish Container
+  build-container-for-testing:
+    name: Build container for testing
     needs:
       - config
       - lint
-    # Skip on pull requests to save time, only build test platform
-    if: github.event_name != 'pull_request'
+      - metadata
     uses: ./.github/workflows/container-build.yml
     with:
-      platforms: ${{ needs.config.outputs.platforms_csv }}
-      image-name: ${{ needs.config.outputs.image_name }}
-      registry: ghcr.io
-      visibility: public
-      context: .
-      dockerfile: ./Dockerfile
-      enable-attestations: true
-      enable-sbom: true
-      enable-signing: false
-      enable-scanning: false  # Will enable in task 2
-      kubernetes-labels: true
-    secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
-
-  build-pr:
-    name: Build Container (PR)
-    needs:
-      - config
-      - lint
-    # Only build test platform for PRs
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/container-build.yml
-    with:
+      artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ needs.config.outputs.test_platform }}
+      cache_from_scopes: ${{ needs.config.outputs.test_platform }}
+      cache_to_scope: ${{ needs.config.outputs.test_platform }}
+      image_archive_name_stem: ${{ needs.config.outputs.test_platform }}
+      image_labels: ${{ needs.metadata.outputs.image_labels }}
       platforms: ${{ needs.config.outputs.test_platform }}
-      image-name: ${{ needs.config.outputs.image_name }}
-      registry: ghcr.io
-      visibility: private
-      context: .
-      dockerfile: ./Dockerfile
-      enable-attestations: false
-      enable-sbom: false
-      enable-signing: false
-      enable-scanning: false
-      kubernetes-labels: true
-    secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+  test-container:
+    name: Test container
+    needs:
+      - build-container-for-testing
+      - config
+    uses: ./.github/workflows/container-test.yml
+    with:
+      data_artifact_name: ${{ needs.config.outputs.data_artifact_name }}
+      image_artifact_name: ${{ needs.build-container-for-testing.outputs.artifact_name }}
+      image_archive_name: ${{ needs.build-container-for-testing.outputs.image_archive_name }}
+
+  build-each-platform:
+    name: Build container
+    needs:
+      - config
+      - lint
+      - metadata
+      - test-container
+    if: github.event_name != 'pull_request'
+    strategy:
+      matrix:
+        platform: ${{ fromJson(needs.config.outputs.platforms_json) }}
+        exclude:
+          - platform: ${{ needs.config.outputs.test_platform }}
+    uses: ./.github/workflows/container-build.yml
+    with:
+      artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
+      cache_from_scopes: ${{ matrix.platform }}
+      cache_to_scope: ${{ matrix.platform }}
+      image_labels: ${{ needs.metadata.outputs.image_labels }}
+      image_archive_name_stem: ${{ matrix.platform }}
+      platforms: ${{ matrix.platform }}
+
+  generate-sboms:
+    name: Bill of Materials
+    needs:
+      - build-each-platform
+      - config
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        platform: ${{ fromJson(needs.config.outputs.platforms_json) }}
+    uses: ./.github/workflows/container-sbom.yml
+    with:
+      image_artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
+      sbom_artifact_name: ${{ needs.config.outputs.sbom_artifact_name_stem }}-${{ matrix.platform }}
+
+  build-multi-arch-image:
+    name: Publish container
+    needs:
+      - build-each-platform
+      - config
+      - metadata
+    if: github.event_name != 'pull_request'
+    permissions:
+      packages: write
+    uses: ./.github/workflows/container-publish-multiarch.yml
+    with:
+      artifact_name_pattern: ${{ needs.config.outputs.image_artifact_name_stem }}-*
+      image_tags: ${{ needs.metadata.outputs.image_tags }}
 
   mirror-to-dockerhub:
     name: Mirror images to DockerHub
     needs:
-      - build
+      - build-multi-arch-image
       - config
+      - metadata
     if: github.event_name == 'release' && !github.event.release.prerelease
     permissions:
       contents: read
@@ -92,7 +129,7 @@ jobs:
     uses: ./.github/workflows/container-mirror.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
-      image_tag_names: ${{ needs.build.outputs.image-tags }}
+      image_tag_names: ${{ needs.metadata.outputs.image_tag_names }}
       target_registry: docker.io
     secrets:
       registry_password: ${{ secrets.DOCKER_PASSWORD }}
@@ -101,9 +138,10 @@ jobs:
   publish-readme:
     name: Publish docs to DockerHub
     needs:
-      - build
+      - build-multi-arch-image
       - config
-    if: github.event_name == 'release'
+      - metadata
+    if: github.event_name == 'release' && needs.metadata.outputs.latest == 'true'
     uses: ./.github/workflows/dockerhub-description.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
