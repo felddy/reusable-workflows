@@ -785,28 +785,29 @@ jobs:
       push-to-registry: true
 
   # Sign container image
-  sign:
-    name: Sign Container Image
-    needs:
-      - metadata
-      - manifest
-      - scan
-      - attest
-    # Run if signing is enabled
-    # Skip scan and attest dependencies if they're disabled
-    if: |
-      always() &&
-      inputs.enable-signing == true &&
-      (needs.scan.result == 'success' || needs.scan.result == 'skipped') &&
-      (needs.attest.result == 'success' || needs.attest.result == 'skipped') &&
-      needs.manifest.result == 'success'
-    uses: ./.github/workflows/container-sign.yml
-    with:
-      image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
-      image-name: ${{ inputs.image-name }}
-      registry: ${{ inputs.registry }}
-      use-keyless: true
-    secrets:
-      signing-key: ${{ secrets.signing-key }}
-      registry-username: ${{ secrets.registry-username }}
-      registry-password: ${{ secrets.registry-password }}
+  # TODO: Uncomment when container-sign.yml is implemented (Task 2.5)
+  # sign:
+  #   name: Sign Container Image
+  #   needs:
+  #     - metadata
+  #     - manifest
+  #     - scan
+  #     - attest
+  #   # Run if signing is enabled
+  #   # Skip scan and attest dependencies if they're disabled
+  #   if: |
+  #     always() &&
+  #     inputs.enable-signing == true &&
+  #     (needs.scan.result == 'success' || needs.scan.result == 'skipped') &&
+  #     (needs.attest.result == 'success' || needs.attest.result == 'skipped') &&
+  #     needs.manifest.result == 'success'
+  #   uses: ./.github/workflows/container-sign.yml
+  #   with:
+  #     image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
+  #     image-name: ${{ inputs.image-name }}
+  #     registry: ${{ inputs.registry }}
+  #     use-keyless: true
+  #   secrets:
+  #     signing-key: ${{ secrets.signing-key }}
+  #     registry-username: ${{ secrets.registry-username }}
+  #     registry-password: ${{ secrets.registry-password }}
