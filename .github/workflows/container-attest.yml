@@ -72,6 +72,15 @@ name: Container Attestation
         type: boolean
         default: true
 
+    secrets:
+      registry-username:
+        description: Registry username
+        required: false
+
+      registry-password:
+        description: Registry password or token
+        required: false
+
     outputs:
       attestation-digest:
         description: Digest of the attestation bundle
@@ -114,6 +123,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Log in to container registry
+        if: inputs.push-to-registry == true
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.registry-username || github.actor }}
+          password: ${{ secrets.registry-password || secrets.GITHUB_TOKEN }}
 
       - name: Extract image digest
         id: digest

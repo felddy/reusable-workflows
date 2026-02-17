@@ -783,6 +783,9 @@ jobs:
       attach-scan-results: false  # TODO: Enable when artifact sharing is implemented
       scan-results-path: ""
       push-to-registry: true
+    secrets:
+      registry-username: ${{ secrets.registry-username }}
+      registry-password: ${{ secrets.registry-password }}
 
   # Sign container image
   sign:
