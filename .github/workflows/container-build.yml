@@ -301,7 +301,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
 
       - name: Enable debug mode
         if: inputs.debug == true
@@ -311,19 +311,19 @@ jobs:
           echo "::notice::Debug mode enabled - verbose logging active"
 
       - name: Set up QEMU for multi-arch builds
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # tag=v3.3.0
         with:
           platforms: ${{ inputs.platforms }}
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
         with:
           driver-opts: |
             image=moby/buildkit:latest
             network=host
 
       - name: Log in to container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.registry-username || github.actor }}
@@ -530,7 +530,7 @@ jobs:
 
       - name: Build and push container image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # tag=v6.10.0
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
@@ -586,7 +586,7 @@ jobs:
           echo "digest=$digest" >> $GITHUB_OUTPUT
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
           name: digests-${{ strategy.job-index }}
           path: /tmp/digests/*
@@ -623,17 +623,17 @@ jobs:
 
     steps:
       - name: Download all digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
         with:
           path: /tmp/digests
           pattern: digests-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
 
       - name: Log in to container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.registry-username || github.actor }}
@@ -744,3 +744,20 @@ jobs:
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "docker buildx imagetools inspect $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  # Security scanning
+  scan:
+    name: Security Scan
+    needs:
+      - metadata
+      - manifest
+    if: inputs.enable-scanning == true
+    uses: ./.github/workflows/container-scan.yml
+    with:
+      image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
+      scan-severity: ${{ inputs.scan-severity }}
+      fail-on-vulnerabilities: true
+    permissions:
+      contents: read
+      security-events: write
+      packages: read

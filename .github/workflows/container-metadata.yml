@@ -102,7 +102,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # tag=v4.2.4
         with:
           fetch-depth: 0
 
@@ -242,7 +242,7 @@ jobs:
 
       - name: Generate Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # tag=v5.7.0
         with:
           images: ${{ inputs.registry }}/${{ inputs.image-name }}
           tags: |

@@ -52,7 +52,8 @@ jobs:
       enable-attestations: true
       enable-sbom: true
       enable-signing: false
-      enable-scanning: false  # Will enable in task 2
+      enable-scanning: true  # ✅ Enabled - Task 2.2 complete
+      scan-severity: CRITICAL,HIGH
       kubernetes-labels: true
     secrets:
       registry-password: ${{ secrets.GITHUB_TOKEN }}
@@ -75,7 +76,8 @@ jobs:
       enable-attestations: false
       enable-sbom: false
       enable-signing: false
-      enable-scanning: false
+      enable-scanning: true  # ✅ Enabled for PRs with relaxed threshold
+      scan-severity: CRITICAL  # Only fail on critical for PRs
       kubernetes-labels: true
     secrets:
       registry-password: ${{ secrets.GITHUB_TOKEN }}

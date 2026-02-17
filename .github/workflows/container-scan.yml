@@ -1,0 +1,189 @@
+---
+# Container Security Scanning Workflow
+# Scans container images for vulnerabilities using Trivy
+# Generates SARIF reports for GitHub Security tab integration
+
+name: Container Security Scan
+
+"on":
+  workflow_call:
+    inputs:
+      image-ref:
+        description: Full image reference with digest (registry/name@sha256:...)
+        required: true
+        type: string
+      scan-severity:
+        description: Comma-separated list of severities to fail on (CRITICAL,HIGH,MEDIUM,LOW)
+        required: false
+        type: string
+        default: CRITICAL,HIGH
+      scan-type:
+        description: Type of scan to perform (image, fs, repo)
+        required: false
+        type: string
+        default: image
+      trivyignore-path:
+        description: Path to .trivyignore file for allowlisting false positives
+        required: false
+        type: string
+        default: ""
+      fail-on-vulnerabilities:
+        description: Whether to fail the build on vulnerabilities
+        required: false
+        type: boolean
+        default: true
+
+    outputs:
+      scan-passed:
+        description: Whether the scan passed without critical vulnerabilities
+        value: ${{ jobs.scan.outputs.scan-passed }}
+      vulnerabilities-found:
+        description: Number of vulnerabilities found by severity (JSON)
+        value: ${{ jobs.scan.outputs.vulnerabilities-found }}
+      sarif-file:
+        description: Path to SARIF report file
+        value: ${{ jobs.scan.outputs.sarif-file }}
+
+permissions:
+  contents: read
+  security-events: write
+  packages: read
+
+jobs:
+  scan:
+    name: Trivy Security Scan
+    runs-on: ubuntu-latest
+    outputs:
+      scan-passed: ${{ steps.scan-result.outputs.passed }}
+      vulnerabilities-found: ${{ steps.scan-result.outputs.vulnerabilities }}
+      sarif-file: ${{ steps.scan-result.outputs.sarif-file }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Set up scan parameters
+        id: params
+        run: |
+          echo "image-ref=${{ inputs.image-ref }}" >> $GITHUB_OUTPUT
+          echo "severity=${{ inputs.scan-severity }}" >> $GITHUB_OUTPUT
+          echo "scan-type=${{ inputs.scan-type }}" >> $GITHUB_OUTPUT
+
+          # Set exit code based on fail-on-vulnerabilities
+          if [ "${{ inputs.fail-on-vulnerabilities }}" = "true" ]; then
+            echo "exit-code=1" >> $GITHUB_OUTPUT
+          else
+            echo "exit-code=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Trivy vulnerability scanner (SARIF)
+        id: trivy-sarif
+        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # tag=0.34.0
+        with:
+          image-ref: ${{ inputs.image-ref }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: ${{ steps.params.outputs.severity }}
+          exit-code: ${{ steps.params.outputs.exit-code }}
+          ignore-unfixed: true
+          vuln-type: os,library
+          trivyignores: ${{ inputs.trivyignore-path }}
+        continue-on-error: true
+
+      - name: Run Trivy vulnerability scanner (JSON)
+        id: trivy-json
+        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # tag=0.34.0
+        with:
+          image-ref: ${{ inputs.image-ref }}
+          format: json
+          output: trivy-results.json
+          severity: ${{ steps.params.outputs.severity }}
+          exit-code: "0"  # Don't fail, we need the JSON output
+          ignore-unfixed: true
+          vuln-type: os,library
+          trivyignores: ${{ inputs.trivyignore-path }}
+
+      - name: Run Trivy vulnerability scanner (Table)
+        id: trivy-table
+        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # tag=0.34.0
+        with:
+          image-ref: ${{ inputs.image-ref }}
+          format: table
+          output: trivy-report.txt
+          severity: ${{ steps.params.outputs.severity }}
+          exit-code: "0"  # Don't fail, we want the report
+          ignore-unfixed: true
+          vuln-type: os,library
+          trivyignores: ${{ inputs.trivyignore-path }}
+
+      - name: Parse scan results
+        id: scan-result
+        if: always()
+        run: |
+          # Parse JSON results to count vulnerabilities by severity
+          if [ -f trivy-results.json ]; then
+            CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results.json || echo 0)
+            HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results.json || echo 0)
+            MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results.json || echo 0)
+            LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results.json || echo 0)
+
+            VULN_JSON="{\"CRITICAL\":$CRITICAL,\"HIGH\":$HIGH,\"MEDIUM\":$MEDIUM,\"LOW\":$LOW}"
+            echo "vulnerabilities=$VULN_JSON" >> $GITHUB_OUTPUT
+
+            echo "### Vulnerability Scan Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| CRITICAL | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| HIGH     | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| MEDIUM   | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
+            echo "| LOW      | $LOW |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "vulnerabilities={\"CRITICAL\":0,\"HIGH\":0,\"MEDIUM\":0,\"LOW\":0}" >> $GITHUB_OUTPUT
+          fi
+
+          # Set scan passed status
+          if [ "${{ steps.trivy-sarif.outcome }}" = "success" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Scan passed - no vulnerabilities above threshold" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Scan failed - vulnerabilities found above threshold" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "sarif-file=trivy-results.sarif" >> $GITHUB_OUTPUT
+
+      - name: Upload SARIF to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6 # tag=codeql-bundle-v4.32.3
+        with:
+          sarif_file: trivy-results.sarif
+          category: container-scan
+
+      - name: Upload scan artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
+        with:
+          name: security-scan-results
+          path: |
+            trivy-results.sarif
+            trivy-results.json
+            trivy-report.txt
+          retention-days: 30
+
+      - name: Display scan report
+        if: always()
+        run: |
+          echo "::group::Trivy Scan Report"
+          if [ -f trivy-report.txt ]; then
+            cat trivy-report.txt
+          else
+            echo "No scan report generated"
+          fi
+          echo "::endgroup::"
+
+      - name: Fail if vulnerabilities found
+        if: steps.trivy-sarif.outcome == 'failure' && inputs.fail-on-vulnerabilities
+        run: |
+          echo "::error::Security scan failed - vulnerabilities found above threshold: ${{ inputs.scan-severity }}"
+          exit 1
