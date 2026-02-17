@@ -536,6 +536,7 @@ jobs:
           file: ${{ inputs.dockerfile }}
           platforms: ${{ matrix.platform }}
           push: true
+          tags: ${{ needs.metadata.outputs.image-tags }}
           labels: ${{ needs.metadata.outputs.image-labels }}
           build-args: ${{ steps.parse-args.outputs.args }}
           target: ${{ inputs.target }}
