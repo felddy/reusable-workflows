@@ -535,7 +535,6 @@ jobs:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           platforms: ${{ matrix.platform }}
-          tags: ${{ inputs.registry }}/${{ inputs.image-name }}:buildcache
           labels: ${{ needs.metadata.outputs.image-labels }}
           build-args: ${{ steps.parse-args.outputs.args }}
           target: ${{ inputs.target }}
