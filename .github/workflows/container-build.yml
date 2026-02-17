@@ -688,7 +688,14 @@ jobs:
 
               # Get the digest of the manifest (same for all tags)
               if [[ -z "$MANIFEST_DIGEST" ]]; then
-                MANIFEST_DIGEST=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}' 2>/dev/null || echo "")
+                # Use docker manifest inspect to get the digest more reliably
+                MANIFEST_DIGEST=$(docker manifest inspect "$tag" 2>/dev/null | jq -r '.manifests[0].digest // empty' 2>/dev/null || echo "")
+
+                # Fallback to buildx imagetools if jq fails or returns empty
+                if [[ -z "$MANIFEST_DIGEST" ]]; then
+                  MANIFEST_DIGEST=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}' 2>&1 | grep -E '^sha256:' | head -n1 || echo "")
+                fi
+
                 if [[ -z "$MANIFEST_DIGEST" ]]; then
                   echo "::warning::Could not extract manifest digest from $tag"
                 fi
@@ -698,6 +705,13 @@ jobs:
 
           if [[ -z "$MANIFEST_DIGEST" ]]; then
             echo "::error::Failed to get manifest digest"
+            exit 1
+          fi
+
+          # Validate digest format (should be sha256:...)
+          if [[ ! "$MANIFEST_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Invalid manifest digest format: $MANIFEST_DIGEST"
+            echo "::error::Expected format: sha256:<64 hex characters>"
             exit 1
           fi
 
