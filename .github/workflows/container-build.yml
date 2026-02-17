@@ -780,8 +780,8 @@ jobs:
       enable-provenance: ${{ inputs.enable-attestations }}
       enable-sbom: ${{ inputs.enable-sbom }}
       sbom-formats: both
-      attach-scan-results: ${{ inputs.enable-scanning }}
-      scan-results-path: trivy-results.json
+      attach-scan-results: false  # TODO: Enable when artifact sharing is implemented
+      scan-results-path: ""
       push-to-registry: true
 
   # Sign container image
