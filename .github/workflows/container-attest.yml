@@ -1,0 +1,346 @@
+---
+# Container Attestation Workflow
+# Generates SLSA provenance and attestations for container images
+# Supports SBOM generation in multiple formats and custom attestation predicates
+
+name: Container Attestation
+
+"on":
+  workflow_call:
+    inputs:
+      image-ref:
+        description: Full image reference with digest (registry/name@sha256:...)
+        required: true
+        type: string
+
+      image-name:
+        description: Image name without registry (for subject-name)
+        required: true
+        type: string
+
+      registry:
+        description: Container registry (ghcr.io, docker.io, etc.)
+        required: false
+        type: string
+        default: ghcr.io
+
+      enable-provenance:
+        description: Generate SLSA provenance attestation
+        required: false
+        type: boolean
+        default: true
+
+      enable-sbom:
+        description: Generate SBOM attestations
+        required: false
+        type: boolean
+        default: true
+
+      sbom-formats:
+        description: SBOM formats to generate (comma-separated - spdx-json, cyclonedx-json, both)
+        required: false
+        type: string
+        default: both
+
+      attach-scan-results:
+        description: Attach vulnerability scan results as attestation
+        required: false
+        type: boolean
+        default: false
+
+      scan-results-path:
+        description: Path to vulnerability scan results JSON file
+        required: false
+        type: string
+        default: ""
+
+      custom-predicate-type:
+        description: Custom attestation predicate type URI
+        required: false
+        type: string
+        default: ""
+
+      custom-predicate-path:
+        description: Path to custom attestation predicate JSON file
+        required: false
+        type: string
+        default: ""
+
+      push-to-registry:
+        description: Push attestations to registry
+        required: false
+        type: boolean
+        default: true
+
+    outputs:
+      attestation-digest:
+        description: Digest of the attestation bundle
+        value: ${{ jobs.attest.outputs.attestation-digest }}
+
+      sbom-spdx-file:
+        description: Path to SPDX SBOM file
+        value: ${{ jobs.attest.outputs.sbom-spdx-file }}
+
+      sbom-cyclonedx-file:
+        description: Path to CycloneDX SBOM file
+        value: ${{ jobs.attest.outputs.sbom-cyclonedx-file }}
+
+      provenance-file:
+        description: Path to provenance attestation file
+        value: ${{ jobs.attest.outputs.provenance-file }}
+
+      provenance-bundle-path:
+        description: Path to provenance bundle
+        value: ${{ jobs.attest.outputs.provenance-bundle-path }}
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  attest:
+    name: Generate Attestations
+    runs-on: ubuntu-latest
+
+    outputs:
+      attestation-digest: ${{ steps.attestation-digest.outputs.digest }}
+      sbom-spdx-file: ${{ steps.sbom-paths.outputs.spdx-file }}
+      sbom-cyclonedx-file: ${{ steps.sbom-paths.outputs.cyclonedx-file }}
+      provenance-file: ${{ steps.provenance-paths.outputs.provenance-file }}
+      provenance-bundle-path: ${{ steps.provenance.outputs.bundle-path }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Extract image digest
+        id: digest
+        run: |
+          # Extract digest from image reference
+          DIGEST="${{ inputs.image-ref }}"
+          DIGEST="${DIGEST##*@}"
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          echo "Extracted digest: $DIGEST"
+
+      - name: Generate SLSA provenance
+        id: provenance
+        if: inputs.enable-provenance
+        uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # tag=v1.4.3
+        with:
+          subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          push-to-registry: ${{ inputs.push-to-registry }}
+
+      - name: Set provenance paths
+        id: provenance-paths
+        if: inputs.enable-provenance
+        run: |
+          echo "provenance-file=provenance.json" >> $GITHUB_OUTPUT
+
+          # Extract provenance from bundle if available
+          if [ -n "${{ steps.provenance.outputs.bundle-path }}" ]; then
+            echo "Provenance bundle created at: ${{ steps.provenance.outputs.bundle-path }}"
+          fi
+
+      - name: Generate SBOM (SPDX format)
+        id: sbom-spdx
+        if: inputs.enable-sbom && (inputs.sbom-formats == 'spdx-json' || inputs.sbom-formats == 'both')
+        uses: anchore/sbom-action@d94f46e13c6c62f59525ac9a1e147a99dc0b9bf5 # tag=v0.17.0
+        with:
+          image: ${{ inputs.image-ref }}
+          format: spdx-json
+          output-file: sbom-spdx.json
+          upload-artifact: true
+          upload-release-assets: false
+
+      - name: Attach SPDX SBOM as attestation
+        id: attest-sbom-spdx
+        if: inputs.enable-sbom && (inputs.sbom-formats == 'spdx-json' || inputs.sbom-formats == 'both')
+        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6 # tag=v1.4.1
+        with:
+          subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          sbom-path: sbom-spdx.json
+          push-to-registry: ${{ inputs.push-to-registry }}
+
+      - name: Generate SBOM (CycloneDX format)
+        id: sbom-cyclonedx
+        if: inputs.enable-sbom && (inputs.sbom-formats == 'cyclonedx-json' || inputs.sbom-formats == 'both')
+        uses: anchore/sbom-action@d94f46e13c6c62f59525ac9a1e147a99dc0b9bf5 # tag=v0.17.0
+        with:
+          image: ${{ inputs.image-ref }}
+          format: cyclonedx-json
+          output-file: sbom-cyclonedx.json
+          upload-artifact: true
+          upload-release-assets: false
+
+      - name: Attach CycloneDX SBOM as attestation
+        id: attest-sbom-cyclonedx
+        if: inputs.enable-sbom && (inputs.sbom-formats == 'cyclonedx-json' || inputs.sbom-formats == 'both')
+        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6 # tag=v1.4.1
+        with:
+          subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          sbom-path: sbom-cyclonedx.json
+          push-to-registry: ${{ inputs.push-to-registry }}
+
+      - name: Set SBOM paths
+        id: sbom-paths
+        if: inputs.enable-sbom
+        run: |
+          SPDX_FILE=""
+          CYCLONEDX_FILE=""
+
+          if [ "${{ inputs.sbom-formats }}" = "spdx-json" ] || [ "${{ inputs.sbom-formats }}" = "both" ]; then
+            SPDX_FILE="sbom-spdx.json"
+          fi
+
+          if [ "${{ inputs.sbom-formats }}" = "cyclonedx-json" ] || [ "${{ inputs.sbom-formats }}" = "both" ]; then
+            CYCLONEDX_FILE="sbom-cyclonedx.json"
+          fi
+
+          echo "spdx-file=$SPDX_FILE" >> $GITHUB_OUTPUT
+          echo "cyclonedx-file=$CYCLONEDX_FILE" >> $GITHUB_OUTPUT
+
+      - name: Attach vulnerability scan results
+        id: attest-scan
+        if: inputs.attach-scan-results && inputs.scan-results-path != ''
+        uses: actions/attest@025375512d7691d20fa59fad9e64a6399960847c # tag=v3.2.0
+        with:
+          subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          predicate-type: https://cosign.sigstore.dev/attestation/vuln/v1
+          predicate-path: ${{ inputs.scan-results-path }}
+          push-to-registry: ${{ inputs.push-to-registry }}
+        continue-on-error: true
+
+      - name: Attach custom attestation predicate
+        id: attest-custom
+        if: inputs.custom-predicate-type != '' && inputs.custom-predicate-path != ''
+        uses: actions/attest@025375512d7691d20fa59fad9e64a6399960847c # tag=v3.2.0
+        with:
+          subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          predicate-type: ${{ inputs.custom-predicate-type }}
+          predicate-path: ${{ inputs.custom-predicate-path }}
+          push-to-registry: ${{ inputs.push-to-registry }}
+        continue-on-error: true
+
+      - name: Calculate attestation digest
+        id: attestation-digest
+        run: |
+          # Create a combined hash of all attestations
+          COMBINED=""
+
+          if [ -n "${{ steps.provenance.outputs.bundle-path }}" ]; then
+            COMBINED="$COMBINED$(sha256sum ${{ steps.provenance.outputs.bundle-path }} | cut -d' ' -f1)"
+          fi
+
+          if [ -f "sbom-spdx.json" ]; then
+            COMBINED="$COMBINED$(sha256sum sbom-spdx.json | cut -d' ' -f1)"
+          fi
+
+          if [ -f "sbom-cyclonedx.json" ]; then
+            COMBINED="$COMBINED$(sha256sum sbom-cyclonedx.json | cut -d' ' -f1)"
+          fi
+
+          if [ -n "$COMBINED" ]; then
+            DIGEST=$(echo -n "$COMBINED" | sha256sum | cut -d' ' -f1)
+            echo "digest=sha256:$DIGEST" >> $GITHUB_OUTPUT
+            echo "Attestation bundle digest: sha256:$DIGEST"
+          else
+            echo "digest=" >> $GITHUB_OUTPUT
+            echo "No attestations generated"
+          fi
+
+      - name: Upload attestation artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
+        with:
+          name: attestations
+          path: |
+            sbom-spdx.json
+            sbom-cyclonedx.json
+            provenance.json
+            ${{ steps.provenance.outputs.bundle-path }}
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Generate attestation summary
+        if: always()
+        run: |
+          echo "## Attestation Generation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ inputs.registry }}/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.digest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Generated Attestations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.enable-provenance }}" = "true" ]; then
+            if [ -n "${{ steps.provenance.outputs.bundle-path }}" ]; then
+              echo "✅ SLSA Provenance: Generated" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ SLSA Provenance: Failed" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⏭️  SLSA Provenance: Skipped" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ inputs.enable-sbom }}" = "true" ]; then
+            if [ "${{ inputs.sbom-formats }}" = "spdx-json" ] || [ "${{ inputs.sbom-formats }}" = "both" ]; then
+              if [ -f "sbom-spdx.json" ]; then
+                echo "✅ SBOM (SPDX): Generated" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ SBOM (SPDX): Failed" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+
+            if [ "${{ inputs.sbom-formats }}" = "cyclonedx-json" ] || [ "${{ inputs.sbom-formats }}" = "both" ]; then
+              if [ -f "sbom-cyclonedx.json" ]; then
+                echo "✅ SBOM (CycloneDX): Generated" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ SBOM (CycloneDX): Failed" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          else
+            echo "⏭️  SBOM: Skipped" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ inputs.attach-scan-results }}" = "true" ]; then
+            if [ "${{ steps.attest-scan.outcome }}" = "success" ]; then
+              echo "✅ Vulnerability Scan Attestation: Attached" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Vulnerability Scan Attestation: Failed" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "⏭️  Vulnerability Scan Attestation: Skipped" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ -n "${{ inputs.custom-predicate-type }}" ]; then
+            if [ "${{ steps.attest-custom.outcome }}" = "success" ]; then
+              echo "✅ Custom Attestation: Attached" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Custom Attestation: Failed" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Attestation Bundle Digest:** \`${{ steps.attestation-digest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ inputs.push-to-registry }}" = "true" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Verification" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Verify attestations using:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify with GitHub CLI" >> $GITHUB_STEP_SUMMARY
+            echo "gh attestation verify oci://${{ inputs.image-ref }} --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify SBOM with cosign" >> $GITHUB_STEP_SUMMARY
+            echo "cosign verify-attestation --type spdx ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi

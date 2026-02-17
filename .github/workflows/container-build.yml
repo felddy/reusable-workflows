@@ -757,3 +757,56 @@ jobs:
       image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
       scan-severity: ${{ inputs.scan-severity }}
       fail-on-vulnerabilities: true
+
+  # Generate attestations (SLSA provenance, SBOM)
+  attest:
+    name: Generate Attestations
+    needs:
+      - metadata
+      - manifest
+      - scan
+    # Run if attestations OR sbom is enabled
+    # Skip scan dependency if scanning is disabled
+    if: |
+      always() &&
+      (inputs.enable-attestations == true || inputs.enable-sbom == true) &&
+      (needs.scan.result == 'success' || needs.scan.result == 'skipped') &&
+      needs.manifest.result == 'success'
+    uses: ./.github/workflows/container-attest.yml
+    with:
+      image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
+      image-name: ${{ inputs.image-name }}
+      registry: ${{ inputs.registry }}
+      enable-provenance: ${{ inputs.enable-attestations }}
+      enable-sbom: ${{ inputs.enable-sbom }}
+      sbom-formats: both
+      attach-scan-results: ${{ inputs.enable-scanning }}
+      scan-results-path: trivy-results.json
+      push-to-registry: true
+
+  # Sign container image
+  sign:
+    name: Sign Container Image
+    needs:
+      - metadata
+      - manifest
+      - scan
+      - attest
+    # Run if signing is enabled
+    # Skip scan and attest dependencies if they're disabled
+    if: |
+      always() &&
+      inputs.enable-signing == true &&
+      (needs.scan.result == 'success' || needs.scan.result == 'skipped') &&
+      (needs.attest.result == 'success' || needs.attest.result == 'skipped') &&
+      needs.manifest.result == 'success'
+    uses: ./.github/workflows/container-sign.yml
+    with:
+      image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
+      image-name: ${{ inputs.image-name }}
+      registry: ${{ inputs.registry }}
+      use-keyless: true
+    secrets:
+      signing-key: ${{ secrets.signing-key }}
+      registry-username: ${{ secrets.registry-username }}
+      registry-password: ${{ secrets.registry-password }}
