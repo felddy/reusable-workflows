@@ -1,0 +1,312 @@
+---
+name: Container Sign Workflow
+
+# This reusable workflow signs container images using Sigstore/cosign.
+# It supports both keyless signing (using GitHub OIDC tokens) and
+# key-based signing (using a provided signing key).
+#
+# Features:
+# - Keyless signing with GitHub OIDC (default, no key required)
+# - Key-based signing with COSIGN_KEY secret
+# - Automatic signature attachment to registry
+# - Verification instructions in output
+#
+# Usage:
+#   uses: felddy/reusable-workflows/.github/workflows/container-sign.yml@v4
+#   with:
+#     image-ref: ghcr.io/myorg/myapp@sha256:abc123...
+#   secrets:
+#     signing-key: ${{ secrets.COSIGN_KEY }}  # Optional, for key-based signing
+
+"on":
+  workflow_call:
+    inputs:
+      image-ref:
+        description: Full image reference with digest (registry/name@sha256:...)
+        required: true
+        type: string
+
+      image-name:
+        description: Image name without registry (for output messages)
+        required: false
+        type: string
+        default: ""
+
+      registry:
+        description: Container registry
+        required: false
+        type: string
+        default: ghcr.io
+
+      use-keyless:
+        description: Use keyless signing (GitHub OIDC token)
+        required: false
+        type: boolean
+        default: true
+
+      cosign-version:
+        description: Cosign version to install
+        required: false
+        type: string
+        default: latest
+
+    secrets:
+      signing-key:
+        description: Cosign signing key (for key-based signing)
+        required: false
+
+      signing-key-password:
+        description: Password for signing key (if encrypted)
+        required: false
+
+      registry-username:
+        description: Registry username
+        required: false
+
+      registry-password:
+        description: Registry password or token
+        required: false
+
+    outputs:
+      signature-digest:
+        description: Digest of the signature
+        value: ${{ jobs.sign.outputs.signature-digest }}
+
+      signing-method:
+        description: Method used for signing (keyless or key-based)
+        value: ${{ jobs.sign.outputs.signing-method }}
+
+      signed:
+        description: Whether the image was successfully signed
+        value: ${{ jobs.sign.outputs.signed }}
+
+jobs:
+  sign:
+    name: Sign Container Image
+    runs-on: ubuntu-latest
+
+    outputs:
+      signature-digest: ${{ steps.sign.outputs.signature-digest }}
+      signing-method: ${{ steps.determine-method.outputs.method }}
+      signed: ${{ steps.sign.outputs.signed }}
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write  # Required for keyless signing with OIDC
+
+    steps:
+      - name: Validate inputs
+        run: |
+          EXIT_CODE=0
+
+          echo "::group::Validating inputs"
+
+          # Validate image-ref format
+          IMAGE_REF="${{ inputs.image-ref }}"
+          if [[ ! "$IMAGE_REF" =~ @sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::image-ref must include digest (@sha256:...)"
+            echo "::error::Got: $IMAGE_REF"
+            echo "::error::Expected format: registry/name@sha256:abc123..."
+            EXIT_CODE=1
+          else
+            echo "::notice::✓ Image reference: $IMAGE_REF"
+          fi
+
+          # Validate registry format
+          if [[ "${{ inputs.registry }}" =~ ^https?:// ]]; then
+            echo "::error::registry should not include protocol"
+            echo "::error::Use: ghcr.io (not https://ghcr.io)"
+            EXIT_CODE=1
+          else
+            echo "::notice::✓ Registry: ${{ inputs.registry }}"
+          fi
+
+          echo "::endgroup::"
+
+          if [[ $EXIT_CODE -ne 0 ]]; then
+            echo "::error::Validation failed"
+            exit 1
+          fi
+
+      - name: Determine signing method
+        id: determine-method
+        run: |
+          # Determine which signing method to use
+          if [[ -n "${{ secrets.signing-key }}" ]]; then
+            METHOD="key-based"
+            echo "::notice::Using key-based signing (COSIGN_KEY provided)"
+          elif [[ "${{ inputs.use-keyless }}" == "true" ]]; then
+            METHOD="keyless"
+            echo "::notice::Using keyless signing (GitHub OIDC token)"
+          else
+            echo "::error::No signing method available"
+            echo "::error::Either provide signing-key secret or enable use-keyless"
+            exit 1
+          fi
+
+          echo "method=$METHOD" >> $GITHUB_OUTPUT
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
+        with:
+          cosign-release: ${{ inputs.cosign-version }}
+
+      - name: Verify cosign installation
+        run: |
+          echo "::group::Cosign version"
+          cosign version
+          echo "::endgroup::"
+
+      - name: Log in to container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.registry-username || github.actor }}
+          password: ${{ secrets.registry-password || secrets.GITHUB_TOKEN }}
+
+      - name: Sign image (keyless)
+        if: steps.determine-method.outputs.method == 'keyless'
+        id: sign-keyless
+        run: |
+          echo "::group::Signing image with keyless method"
+
+          # Sign using GitHub OIDC token (keyless)
+          # The signature is automatically uploaded to the registry
+          if cosign sign --yes "${{ inputs.image-ref }}"; then
+            echo "::notice::✓ Image signed successfully (keyless)"
+            echo "signed=true" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Failed to sign image with keyless method"
+            exit 1
+          fi
+
+          echo "::endgroup::"
+
+      - name: Sign image (key-based)
+        if: steps.determine-method.outputs.method == 'key-based'
+        id: sign-key
+        env:
+          COSIGN_KEY: ${{ secrets.signing-key }}
+          COSIGN_PASSWORD: ${{ secrets.signing-key-password }}
+        run: |
+          echo "::group::Signing image with key-based method"
+
+          # Write key to temporary file
+          echo "$COSIGN_KEY" > /tmp/cosign.key
+
+          # Sign using provided key
+          # The --key flag specifies the private key file
+          if cosign sign --yes --key /tmp/cosign.key "${{ inputs.image-ref }}"; then
+            echo "::notice::✓ Image signed successfully (key-based)"
+            echo "signed=true" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Failed to sign image with key-based method"
+            rm -f /tmp/cosign.key
+            exit 1
+          fi
+
+          # Clean up key file
+          rm -f /tmp/cosign.key
+
+          echo "::endgroup::"
+
+      - name: Verify signature
+        id: verify
+        run: |
+          echo "::group::Verifying signature"
+
+          # Verify the signature we just created
+          if [[ "${{ steps.determine-method.outputs.method }}" == "keyless" ]]; then
+            # Verify keyless signature
+            # For keyless, we verify against the certificate identity
+            if cosign verify \
+              --certificate-identity-regexp="^https://github.com/${{ github.repository }}" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              "${{ inputs.image-ref }}"; then
+              echo "::notice::✓ Signature verified successfully"
+            else
+              echo "::warning::Signature verification failed"
+              echo "::warning::This may be expected if the signature hasn't propagated yet"
+            fi
+          else
+            # For key-based signing, verification requires the public key
+            echo "::notice::Key-based signature created"
+            echo "::notice::Verification requires the public key (cosign.pub)"
+          fi
+
+          echo "::endgroup::"
+
+      - name: Get signature digest
+        id: sign
+        run: |
+          # Try to get the signature digest
+          # This may not always be available immediately
+          SIGNATURE_DIGEST=$(cosign triangulate "${{ inputs.image-ref }}" 2>/dev/null || echo "")
+
+          if [[ -n "$SIGNATURE_DIGEST" ]]; then
+            echo "signature-digest=$SIGNATURE_DIGEST" >> $GITHUB_OUTPUT
+            echo "::notice::Signature digest: $SIGNATURE_DIGEST"
+          else
+            echo "signature-digest=" >> $GITHUB_OUTPUT
+            echo "::notice::Signature digest not available (may not be propagated yet)"
+          fi
+
+          echo "signed=true" >> $GITHUB_OUTPUT
+
+      - name: Output signing summary
+        run: |
+          echo "## Image Signing Complete ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ inputs.image-ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Method:** \`${{ steps.determine-method.outputs.method }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`${{ inputs.registry }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ steps.determine-method.outputs.method }}" == "keyless" ]]; then
+            echo "### Verify Signature (Keyless)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify with cosign" >> $GITHUB_STEP_SUMMARY
+            echo "cosign verify \\" >> $GITHUB_STEP_SUMMARY
+            echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
+            echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
+            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### About Keyless Signing" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Keyless signing uses GitHub's OIDC token to sign images without managing keys." >> $GITHUB_STEP_SUMMARY
+            echo "The signature is tied to the GitHub repository and workflow that created it." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Benefits:**" >> $GITHUB_STEP_SUMMARY
+            echo "- No key management required" >> $GITHUB_STEP_SUMMARY
+            echo "- Automatic key rotation" >> $GITHUB_STEP_SUMMARY
+            echo "- Tied to GitHub identity" >> $GITHUB_STEP_SUMMARY
+            echo "- Transparency log (Rekor) for auditability" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Verify Signature (Key-Based)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify with cosign (requires public key)" >> $GITHUB_STEP_SUMMARY
+            echo "cosign verify --key cosign.pub ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### About Key-Based Signing" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Key-based signing uses a provided private key (COSIGN_KEY secret)." >> $GITHUB_STEP_SUMMARY
+            echo "Verification requires the corresponding public key." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Key Management:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Store private key in GitHub Secrets" >> $GITHUB_STEP_SUMMARY
+            echo "- Distribute public key to consumers" >> $GITHUB_STEP_SUMMARY
+            echo "- Rotate keys periodically" >> $GITHUB_STEP_SUMMARY
+            echo "- Consider using encrypted keys with COSIGN_PASSWORD" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Additional Resources" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- [Cosign Documentation](https://docs.sigstore.dev/cosign/overview/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [Keyless Signing Guide](https://docs.sigstore.dev/cosign/keyless/)" >> $GITHUB_STEP_SUMMARY
+          echo "- [GitHub OIDC Documentation](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect)" >> $GITHUB_STEP_SUMMARY

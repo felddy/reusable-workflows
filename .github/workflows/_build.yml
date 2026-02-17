@@ -52,7 +52,7 @@ jobs:
       dockerfile: ./Dockerfile
       enable-attestations: true
       enable-sbom: true
-      enable-signing: false
+      enable-signing: false  # ✅ Available - Task 2.5 complete (set to true to enable keyless signing)
       enable-scanning: true  # ✅ Enabled - Task 2.2 complete
       scan-severity: CRITICAL,HIGH
       kubernetes-labels: true
