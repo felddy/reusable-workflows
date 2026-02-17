@@ -1,402 +1,729 @@
 ---
-name: Build container image
+name: Container Build Workflow
 
-# This reusable workflow builds container images.  It allows images to be pushed
-# to GitHub Container Registry, or uploaded as an artifact for later use by
-# other workflows.
+# This reusable workflow builds OCI-compliant container images with modern
+# supply chain security features including SLSA provenance, SBOMs, and
+# vulnerability scanning.
 #
-# Additional workflow features include:
-# - Caching of container layers to Github Actions cache
-# - Optional encryption of container images stored as artifacts
-# - Ability to suffix tags with additional information. For example, adding the
-#   platform identifier so the image can be later included in a multi-platform
-#   manifest.
+# Features:
+# - Multi-architecture builds
+# - Simplified parameter passing (no more numbered args)
+# - Individual secret passing (proper GitHub redaction)
+# - Automatic attestation generation
+# - Vulnerability scanning with Trivy
+# - Private package support
+# - Kubernetes-ready images
+# - OCI-compliant, runtime-agnostic
+#
+# Usage:
+#   uses: felddy/reusable-workflows/.github/workflows/container-build.yml@v4
+#   with:
+#     platforms: linux/amd64,linux/arm64
+#     image-name: ${{ github.repository }}
+#   secrets:
+#     registry-password: ${{ secrets.GITHUB_TOKEN }}
 
-on: # yamllint disable-line rule:truthy
+"on":
   workflow_call:
     inputs:
-      # Required inputs
+      # Required
       platforms:
-        description: The platform(s) to build (CSV)
+        description: Platforms to build (comma-separated linux/amd64,linux/arm64)
         required: true
         type: string
-      # Optional inputs
-      artifact_name:
-        default: ""
-        description: Upload the image archive as an artifact if specified (name will be cleaned)
+
+      # Image Configuration
+      image-name:
+        description: Container image name (without registry)
         required: false
         type: string
-      artifact_retention_days:
-        default: 1
-        description: Number of days to retain the artifact
-        required: false
-        type: number
-      cache_from_scopes:
-        default: buildkit
-        description: The GitHub Action Cache scopes to read from (name will be cleaned, CSV)
+        default: ${{ github.repository }}
+
+      registry:
+        description: Container registry (ghcr.io, docker.io, etc.)
         required: false
         type: string
-      cache_to_scope:
-        default: buildkit
-        description: The GitHub Action Cache scope to write to (name will be cleaned)
+        default: ghcr.io
+
+      visibility:
+        description: Image visibility (public, private, internal)
         required: false
         type: string
-      docker_file:
+        default: public
+
+      # Build Configuration
+      context:
+        description: Build context path
+        required: false
+        type: string
+        default: .
+
+      dockerfile:
+        description: Path to Dockerfile
+        required: false
+        type: string
         default: ./Dockerfile
-        description: The Dockerfile to use
+
+      build-args:
+        description: Build arguments (multiline string, KEY=VALUE per line)
         required: false
         type: string
-      image_labels:
-        description: Image labels to apply to the image
-        required: false
-        type: string
-      image_tags:
         default: ""
-        description: The tags to apply to the image
+
+      target:
+        description: Build target for multi-stage builds
         required: false
         type: string
-      image_archive_name_stem:
-        default: image
-        description: The stem of the image archive name (will be cleaned)
+        default: ""
+
+      # Advanced Build
+      bake-file:
+        description: Path to buildx bake file (HCL/JSON)
         required: false
         type: string
-      push:
-        default: false
-        description: Push the image to the registries (disables artifact upload)
+        default: ""
+
+      bake-targets:
+        description: Bake targets to build (comma-separated)
+        required: false
+        type: string
+        default: ""
+
+      # Features
+      enable-attestations:
+        description: Generate SLSA provenance and attestations
         required: false
         type: boolean
-      tag_suffix:
+        default: true
+
+      enable-sbom:
+        description: Generate and attach SBOM
+        required: false
+        type: boolean
+        default: true
+
+      enable-signing:
+        description: Sign images with cosign
+        required: false
+        type: boolean
+        default: false
+
+      enable-scanning:
+        description: Scan images for vulnerabilities
+        required: false
+        type: boolean
+        default: true
+
+      scan-severity:
+        description: Fail on vulnerabilities at or above this severity
+        required: false
+        type: string
+        default: CRITICAL,HIGH
+
+      # Caching
+      cache-scope:
+        description: Cache scope for this build
+        required: false
+        type: string
         default: ""
-        description: Suffix to append to the image tags (name will be cleaned)
+
+      # Kubernetes
+      kubernetes-labels:
+        description: Add Kubernetes-specific labels
+        required: false
+        type: boolean
+        default: true
+
+      component:
+        description: Kubernetes component label value
         required: false
         type: string
-      build_arg_1_name:
-        description: The name of the first build arg
+        default: ""
+
+      part-of:
+        description: Kubernetes part-of label value
         required: false
         type: string
-      build_arg_2_name:
-        description: The name of the second build arg
+        default: ""
+
+      liveness-path:
+        description: Kubernetes liveness probe path
         required: false
         type: string
-      build_arg_3_name:
-        description: The name of the third build arg
+        default: ""
+
+      readiness-path:
+        description: Kubernetes readiness probe path
         required: false
         type: string
-      build_arg_4_name:
-        description: The name of the fourth build arg
+        default: ""
+
+      startup-path:
+        description: Kubernetes startup probe path
         required: false
         type: string
-      build_arg_5_name:
-        description: The name of the fifth build arg
+        default: ""
+
+      # Debug
+      debug:
+        description: Enable debug mode (verbose logging)
         required: false
-        type: string
-      build_arg_6_name:
-        description: The name of the sixth build arg
+        type: boolean
+        default: false
+
+    secrets:
+      registry-username:
+        description: Registry username
         required: false
-        type: string
-      build_arg_7_name:
-        description: The name of the seventh build arg
+
+      registry-password:
+        description: Registry password or token
         required: false
-        type: string
-      build_arg_8_name:
-        description: The name of the eighth build arg
+
+      signing-key:
+        description: Cosign signing key
         required: false
-        type: string
-      build_secret_1_name:
-        description: The name of the first build secret
+
+      # Build secrets - pass individually for proper redaction
+      # CRITICAL: Do NOT use JSON/XML/YAML blobs as secret values
+      # GitHub cannot properly redact structured data
+      # See: https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions
+      build-secret-1:
+        description: Build secret 1 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_2_name:
-        description: The name of the second build secret
+
+      build-secret-2:
+        description: Build secret 2 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_3_name:
-        description: The name of the third build secret
+
+      build-secret-3:
+        description: Build secret 3 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_4_name:
-        description: The name of the fourth build secret
+
+      build-secret-4:
+        description: Build secret 4 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_5_name:
-        description: The name of the fifth build secret
+
+      build-secret-5:
+        description: Build secret 5 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_6_name:
-        description: The name of the sixth build secret
-        required: false
-        type: string
-      build_secret_7_name:
-        description: The name of the seventh build secret
-        required: false
-        type: string
-      build_secret_8_name:
-        description: The name of the eighth build secret
-        required: false
-        type: string
 
     outputs:
-      artifact_name:
-        description: The cleaned name of the artifact (if any)
-        value: ${{ jobs.build-image.outputs.artifact_name }}
-      image_archive_name:
-        description: The name of the image archive
-        value: ${{ jobs.build-image.outputs.image_archive_name }}
-    secrets:
-      image_archive_key:
-        description: Enables encryption of the image archive if specified
-        required: false
-      build_arg_1_value:
-        description: The value of the first build arg
-        required: false
-      build_arg_2_value:
-        description: The value of the second build arg
-        required: false
-      build_arg_3_value:
-        description: The value of the third build arg
-        required: false
-      build_arg_4_value:
-        description: The value of the fourth build arg
-        required: false
-      build_arg_5_value:
-        description: The value of the fifth build arg
-        required: false
-      build_arg_6_value:
-        description: The value of the sixth build arg
-        required: false
-      build_arg_7_value:
-        description: The value of the seventh build arg
-        required: false
-      build_arg_8_value:
-        description: The value of the eighth build arg
-        required: false
-      build_secret_1_value:
-        description: The value of the first build secret
-        required: false
-      build_secret_2_value:
-        description: The value of the second build secret
-        required: false
-      build_secret_3_value:
-        description: The value of the third build secret
-        required: false
-      build_secret_4_value:
-        description: The value of the fourth build secret
-        required: false
-      build_secret_5_value:
-        description: The value of the fifth build secret
-        required: false
-      build_secret_6_value:
-        description: The value of the sixth build secret
-        required: false
-      build_secret_7_value:
-        description: The value of the seventh build secret
-        required: false
-      build_secret_8_value:
-        description: The value of the eighth build secret
-        required: false
+      image-digest:
+        description: Image digest (sha256:...)
+        value: ${{ jobs.manifest.outputs.digest }}
 
-env:
-  OUTPUT_ARTIFACT_WORK_DIR: /tmp/output-artifact-work
+      image-tags:
+        description: Generated image tags
+        value: ${{ jobs.metadata.outputs.image-tags }}
+
+      image-version:
+        description: Calculated version
+        value: ${{ jobs.metadata.outputs.version }}
+
+      full-image-name:
+        description: Full image name with registry
+        value: ${{ jobs.metadata.outputs.full-image-name }}
 
 jobs:
-  build-image:
-    name: Build image
+  # Parse platforms for matrix strategy
+  parse-platforms:
+    name: Parse Platforms
     runs-on: ubuntu-latest
     outputs:
-      artifact_name: ${{ steps.clean.outputs.artifact_name }}
-      image_archive_name: ${{ steps.check_image_archive_key.outputs.file_name }}
+      platforms: ${{ steps.parse.outputs.platforms }}
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
-        with:
-          disable-sudo: true
-          egress-policy: audit
-
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # tag=v3.7.0
-
-      - name: Set up buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
-
-      - name: Login to GitHub Container Registry
-        if: inputs.push == true
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create directories for artifact work
+      - name: Parse platform list
+        id: parse
         run: |
-          mkdir -p ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}
+          # Convert comma-separated platforms to JSON array
+          PLATFORMS="${{ inputs.platforms }}"
 
-      - name: Clean variables
-        id: clean
-        run: |
-          # Replace illegal characters in artifact name
-          echo artifact_name=$(echo "${{ inputs.artifact_name }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
-          # Replace illegal characters in cache from scope list
-          echo cache_from_scopes=$(echo "${{ inputs.cache_from_scopes }}" | sed -e 's/[^a-zA-Z0-9.,_-]/_/g') >> $GITHUB_OUTPUT
-          # Replace illegal characters in cache to scope
-          echo cache_to_scope=$(echo "${{ inputs.cache_to_scope }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
-          # Replace illegal characters in image archive name
-          echo image_archive_name_stem=$(echo "${{ inputs.image_archive_name_stem }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
-          # Replace illegal characters in tag suffix
-          echo suffix=$(echo "${{ inputs.tag_suffix }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
+          # Split by comma and create JSON array
+          IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
 
-      - name: Add suffix to image tags
-        id: tag_suffix
-        run: |
-          delimiter="$(openssl rand -hex 8)"
-          echo "tags<<${delimiter}" >> $GITHUB_OUTPUT
-          # if tag_suffix is set, append it to each tag
-          if [[ -n "${{ inputs.tag_suffix }}" ]]; then
-            echo "${{ inputs.image_tags }}" | sed -e "s/$/-${{ steps.clean.outputs.suffix }}/" >> $GITHUB_OUTPUT
-          else
-            echo "${{ inputs.image_tags }}" >> $GITHUB_OUTPUT
-          fi
-          echo "${delimiter}" >> $GITHUB_OUTPUT
+          # Trim whitespace and build JSON array
+          JSON_ARRAY="["
+          FIRST=true
+          for platform in "${PLATFORM_ARRAY[@]}"; do
+            # Trim whitespace
+            platform=$(echo "$platform" | xargs)
 
-      - name: Prepare build args
-        id: prepare-build-args
-        env:
-          ARG_1_NAME: ${{ inputs.build_arg_1_name }}
-          ARG_1_VALUE: ${{ secrets.build_arg_1_value }}
-          ARG_2_NAME: ${{ inputs.build_arg_2_name }}
-          ARG_2_VALUE: ${{ secrets.build_arg_2_value }}
-          ARG_3_NAME: ${{ inputs.build_arg_3_name }}
-          ARG_3_VALUE: ${{ secrets.build_arg_3_value }}
-          ARG_4_NAME: ${{ inputs.build_arg_4_name }}
-          ARG_4_VALUE: ${{ secrets.build_arg_4_value }}
-          ARG_5_NAME: ${{ inputs.build_arg_5_name }}
-          ARG_5_VALUE: ${{ secrets.build_arg_5_value }}
-          ARG_6_NAME: ${{ inputs.build_arg_6_name }}
-          ARG_6_VALUE: ${{ secrets.build_arg_6_value }}
-          ARG_7_NAME: ${{ inputs.build_arg_7_name }}
-          ARG_7_VALUE: ${{ secrets.build_arg_7_value }}
-          ARG_8_NAME: ${{ inputs.build_arg_8_name }}
-          ARG_8_VALUE: ${{ secrets.build_arg_8_value }}
-        run: |
-          delimiter="$(openssl rand -hex 8)"
-          echo "build_args<<${delimiter}" >> $GITHUB_OUTPUT
-          for i in {1..8}; do
-            arg_name_var="ARG_${i}_NAME"
-            arg_value_var="ARG_${i}_VALUE"
-            arg_name=${!arg_name_var}
-            arg_value=${!arg_value_var}
-            if [[ -n "$arg_name" && -n "$arg_value" ]]; then
-              echo "${arg_name}=${arg_value}" >> $GITHUB_OUTPUT
+            if [[ "$FIRST" == "true" ]]; then
+              JSON_ARRAY="${JSON_ARRAY}\"${platform}\""
+              FIRST=false
+            else
+              JSON_ARRAY="${JSON_ARRAY},\"${platform}\""
             fi
           done
-          echo "${delimiter}" >> $GITHUB_OUTPUT
+          JSON_ARRAY="${JSON_ARRAY}]"
+
+          echo "platforms=$JSON_ARRAY" >> $GITHUB_OUTPUT
+          echo "::notice::Parsed platforms: $JSON_ARRAY"
+
+  # Generate metadata (tags, labels, version)
+  metadata:
+    name: Generate Metadata
+    uses: ./.github/workflows/container-metadata.yml
+    with:
+      image-name: ${{ inputs.image-name }}
+      registry: ${{ inputs.registry }}
+      kubernetes-labels: ${{ inputs.kubernetes-labels }}
+      component: ${{ inputs.component }}
+      part-of: ${{ inputs.part-of }}
+      liveness-path: ${{ inputs.liveness-path }}
+      readiness-path: ${{ inputs.readiness-path }}
+      startup-path: ${{ inputs.startup-path }}
+
+  # Build container image (multi-architecture support)
+  build:
+    name: Build ${{ matrix.platform }}
+    needs:
+      - parse-platforms
+      - metadata
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Use parsed platforms for parallel builds
+        # This enables per-platform caching and parallel execution
+        platform: ${{ fromJSON(needs.parse-platforms.outputs.platforms) }}
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Enable debug mode
+        if: inputs.debug == true
+        run: |
+          echo "BUILDKIT_PROGRESS=plain" >> $GITHUB_ENV
+          echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
+          echo "::notice::Debug mode enabled - verbose logging active"
+
+      - name: Set up QEMU for multi-arch builds
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ inputs.platforms }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+            network=host
+
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.registry-username || github.actor }}
+          password: ${{ secrets.registry-password || secrets.GITHUB_TOKEN }}
+
+      - name: Validate required inputs
+        run: |
+          EXIT_CODE=0
+
+          echo "::group::Validating inputs"
+
+          # Validate platforms
+          if [[ -z "${{ inputs.platforms }}" ]]; then
+            echo "::error::platforms input is required"
+            echo "::error::Example: platforms: linux/amd64,linux/arm64"
+            EXIT_CODE=1
+          else
+            echo "::notice::✓ Platforms: ${{ inputs.platforms }}"
+          fi
+
+          # Validate image name
+          if [[ -z "${{ inputs.image-name }}" ]]; then
+            echo "::error::image-name input is required"
+            echo "::error::Example: image-name: \${{ github.repository }}"
+            EXIT_CODE=1
+          else
+            echo "::notice::✓ Image name: ${{ inputs.image-name }}"
+          fi
+
+          # Validate registry format
+          if [[ "${{ inputs.registry }}" =~ ^https?:// ]]; then
+            echo "::error::registry should not include protocol (http:// or https://)"
+            echo "::error::Use: ghcr.io (not https://ghcr.io)"
+            EXIT_CODE=1
+          else
+            echo "::notice::✓ Registry: ${{ inputs.registry }}"
+          fi
+
+          # Validate visibility
+          VISIBILITY="${{ inputs.visibility }}"
+          if [[ "$VISIBILITY" != "public" ]] && [[ "$VISIBILITY" != "private" ]] && [[ "$VISIBILITY" != "internal" ]]; then
+            echo "::error::visibility must be one of: public, private, internal"
+            echo "::error::Got: $VISIBILITY"
+            EXIT_CODE=1
+          else
+            echo "::notice::✓ Visibility: $VISIBILITY"
+          fi
+
+          # Validate Dockerfile exists
+          if [[ ! -f "${{ inputs.dockerfile }}" ]]; then
+            echo "::error::Dockerfile not found at: ${{ inputs.dockerfile }}"
+            echo "::error::Common issues:"
+            echo "::error::  - Check the dockerfile input parameter"
+            echo "::error::  - Ensure the file exists in the repository"
+            echo "::error::  - Verify the path is relative to the repository root"
+            echo "::error::  - Check for typos in the filename"
+            EXIT_CODE=1
+          else
+            echo "::notice::✓ Dockerfile found: ${{ inputs.dockerfile }}"
+          fi
+
+          # Validate build context exists
+          if [[ ! -d "${{ inputs.context }}" ]]; then
+            echo "::error::Build context not found at: ${{ inputs.context }}"
+            echo "::error::The context must be a directory containing the files to build"
+            EXIT_CODE=1
+          else
+            echo "::notice::✓ Build context: ${{ inputs.context }}"
+          fi
+
+          # Validate scan severity format
+          SEVERITY="${{ inputs.scan-severity }}"
+          if [[ -n "$SEVERITY" ]]; then
+            # Check if severity contains valid values
+            if [[ ! "$SEVERITY" =~ ^(CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN)(,(CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN))*$ ]]; then
+              echo "::warning::scan-severity format may be invalid: $SEVERITY"
+              echo "::warning::Expected format: CRITICAL,HIGH,MEDIUM,LOW"
+            else
+              echo "::notice::✓ Scan severity: $SEVERITY"
+            fi
+          fi
+
+          # Validate bake file if specified
+          if [[ -n "${{ inputs.bake-file }}" ]]; then
+            if [[ ! -f "${{ inputs.bake-file }}" ]]; then
+              echo "::error::Bake file not found at: ${{ inputs.bake-file }}"
+              EXIT_CODE=1
+            else
+              echo "::notice::✓ Bake file: ${{ inputs.bake-file }}"
+            fi
+          fi
+
+          # Validate target if specified
+          if [[ -n "${{ inputs.target }}" ]]; then
+            echo "::notice::✓ Build target: ${{ inputs.target }}"
+          fi
+
+          # Check for common misconfigurations
+          if [[ "${{ inputs.enable-signing }}" == "true" ]] && [[ -z "${{ secrets.signing-key }}" ]]; then
+            echo "::warning::Image signing enabled but no signing-key secret provided"
+            echo "::warning::Keyless signing will be used (requires OIDC token)"
+          fi
+
+          if [[ "${{ inputs.enable-attestations }}" == "false" ]] && [[ "${{ inputs.enable-sbom }}" == "true" ]]; then
+            echo "::warning::SBOM generation enabled but attestations disabled"
+            echo "::warning::SBOM will be generated but not attached as attestation"
+          fi
+
+          echo "::endgroup::"
+
+          if [[ $EXIT_CODE -ne 0 ]]; then
+            echo ""
+            echo "::error::Validation failed. Please fix the errors above and try again."
+            echo ""
+            echo "## Validation Failed ❌" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please check the workflow logs for detailed error messages." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Common Issues" >> $GITHUB_STEP_SUMMARY
+            echo "- Missing required inputs (platforms, image-name)" >> $GITHUB_STEP_SUMMARY
+            echo "- Dockerfile not found at specified path" >> $GITHUB_STEP_SUMMARY
+            echo "- Build context directory doesn't exist" >> $GITHUB_STEP_SUMMARY
+            echo "- Invalid registry format (should not include protocol)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Documentation" >> $GITHUB_STEP_SUMMARY
+            echo "See [USAGE.md](../../USAGE.md) for detailed parameter documentation." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo "::notice::✅ All validations passed"
+
+      - name: Parse build arguments
+        id: parse-args
+        run: |
+          # Parse multiline build-args into format for docker build
+          BUILD_ARGS="${{ inputs.build-args }}"
+
+          if [[ -n "$BUILD_ARGS" ]]; then
+            # Use a delimiter for multiline output
+            delimiter="$(openssl rand -hex 8)"
+            echo "args<<${delimiter}" >> $GITHUB_OUTPUT
+            echo "$BUILD_ARGS" >> $GITHUB_OUTPUT
+            echo "${delimiter}" >> $GITHUB_OUTPUT
+
+            echo "::notice::Build arguments parsed successfully"
+          else
+            echo "args=" >> $GITHUB_OUTPUT
+            echo "::notice::No build arguments provided"
+          fi
 
       - name: Prepare build secrets
-        id: prepare-build-secrets
-        env:
-          SECRET_1_NAME: ${{ inputs.build_secret_1_name }}
-          SECRET_1_VALUE: ${{ secrets.build_secret_1_value }}
-          SECRET_2_NAME: ${{ inputs.build_secret_2_name }}
-          SECRET_2_VALUE: ${{ secrets.build_secret_2_value }}
-          SECRET_3_NAME: ${{ inputs.build_secret_3_name }}
-          SECRET_3_VALUE: ${{ secrets.build_secret_3_value }}
-          SECRET_4_NAME: ${{ inputs.build_secret_4_name }}
-          SECRET_4_VALUE: ${{ secrets.build_secret_4_value }}
-          SECRET_5_NAME: ${{ inputs.build_secret_5_name }}
-          SECRET_5_VALUE: ${{ secrets.build_secret_5_value }}
-          SECRET_6_NAME: ${{ inputs.build_secret_6_name }}
-          SECRET_6_VALUE: ${{ secrets.build_secret_6_value }}
-          SECRET_7_NAME: ${{ inputs.build_secret_7_name }}
-          SECRET_7_VALUE: ${{ secrets.build_secret_7_value }}
-          SECRET_8_NAME: ${{ inputs.build_secret_8_name }}
-          SECRET_8_VALUE: ${{ secrets.build_secret_8_value }}
+        id: secrets
         run: |
-          delimiter="$(openssl rand -hex 8)"
-          echo "build_secrets<<${delimiter}" >> $GITHUB_OUTPUT
-          for i in {1..3}; do
-            secret_name_var="SECRET_${i}_NAME"
-            secret_value_var="SECRET_${i}_VALUE"
-            secret_name=${!secret_name_var}
-            secret_value=${!secret_value_var}
-            if [[ -n "$secret_name" && -n "$secret_value" ]]; then
-              echo "\"${secret_name}=${secret_value}\"" >> $GITHUB_OUTPUT
+          # Prepare secrets for BuildKit secret mounts
+          # Each secret is passed individually for proper GitHub redaction
+          SECRETS=""
+
+          if [[ -n "${{ secrets.build-secret-1 }}" ]]; then
+            echo "${{ secrets.build-secret-1 }}" > /tmp/build-secret-1
+            SECRETS="$SECRETS,id=build-secret-1,src=/tmp/build-secret-1"
+          fi
+
+          if [[ -n "${{ secrets.build-secret-2 }}" ]]; then
+            echo "${{ secrets.build-secret-2 }}" > /tmp/build-secret-2
+            SECRETS="$SECRETS,id=build-secret-2,src=/tmp/build-secret-2"
+          fi
+
+          if [[ -n "${{ secrets.build-secret-3 }}" ]]; then
+            echo "${{ secrets.build-secret-3 }}" > /tmp/build-secret-3
+            SECRETS="$SECRETS,id=build-secret-3,src=/tmp/build-secret-3"
+          fi
+
+          if [[ -n "${{ secrets.build-secret-4 }}" ]]; then
+            echo "${{ secrets.build-secret-4 }}" > /tmp/build-secret-4
+            SECRETS="$SECRETS,id=build-secret-4,src=/tmp/build-secret-4"
+          fi
+
+          if [[ -n "${{ secrets.build-secret-5 }}" ]]; then
+            echo "${{ secrets.build-secret-5 }}" > /tmp/build-secret-5
+            SECRETS="$SECRETS,id=build-secret-5,src=/tmp/build-secret-5"
+          fi
+
+          # Remove leading comma if present
+          SECRETS="${SECRETS#,}"
+
+          echo "secrets=$SECRETS" >> $GITHUB_OUTPUT
+
+          if [[ -n "$SECRETS" ]]; then
+            echo "::notice::Build secrets prepared (count: $(echo $SECRETS | tr ',' '\n' | wc -l))"
+          fi
+
+      - name: Prepare platform-specific cache scope
+        id: cache-scope
+        run: |
+          # Create platform-specific cache scope for better cache hits
+          PLATFORM="${{ matrix.platform }}"
+          PLATFORM_SLUG="${PLATFORM//\//-}"  # Replace / with -
+
+          BASE_SCOPE="${{ inputs.cache-scope || 'build' }}"
+          PLATFORM_SCOPE="${BASE_SCOPE}-${PLATFORM_SLUG}"
+
+          echo "scope=$PLATFORM_SCOPE" >> $GITHUB_OUTPUT
+          echo "::notice::Cache scope: $PLATFORM_SCOPE"
+
+      - name: Build and push container image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: ${{ needs.metadata.outputs.image-tags }}
+          labels: ${{ needs.metadata.outputs.image-labels }}
+          build-args: ${{ steps.parse-args.outputs.args }}
+          target: ${{ inputs.target }}
+          cache-from: type=gha,scope=${{ steps.cache-scope.outputs.scope }}
+          cache-to: type=gha,mode=max,scope=${{ steps.cache-scope.outputs.scope }}
+          provenance: ${{ inputs.enable-attestations }}
+          sbom: ${{ inputs.enable-sbom }}
+          secrets: ${{ steps.secrets.outputs.secrets }}
+          outputs: type=image,name=${{ needs.metadata.outputs.full-image-name }},push-by-digest=true,name-canonical=true
+        continue-on-error: true
+
+      - name: Check build status
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "::error::Container build failed for platform: ${{ matrix.platform }}"
+          echo "::error::Common build failures:"
+          echo "::error::  - Syntax errors in Dockerfile"
+          echo "::error::  - Missing files in build context"
+          echo "::error::  - Invalid base image or tag"
+          echo "::error::  - Network issues downloading dependencies"
+          echo "::error::  - Insufficient disk space"
+          echo "::error::  - Build argument or secret issues"
+          echo ""
+          echo "## Build Failed ❌" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Platform:** \`${{ matrix.platform }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Troubleshooting Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Check the build logs above for specific error messages" >> $GITHUB_STEP_SUMMARY
+          echo "2. Verify Dockerfile syntax is correct" >> $GITHUB_STEP_SUMMARY
+          echo "3. Ensure all required files are in the build context" >> $GITHUB_STEP_SUMMARY
+          echo "4. Check that base image exists and is accessible" >> $GITHUB_STEP_SUMMARY
+          echo "5. Verify build arguments and secrets are correct" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Debug Mode" >> $GITHUB_STEP_SUMMARY
+          echo "Enable debug mode for verbose logging:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`yaml" >> $GITHUB_STEP_SUMMARY
+          echo "with:" >> $GITHUB_STEP_SUMMARY
+          echo "  debug: true" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          exit 1
+
+      - name: Export digest
+        id: digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+          echo "digest=$digest" >> $GITHUB_OUTPUT
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ strategy.job-index }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Clean up secret files
+        if: always()
+        run: |
+          rm -f /tmp/build-secret-*
+
+      - name: Output platform build summary
+        run: |
+          echo "## Platform Build Complete: ${{ matrix.platform }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Cache Scope:** \`${{ steps.cache-scope.outputs.scope }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # Create multi-platform manifest
+  manifest:
+    name: Create Multi-Platform Manifest
+    needs:
+      - parse-platforms
+      - metadata
+      - build
+    runs-on: ubuntu-latest
+
+    outputs:
+      digest: ${{ steps.manifest.outputs.digest }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download all digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.registry-username || github.actor }}
+          password: ${{ secrets.registry-password || secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        id: manifest
+        working-directory: /tmp/digests
+        run: |
+          # Collect all platform digests
+          DIGESTS=""
+          DIGEST_COUNT=0
+          for digest_file in *; do
+            if [[ -f "$digest_file" ]]; then
+              DIGESTS="$DIGESTS ${{ inputs.registry }}/${{ inputs.image-name }}@sha256:${digest_file}"
+              DIGEST_COUNT=$((DIGEST_COUNT + 1))
             fi
           done
-          echo "${delimiter}" >> $GITHUB_OUTPUT
 
-      - name: Calculate GitHub Actions cache scopes
-        id: cache_scopes
-        run: |
-          # Create a list of cache object lines from the cleaned cache scope CSV
-          delimiter="$(openssl rand -hex 8)"
-          echo "from<<${delimiter}" >> $GITHUB_OUTPUT
-          for scope in $(echo ${{ steps.clean.outputs.cache_from_scopes }} | tr "," " "); do
-            echo "type=gha,scope=${scope}" >> $GITHUB_OUTPUT
+          if [[ $DIGEST_COUNT -eq 0 ]]; then
+            echo "::error::No platform digests found"
+            echo "::error::This usually means all platform builds failed"
+            exit 1
+          fi
+
+          echo "::notice::Found $DIGEST_COUNT platform digest(s)"
+
+          # Create manifest for each tag
+          TAGS="${{ needs.metadata.outputs.image-tags }}"
+
+          # Convert newline-separated tags to array
+          IFS=$'\n' read -rd '' -a TAG_ARRAY <<< "$TAGS" || true
+
+          MANIFEST_DIGEST=""
+          TAG_COUNT=0
+          for tag in "${TAG_ARRAY[@]}"; do
+            if [[ -n "$tag" ]]; then
+              TAG_COUNT=$((TAG_COUNT + 1))
+              echo "::group::Creating manifest for $tag"
+
+              if docker buildx imagetools create \
+                --tag "$tag" \
+                $DIGESTS; then
+                echo "::notice::✓ Manifest created for $tag"
+              else
+                echo "::error::Failed to create manifest for $tag"
+                echo "::endgroup::"
+                exit 1
+              fi
+
+              echo "::endgroup::"
+
+              # Get the digest of the manifest (same for all tags)
+              if [[ -z "$MANIFEST_DIGEST" ]]; then
+                MANIFEST_DIGEST=$(docker buildx imagetools inspect "$tag" --format '{{.Manifest.Digest}}')
+              fi
+            fi
           done
-          echo "${delimiter}" >> $GITHUB_OUTPUT
-          # Create a cache object line if cache_to_scope is set
-          if [[ -n "${{ steps.clean.outputs.cache_to_scope }}" ]]; then
-            echo "to=type=gha,mode=max,scope=${{ steps.clean.outputs.cache_to_scope }}" >> $GITHUB_OUTPUT
-          else
-            echo "to=" >> $GITHUB_OUTPUT
+
+          if [[ -z "$MANIFEST_DIGEST" ]]; then
+            echo "::error::Failed to get manifest digest"
+            exit 1
           fi
 
-      - name: Build image for push
-        if: inputs.push == true
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # tag=v6.19.2
-        with:
-          build-args: ${{ steps.prepare-build-args.outputs.build_args }}
-          cache-from: ${{ steps.cache_scopes.outputs.from }}
-          cache-to: ${{ steps.cache_scopes.outputs.to }}
-          context: .
-          file: ${{ inputs.docker_file}}
-          labels: ${{ inputs.image_labels }}
-          platforms: ${{ inputs.platforms }}
-          push: true
-          secrets: ${{ steps.prepare-build-secrets.outputs.build_secrets }}
-          tags: ${{ steps.tag_suffix.outputs.tags }}
+          echo "digest=$MANIFEST_DIGEST" >> $GITHUB_OUTPUT
+          echo "::notice::✅ Multi-platform manifest created: $MANIFEST_DIGEST"
+          echo "::notice::Created $TAG_COUNT tag(s) for $DIGEST_COUNT platform(s)"
 
-      - name: Build image for archive
-        if: inputs.push == false
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # tag=v6.19.2
-        with:
-          build-args: ${{ steps.prepare-build-args.outputs.build_args }}
-          cache-from: ${{ steps.cache_scopes.outputs.from }}
-          cache-to: ${{ steps.cache_scopes.outputs.to }}
-          context: .
-          file: ${{ inputs.docker_file}}
-          labels: ${{ inputs.image_labels }}
-          outputs: type=docker,dest=${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar
-          platforms: ${{ inputs.platforms }}
-          push: false
-          secrets: ${{ steps.prepare-build-secrets.outputs.build_secrets }}
-          tags: ${{ steps.tag_suffix.outputs.tags }}
-
-      - name: Check if archive key is available
-        id: check_image_archive_key
-        if: inputs.push == false
+      - name: Inspect manifest
         run: |
-          if [ -n "${{ secrets.image_archive_key }}" ]; then
-            echo "do_encryption=true" >> $GITHUB_OUTPUT
-            echo "file_name=${{ steps.clean.outputs.image_archive_name_stem }}.tar.7z" >> $GITHUB_OUTPUT
-          else
-            echo "do_encryption=false" >> $GITHUB_OUTPUT
-            echo "file_name=${{ steps.clean.outputs.image_archive_name_stem }}".tar >> $GITHUB_OUTPUT
-          fi
+          FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
+          docker buildx imagetools inspect "$FIRST_TAG"
 
-      - name: Encrypt image archive
-        if: ${{ (inputs.push == false) && (steps.check_image_archive_key.outputs.do_encryption == 'true') }}
+      - name: Output manifest summary
         run: |
-          7za a -p${{ secrets.image_archive_key }} \
-          ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar.7z \
-          ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar
-
-      - name: Upload artifacts
-        if: ${{ (inputs.push == false) && (steps.clean.outputs.artifact_name != '') }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
-        with:
-          name: ${{ steps.clean.outputs.artifact_name }}
-          path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.check_image_archive_key.outputs.file_name }}
-          retention-days: ${{ inputs.artifact_retention_days }}
+          echo "## Multi-Platform Manifest Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ needs.metadata.outputs.full-image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Manifest Digest:** \`${{ steps.manifest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms:** \`${{ inputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Pull Command" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
+          echo "docker pull $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Verify Multi-Arch" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker buildx imagetools inspect $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

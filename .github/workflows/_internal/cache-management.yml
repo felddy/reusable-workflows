@@ -1,0 +1,117 @@
+---
+name: Cache Management Utilities
+
+# Internal workflow for cache management utilities
+# This workflow provides reusable cache management functions
+
+"on":
+  workflow_call:
+    inputs:
+      action:
+        description: Cache action (invalidate, cleanup, info)
+        required: true
+        type: string
+
+      cache-scope:
+        description: Cache scope to manage
+        required: false
+        type: string
+        default: build
+
+      platforms:
+        description: Platforms for cache management
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  cache-info:
+    name: Cache Information
+    if: inputs.action == 'info'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Display cache information
+        run: |
+          echo "## Cache Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Scope:** \`${{ inputs.cache-scope }}\`" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms:** \`${{ inputs.platforms }}\`" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cache Strategy" >> $GITHUB_STEP_SUMMARY
+          echo "- **Type:** GitHub Actions Cache (type=gha)" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode:** max (all layers cached)" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "- **Scope:** Per-platform for multi-arch builds" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "- **Invalidation:** Automatic on Dockerfile changes" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cache Scopes" >> $GITHUB_STEP_SUMMARY
+
+          if [[ -n "${{ inputs.platforms }}" ]]; then
+            IFS=',' read -ra PLATFORMS <<< "${{ inputs.platforms }}"
+            for platform in "${PLATFORMS[@]}"; do
+              platform=$(echo "$platform" | xargs)
+              platform_slug="${platform//\//-}"
+              echo "- \`${{ inputs.cache-scope }}-${platform_slug}\`" \
+                >> $GITHUB_STEP_SUMMARY
+            done
+          else
+            echo "- \`${{ inputs.cache-scope }}\`" \
+              >> $GITHUB_STEP_SUMMARY
+          fi
+
+  cache-invalidate:
+    name: Invalidate Cache
+    if: inputs.action == 'invalidate'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invalidate cache
+        run: |
+          echo "::notice::Cache invalidation requested for scope: \
+            ${{ inputs.cache-scope }}"
+          echo "::notice::GitHub Actions cache is automatically \
+            invalidated on key changes"
+          echo "::notice::To force rebuild, change the cache-scope \
+            input parameter"
+
+          echo "## Cache Invalidation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Cache invalidation is automatic in GitHub Actions when:" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "- Dockerfile content changes" >> $GITHUB_STEP_SUMMARY
+          echo "- Build context changes" >> $GITHUB_STEP_SUMMARY
+          echo "- Cache scope changes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "To force a rebuild, use a different cache-scope value." \
+            >> $GITHUB_STEP_SUMMARY
+
+  cache-cleanup:
+    name: Cleanup Old Caches
+    if: inputs.action == 'cleanup'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup information
+        run: |
+          echo "::notice::GitHub Actions automatically manages \
+            cache cleanup"
+          echo "::notice::Caches are evicted based on LRU policy when \
+            storage limit is reached"
+          echo "::notice::Default cache retention: 7 days for \
+            unused caches"
+
+          echo "## Cache Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "GitHub Actions automatically manages cache cleanup:" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "- **Retention:** 7 days for unused caches" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "- **Eviction:** LRU policy when storage limit reached" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "- **Limit:** 10 GB per repository" \
+            >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No manual cleanup required." >> $GITHUB_STEP_SUMMARY
