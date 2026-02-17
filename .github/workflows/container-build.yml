@@ -535,7 +535,7 @@ jobs:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           platforms: ${{ matrix.platform }}
-          push: true
+          tags: ${{ needs.metadata.outputs.full-image-name }}:buildcache
           labels: ${{ needs.metadata.outputs.image-labels }}
           build-args: ${{ steps.parse-args.outputs.args }}
           target: ${{ inputs.target }}
@@ -544,7 +544,7 @@ jobs:
           provenance: ${{ inputs.enable-attestations }}
           sbom: ${{ inputs.enable-sbom }}
           secrets: ${{ steps.secrets.outputs.secrets }}
-          outputs: type=image,name=${{ needs.metadata.outputs.full-image-name }},push-by-digest=true,name-canonical=true
+          outputs: type=image,name=${{ needs.metadata.outputs.full-image-name }},push-by-digest=true,name-canonical=true,push=true
         continue-on-error: true
 
       - name: Check build status
