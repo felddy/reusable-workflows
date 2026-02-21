@@ -258,7 +258,7 @@ jobs:
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
-            ${{ inputs.link-repository && '' || 'org.opencontainers.image.source=' }}
+            ${{ inputs.link-repository == false && 'org.opencontainers.image.source=' || '' }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
             org.opencontainers.image.revision=${{ github.sha }}
