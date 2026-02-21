@@ -635,19 +635,10 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
           echo "digest=$digest" >> $GITHUB_OUTPUT
 
-      - name: Sanitize image name for artifact
-        id: sanitize
-        run: |
-          # Replace forward slashes with hyphens for artifact naming
-          SANITIZED_NAME="${{ inputs.image-name }}"
-          SANITIZED_NAME="${SANITIZED_NAME//\//-}"
-          echo "name=$SANITIZED_NAME" >> $GITHUB_OUTPUT
-          echo "::notice::Sanitized artifact name: $SANITIZED_NAME"
-
       - name: Upload digest
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: digests-${{ steps.sanitize.outputs.name }}-${{ strategy.job-index }}
+          name: digests-${{ github.job }}-${{ strategy.job-index }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -681,20 +672,11 @@ jobs:
       packages: write
 
     steps:
-      - name: Sanitize image name for artifact
-        id: sanitize
-        run: |
-          # Replace forward slashes with hyphens for artifact naming
-          SANITIZED_NAME="${{ inputs.image-name }}"
-          SANITIZED_NAME="${SANITIZED_NAME//\//-}"
-          echo "name=$SANITIZED_NAME" >> $GITHUB_OUTPUT
-          echo "::notice::Sanitized artifact name: $SANITIZED_NAME"
-
       - name: Download all digests
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
         with:
           path: /tmp/digests
-          pattern: digests-${{ steps.sanitize.outputs.name }}-*
+          pattern: digests-build-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
