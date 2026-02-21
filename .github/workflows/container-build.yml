@@ -638,7 +638,7 @@ jobs:
       - name: Upload digest
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: digests-${{ strategy.job-index }}
+          name: digests-${{ inputs.image-name }}-${{ strategy.job-index }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -676,7 +676,7 @@ jobs:
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
         with:
           path: /tmp/digests
-          pattern: digests-*
+          pattern: digests-${{ inputs.image-name }}-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
