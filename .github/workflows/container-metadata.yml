@@ -67,6 +67,12 @@ name: Container Metadata Generation
         type: string
         default: ""
 
+      link-repository:
+        description: Link package to repository (adds org.opencontainers.image.source label)
+        required: false
+        type: boolean
+        default: true
+
     outputs:
       image-tags:
         description: Generated image tags (newline-separated)
@@ -252,7 +258,7 @@ jobs:
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
-            org.opencontainers.image.source=${{ github.event.repository.clone_url }}
+            ${{ inputs.link-repository && '' || 'org.opencontainers.image.source=' }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.created=${{ github.event.repository.updated_at }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -275,7 +281,19 @@ jobs:
           echo "**Version:** \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Strategy:** \`${{ steps.context.outputs.strategy }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Is Latest:** \`${{ steps.determine-latest.outputs.is-latest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Linked to Repository:** \`${{ inputs.link-repository }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ inputs.link-repository }}" == "false" ]]; then
+            echo "### ⚠️ Private Package (Not Linked)" >> $GITHUB_STEP_SUMMARY
+            echo "This package is NOT linked to the repository (no org.opencontainers.image.source label)." >> $GITHUB_STEP_SUMMARY
+            echo "- Package is scoped to user/org account" >> $GITHUB_STEP_SUMMARY
+            echo "- Private by default" >> $GITHUB_STEP_SUMMARY
+            echo "- Will NOT appear on repository packages page" >> $GITHUB_STEP_SUMMARY
+            echo "- Access controlled via package permissions" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "### Tags" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY

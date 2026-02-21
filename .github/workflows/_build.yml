@@ -59,6 +59,30 @@ jobs:
     secrets:
       registry-password: ${{ secrets.GITHUB_TOKEN }}
 
+  build-private:
+    name: Build and Publish Container Private
+    needs:
+      - config
+      - lint
+    # Skip on pull requests to save time, only build test platform
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/container-build.yml
+    with:
+      platforms: ${{ needs.config.outputs.platforms_csv }}
+      image-name: ${{ needs.config.outputs.image_name }}-private
+      registry: ghcr.io
+      visibility: private
+      context: .
+      dockerfile: ./Dockerfile
+      enable-attestations: true
+      enable-sbom: true
+      enable-signing: false
+      enable-scanning: true
+      scan-severity: CRITICAL,HIGH
+      kubernetes-labels: true
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
   build-pr:
     name: Build Container (PR)
     needs:

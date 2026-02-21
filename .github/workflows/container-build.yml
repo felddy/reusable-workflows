@@ -11,7 +11,7 @@ name: Container Build Workflow
 # - Individual secret passing (proper GitHub redaction)
 # - Automatic attestation generation
 # - Vulnerability scanning with Trivy
-# - Private package support
+# - Private package support (replaces encrypted tarballs)
 # - Kubernetes-ready images
 # - OCI-compliant, runtime-agnostic
 #
@@ -22,6 +22,55 @@ name: Container Build Workflow
 #     image-name: ${{ github.repository }}
 #   secrets:
 #     registry-password: ${{ secrets.GITHUB_TOKEN }}
+#
+# Private Package Workflow:
+#   Build images with sensitive content (e.g., pre-installed licensed software)
+#   and publish to private GitHub Container Registry packages.
+#
+#   HOW IT WORKS:
+#   - visibility: public  → Adds org.opencontainers.image.source label
+#                         → Package linked to repository
+#                         → Inherits repository permissions
+#                         → Shows on repository packages page
+#
+#   - visibility: private → Omits org.opencontainers.image.source label
+#                         → Package NOT linked to repository
+#                         → Scoped to user/org account
+#                         → Private by default
+#                         → Does NOT show on repository packages page
+#
+#   NO API CALLS NEEDED - visibility is controlled purely by the presence or
+#   absence of the org.opencontainers.image.source label.
+#
+#   jobs:
+#     build-public:
+#       uses: ./.github/workflows/container-build.yml@v4
+#       with:
+#         image-name: ${{ github.repository }}
+#         visibility: public  # Adds org.opencontainers.image.source label
+#         platforms: linux/amd64,linux/arm64
+#
+#     build-private:
+#       uses: ./.github/workflows/container-build.yml@v4
+#       with:
+#         image-name: ${{ github.repository }}/with-licensed-content
+#         visibility: private  # Omits org.opencontainers.image.source label
+#         platforms: linux/amd64,linux/arm64
+#         build-args: |
+#           LICENSED_URL=${{ secrets.LICENSED_URL }}
+#       secrets:
+#         registry-password: ${{ secrets.GITHUB_TOKEN }}
+#
+#   Private packages:
+#   - Inherit repository permissions automatically
+#   - No encryption/decryption overhead (replaces encrypted tarballs)
+#   - Use standard Docker pull/push workflow
+#   - Can attach attestations and SBOMs
+#   - Access control via GitHub repository permissions
+#
+#   Pulling private images:
+#     echo $PAT | docker login ghcr.io -u USERNAME --password-stdin
+#     docker pull ghcr.io/owner/repo/with-licensed-content:tag
 
 "on":
   workflow_call:
@@ -274,6 +323,7 @@ jobs:
       liveness-path: ${{ inputs.liveness-path }}
       readiness-path: ${{ inputs.readiness-path }}
       startup-path: ${{ inputs.startup-path }}
+      link-repository: ${{ inputs.visibility == 'public' }}
 
   # Build container image (multi-architecture support)
   build:
@@ -733,7 +783,28 @@ jobs:
           echo "**Image:** \`${{ needs.metadata.outputs.full-image-name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Manifest Digest:** \`${{ steps.manifest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** \`${{ inputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Visibility:** \`${{ inputs.visibility }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ inputs.visibility }}" == "private" ]]; then
+            echo "### 🔒 Private Package" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "This image is private because it is NOT linked to the repository." >> $GITHUB_STEP_SUMMARY
+            echo "The \`org.opencontainers.image.source\` label was omitted, so the package:" >> $GITHUB_STEP_SUMMARY
+            echo "- Is scoped to the user/org account (not the repository)" >> $GITHUB_STEP_SUMMARY
+            echo "- Is private by default" >> $GITHUB_STEP_SUMMARY
+            echo "- Will NOT appear on the repository packages page" >> $GITHUB_STEP_SUMMARY
+            echo "- Access is controlled via package permissions" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**To pull this private image:**" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+            echo "echo \$PAT | docker login ghcr.io -u USERNAME --password-stdin" >> $GITHUB_STEP_SUMMARY
+            FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
+            echo "docker pull $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "### Pull Command" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
