@@ -275,10 +275,28 @@ name: Container Build Workflow
         value: ${{ jobs.metadata.outputs.full-image-name }}
 
 jobs:
+  # Generate unique workflow call ID for artifact deconfliction
+  generate-id:
+    name: Generate Workflow Call ID
+    runs-on: ubuntu-latest
+    outputs:
+      workflow-call-id: ${{ steps.generate.outputs.id }}
+    steps:
+      - name: Generate unique ID
+        id: generate
+        run: |
+          # Create a unique ID based on image name and visibility
+          # This ensures each workflow call has unique artifacts
+          UNIQUE_ID=$(echo "${{ inputs.image-name }}-${{ inputs.visibility }}-${{ github.run_id }}-${{ github.run_attempt }}" | sha256sum | cut -c1-8)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "::notice::Workflow call ID: $UNIQUE_ID (use this for all artifacts)"
+
   # Parse platforms for matrix strategy
   parse-platforms:
     name: Parse Platforms
     runs-on: ubuntu-latest
+    needs:
+      - generate-id
     outputs:
       platforms: ${{ steps.parse.outputs.platforms }}
     steps:
@@ -313,6 +331,8 @@ jobs:
   # Generate metadata (tags, labels, version)
   metadata:
     name: Generate Metadata
+    needs:
+      - generate-id
     uses: ./.github/workflows/container-metadata.yml
     with:
       image-name: ${{ inputs.image-name }}
@@ -329,6 +349,7 @@ jobs:
   build:
     name: Build ${{ matrix.platform }}
     needs:
+      - generate-id
       - parse-platforms
       - metadata
     runs-on: ubuntu-latest
@@ -635,19 +656,10 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
           echo "digest=$digest" >> $GITHUB_OUTPUT
 
-      - name: Generate unique workflow call ID
-        id: workflow-id
-        run: |
-          # Create a unique ID based on image name and visibility
-          # This ensures each workflow call has unique artifacts
-          UNIQUE_ID=$(echo "${{ inputs.image-name }}-${{ inputs.visibility }}" | sha256sum | cut -c1-8)
-          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
-          echo "::notice::Workflow call ID: $UNIQUE_ID"
-
       - name: Upload digest
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: digests-${{ steps.workflow-id.outputs.id }}-${{ strategy.job-index }}
+          name: digests-${{ needs.generate-id.outputs.workflow-call-id }}-${{ strategy.job-index }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -668,6 +680,7 @@ jobs:
   manifest:
     name: Create Multi-Platform Manifest
     needs:
+      - generate-id
       - parse-platforms
       - metadata
       - build
@@ -681,20 +694,11 @@ jobs:
       packages: write
 
     steps:
-      - name: Generate unique workflow call ID
-        id: workflow-id
-        run: |
-          # Create a unique ID based on image name and visibility
-          # This ensures each workflow call has unique artifacts
-          UNIQUE_ID=$(echo "${{ inputs.image-name }}-${{ inputs.visibility }}" | sha256sum | cut -c1-8)
-          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
-          echo "::notice::Workflow call ID: $UNIQUE_ID"
-
       - name: Download all digests
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
         with:
           path: /tmp/digests
-          pattern: digests-${{ steps.workflow-id.outputs.id }}-*
+          pattern: digests-${{ needs.generate-id.outputs.workflow-call-id }}-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -838,6 +842,7 @@ jobs:
   scan:
     name: Security Scan
     needs:
+      - generate-id
       - metadata
       - manifest
     if: inputs.enable-scanning == true
@@ -846,11 +851,13 @@ jobs:
       image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
       scan-severity: ${{ inputs.scan-severity }}
       fail-on-vulnerabilities: true
+      artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
 
   # Generate attestations (SLSA provenance, SBOM)
   attest:
     name: Generate Attestations
     needs:
+      - generate-id
       - metadata
       - manifest
       - scan
@@ -872,6 +879,7 @@ jobs:
       attach-scan-results: false  # TODO: Enable when artifact sharing is implemented
       scan-results-path: ""
       push-to-registry: true
+      artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
     secrets:
       registry-username: ${{ secrets.registry-username }}
       registry-password: ${{ secrets.registry-password }}

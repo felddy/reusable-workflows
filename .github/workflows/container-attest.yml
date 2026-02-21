@@ -72,6 +72,12 @@ name: Container Attestation
         type: boolean
         default: true
 
+      artifact-prefix:
+        description: Unique prefix for artifact names to prevent collisions in parallel builds
+        required: false
+        type: string
+        default: ""
+
     secrets:
       registry-username:
         description: Registry username
@@ -276,7 +282,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: attestations
+          name: attestations${{ inputs.artifact-prefix != '' && format('-{0}', inputs.artifact-prefix) || '' }}
           path: |
             sbom-spdx.json
             sbom-cyclonedx.json
