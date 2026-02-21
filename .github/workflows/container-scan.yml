@@ -160,11 +160,22 @@ jobs:
           sarif_file: trivy-results.sarif
           category: container-scan
 
+      - name: Generate unique scan ID
+        id: scan-id
+        if: always()
+        run: |
+          # Create a unique ID based on image reference
+          # Extract just the image name part (without digest) for the hash
+          IMAGE_NAME=$(echo "${{ inputs.image-ref }}" | cut -d'@' -f1)
+          UNIQUE_ID=$(echo "$IMAGE_NAME" | sha256sum | cut -c1-8)
+          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
+          echo "::notice::Scan artifact ID: $UNIQUE_ID"
+
       - name: Upload scan artifacts
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: security-scan-results
+          name: security-scan-results-${{ steps.scan-id.outputs.id }}
           path: |
             trivy-results.sarif
             trivy-results.json
