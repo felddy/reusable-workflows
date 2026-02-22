@@ -69,7 +69,7 @@ jobs:
     uses: ./.github/workflows/container-build.yml
     with:
       platforms: ${{ needs.config.outputs.platforms_csv }}
-      image-name: ${{ needs.config.outputs.image_name }}-private
+      image-name: ${{ needs.config.outputs.image_name }}-snow
       registry: ghcr.io
       visibility: private
       context: .
