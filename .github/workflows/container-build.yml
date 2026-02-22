@@ -607,6 +607,7 @@ jobs:
           file: ${{ inputs.dockerfile }}
           platforms: ${{ matrix.platform }}
           labels: ${{ needs.metadata.outputs.image-labels }}
+          annotations: ${{ needs.metadata.outputs.annotations }}
           build-args: ${{ steps.parse-args.outputs.args }}
           target: ${{ inputs.target }}
           cache-from: type=gha,scope=${{ steps.cache-scope.outputs.scope }}
