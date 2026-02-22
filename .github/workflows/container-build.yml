@@ -252,6 +252,7 @@ jobs:
       - generate-id
     outputs:
       link-repository: ${{ steps.check.outputs.link-repository }}
+      is-private: ${{ steps.check.outputs.is-private }}
     steps:
       - name: Check for private package token
         id: check
@@ -260,9 +261,11 @@ jobs:
           # Otherwise, package is public (linked to repository)
           if [[ -n "${{ secrets.private-package-token }}" ]]; then
             echo "link-repository=false" >> $GITHUB_OUTPUT
+            echo "is-private=true" >> $GITHUB_OUTPUT
             echo "::notice::Private package mode: will NOT link to repository"
           else
             echo "link-repository=true" >> $GITHUB_OUTPUT
+            echo "is-private=false" >> $GITHUB_OUTPUT
             echo "::notice::Public package mode: will link to repository"
           fi
 
