@@ -480,6 +480,9 @@ jobs:
       - name: Build and push container image
         id: build
         uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # tag=v6.10.0
+        env:
+          # Only upload build records in debug mode to reduce artifact storage
+          DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.debug == true || env.ACTIONS_STEP_DEBUG == 'true' }}
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
