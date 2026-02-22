@@ -126,6 +126,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
 
+      - name: Download scan results artifact
+        if: inputs.attach-scan-results == true
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
+        with:
+          name: security-scan-results${{ inputs.artifact-prefix != '' && format('-{0}', inputs.artifact-prefix) || '' }}
+          path: ./scan-results
+        continue-on-error: true
+
       - name: Log in to container registry
         if: inputs.push-to-registry == true
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
@@ -225,13 +233,13 @@ jobs:
 
       - name: Attach vulnerability scan results
         id: attest-scan
-        if: inputs.attach-scan-results && inputs.scan-results-path != ''
+        if: inputs.attach-scan-results && (inputs.scan-results-path != '' || inputs.artifact-prefix != '')
         uses: actions/attest@025375512d7691d20fa59fad9e64a6399960847c # tag=v3.2.0
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           predicate-type: https://cosign.sigstore.dev/attestation/vuln/v1
-          predicate-path: ${{ inputs.scan-results-path }}
+          predicate-path: ${{ inputs.scan-results-path != '' && inputs.scan-results-path || './scan-results/trivy-results.json' }}
           push-to-registry: ${{ inputs.push-to-registry }}
         continue-on-error: true
 

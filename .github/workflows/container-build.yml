@@ -757,8 +757,7 @@ jobs:
       enable-provenance: ${{ inputs.enable-attestations }}
       enable-sbom: ${{ inputs.enable-sbom }}
       sbom-formats: both
-      attach-scan-results: false  # TODO: Enable when artifact sharing is implemented
-      scan-results-path: ""
+      attach-scan-results: ${{ inputs.enable-scanning }}
       push-to-registry: true
       artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
     secrets:
