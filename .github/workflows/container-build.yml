@@ -2,77 +2,9 @@
 name: Container Build Workflow
 
 # This reusable workflow builds OCI-compliant container images with modern
-# supply chain security features including SLSA provenance, SBOMs, and
-# vulnerability scanning.
-#
-# Features:
-# - Multi-architecture builds
-# - Simplified parameter passing (no more numbered args)
-# - Individual secret passing (proper GitHub redaction)
-# - Automatic attestation generation
-# - Vulnerability scanning with Trivy
-# - Private package support (replaces encrypted tarballs)
-# - Kubernetes-ready images
-# - OCI-compliant, runtime-agnostic
-#
-# Usage:
-#   uses: felddy/reusable-workflows/.github/workflows/container-build.yml@v4
-#   with:
-#     platforms: linux/amd64,linux/arm64
-#     image-name: ${{ github.repository }}
-#   secrets:
-#     registry-password: ${{ secrets.GITHUB_TOKEN }}
-#
-# Private Package Workflow:
-#   Build images with sensitive content (e.g., pre-installed licensed software)
-#   and publish to private GitHub Container Registry packages.
-#
-#   HOW IT WORKS:
-#   - visibility: public  → Adds org.opencontainers.image.source label
-#                         → Package linked to repository
-#                         → Inherits repository permissions
-#                         → Shows on repository packages page
-#
-#   - visibility: private → Omits org.opencontainers.image.source label
-#                         → Package NOT linked to repository
-#                         → Scoped to user/org account
-#                         → Private by default
-#                         → Does NOT show on repository packages page
-#
-#   NO API CALLS NEEDED - visibility is controlled purely by the presence or
-#   absence of the org.opencontainers.image.source label.
-#
-#   jobs:
-#     build-public:
-#       uses: ./.github/workflows/container-build.yml@v4
-#       with:
-#         image-name: ${{ github.repository }}
-#         visibility: public  # Adds org.opencontainers.image.source label
-#         platforms: linux/amd64,linux/arm64
-#
-#     build-private:
-#       uses: ./.github/workflows/container-build.yml@v4
-#       with:
-#         image-name: ${{ github.repository }}/with-licensed-content
-#         visibility: private  # Omits org.opencontainers.image.source label
-#         platforms: linux/amd64,linux/arm64
-#         build-args: |
-#           LICENSED_URL=${{ secrets.LICENSED_URL }}
-#       secrets:
-#         registry-password: ${{ secrets.GITHUB_TOKEN }}
-#
-#   Private packages:
-#   - Inherit repository permissions automatically
-#   - No encryption/decryption overhead (replaces encrypted tarballs)
-#   - Use standard Docker pull/push workflow
-#   - Can attach attestations and SBOMs
-#   - Access control via GitHub repository permissions
-#
-#   Pulling private images:
-#     echo $PAT | docker login ghcr.io -u USERNAME --password-stdin
-#     docker pull ghcr.io/owner/repo/with-licensed-content:tag
+# supply chain security features.
 
-"on":
+on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       # Required
@@ -87,18 +19,6 @@ name: Container Build Workflow
         required: false
         type: string
         default: ${{ github.repository }}
-
-      registry:
-        description: Container registry (ghcr.io, docker.io, etc.)
-        required: false
-        type: string
-        default: ghcr.io
-
-      visibility:
-        description: Image visibility (public, private, internal)
-        required: false
-        type: string
-        default: public
 
       # Build Configuration
       context:
@@ -221,14 +141,6 @@ name: Container Build Workflow
         default: false
 
     secrets:
-      registry-username:
-        description: Registry username
-        required: false
-
-      registry-password:
-        description: Registry password or token
-        required: false
-
       signing-key:
         description: Cosign signing key
         required: false
@@ -258,7 +170,7 @@ name: Container Build Workflow
         required: false
 
       private-package-token:
-        description: Token for private package authentication (use instead of registry-password for private builds)
+        description: Token for private package authentication (use instead of GITHUB_TOKEN for private builds)
         required: false
 
     outputs:
@@ -276,7 +188,7 @@ name: Container Build Workflow
 
       full-image-name:
         description: Full image name with registry
-        value: ${{ jobs.metadata.outputs.full-image-name }}
+        value: ghcr.io/${{ inputs.image-name }}
 
 jobs:
   # Generate unique workflow call ID for artifact deconfliction
@@ -289,9 +201,9 @@ jobs:
       - name: Generate unique ID
         id: generate
         run: |
-          # Create a unique ID based on image name and visibility
+          # Create a unique ID based on image name and run info
           # This ensures each workflow call has unique artifacts
-          UNIQUE_ID=$(echo "${{ inputs.image-name }}-${{ inputs.visibility }}-${{ github.run_id }}-${{ github.run_attempt }}" | sha256sum | cut -c1-8)
+          UNIQUE_ID=$(echo "${{ inputs.image-name }}-${{ github.run_id }}-${{ github.run_attempt }}" | sha256sum | cut -c1-8)
           echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
           echo "::notice::Workflow call ID: $UNIQUE_ID (use this for all artifacts)"
 
@@ -332,22 +244,44 @@ jobs:
           echo "platforms=$JSON_ARRAY" >> $GITHUB_OUTPUT
           echo "::notice::Parsed platforms: $JSON_ARRAY"
 
+  # Determine visibility based on presence of private-package-token
+  determine-visibility:
+    name: Determine Visibility
+    runs-on: ubuntu-latest
+    needs:
+      - generate-id
+    outputs:
+      link-repository: ${{ steps.check.outputs.link-repository }}
+    steps:
+      - name: Check for private package token
+        id: check
+        run: |
+          # If private-package-token is provided, package is private (unlinked)
+          # Otherwise, package is public (linked to repository)
+          if [[ -n "${{ secrets.private-package-token }}" ]]; then
+            echo "link-repository=false" >> $GITHUB_OUTPUT
+            echo "::notice::Private package mode: will NOT link to repository"
+          else
+            echo "link-repository=true" >> $GITHUB_OUTPUT
+            echo "::notice::Public package mode: will link to repository"
+          fi
+
   # Generate metadata (tags, labels, version)
   metadata:
     name: Generate Metadata
     needs:
       - generate-id
+      - determine-visibility
     uses: ./.github/workflows/container-metadata.yml
     with:
       image-name: ${{ inputs.image-name }}
-      registry: ${{ inputs.registry }}
       kubernetes-labels: ${{ inputs.kubernetes-labels }}
       component: ${{ inputs.component }}
       part-of: ${{ inputs.part-of }}
       liveness-path: ${{ inputs.liveness-path }}
       readiness-path: ${{ inputs.readiness-path }}
       startup-path: ${{ inputs.startup-path }}
-      link-repository: ${{ inputs.visibility == 'public' }}
+      link-repository: ${{ needs.determine-visibility.outputs.link-repository == 'true' }}
 
   # Build container image (multi-architecture support)
   build:
@@ -400,9 +334,9 @@ jobs:
       - name: Log in to container registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
-          registry: ${{ inputs.registry }}
-          username: ${{ secrets.registry-username || github.actor }}
-          password: ${{ inputs.visibility == 'private' && secrets.private-package-token || secrets.registry-password || secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Validate required inputs
         run: |
@@ -426,25 +360,6 @@ jobs:
             EXIT_CODE=1
           else
             echo "::notice::✓ Image name: ${{ inputs.image-name }}"
-          fi
-
-          # Validate registry format
-          if [[ "${{ inputs.registry }}" =~ ^https?:// ]]; then
-            echo "::error::registry should not include protocol (http:// or https://)"
-            echo "::error::Use: ghcr.io (not https://ghcr.io)"
-            EXIT_CODE=1
-          else
-            echo "::notice::✓ Registry: ${{ inputs.registry }}"
-          fi
-
-          # Validate visibility
-          VISIBILITY="${{ inputs.visibility }}"
-          if [[ "$VISIBILITY" != "public" ]] && [[ "$VISIBILITY" != "private" ]] && [[ "$VISIBILITY" != "internal" ]]; then
-            echo "::error::visibility must be one of: public, private, internal"
-            echo "::error::Got: $VISIBILITY"
-            EXIT_CODE=1
-          else
-            echo "::notice::✓ Visibility: $VISIBILITY"
           fi
 
           # Validate Dockerfile exists
@@ -521,7 +436,6 @@ jobs:
             echo "- Missing required inputs (platforms, image-name)" >> $GITHUB_STEP_SUMMARY
             echo "- Dockerfile not found at specified path" >> $GITHUB_STEP_SUMMARY
             echo "- Build context directory doesn't exist" >> $GITHUB_STEP_SUMMARY
-            echo "- Invalid registry format (should not include protocol)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Documentation" >> $GITHUB_STEP_SUMMARY
             echo "See [USAGE.md](../../USAGE.md) for detailed parameter documentation." >> $GITHUB_STEP_SUMMARY
@@ -619,7 +533,7 @@ jobs:
           provenance: ${{ inputs.enable-attestations }}
           sbom: ${{ inputs.enable-sbom }}
           secrets: ${{ steps.secrets.outputs.secrets }}
-          outputs: type=image,name=${{ inputs.registry }}/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=ghcr.io/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=true
         continue-on-error: true
 
       - name: Check build status
@@ -689,6 +603,7 @@ jobs:
       - parse-platforms
       - metadata
       - build
+      - determine-visibility
     runs-on: ubuntu-latest
 
     outputs:
@@ -712,9 +627,9 @@ jobs:
       - name: Log in to container registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
-          registry: ${{ inputs.registry }}
-          username: ${{ secrets.registry-username || github.actor }}
-          password: ${{ inputs.visibility == 'private' && secrets.private-package-token || secrets.registry-password || secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Create manifest list and push
         id: manifest
@@ -725,7 +640,7 @@ jobs:
           DIGEST_COUNT=0
           for digest_file in *; do
             if [[ -f "$digest_file" ]]; then
-              DIGESTS="$DIGESTS ${{ inputs.registry }}/${{ inputs.image-name }}@sha256:${digest_file}"
+              DIGESTS="$DIGESTS ghcr.io/${{ inputs.image-name }}@sha256:${digest_file}"
               DIGEST_COUNT=$((DIGEST_COUNT + 1))
             fi
           done
@@ -807,13 +722,12 @@ jobs:
         run: |
           echo "## Multi-Platform Manifest Created" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ needs.metadata.outputs.full-image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Manifest Digest:** \`${{ steps.manifest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** \`${{ inputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Visibility:** \`${{ inputs.visibility }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [[ "${{ inputs.visibility }}" == "private" ]]; then
+          if [[ "${{ needs.determine-visibility.outputs.link-repository }}" == "false" ]]; then
             echo "### 🔒 Private Package" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "This image is private because it is NOT linked to the repository." >> $GITHUB_STEP_SUMMARY
@@ -853,7 +767,7 @@ jobs:
     if: inputs.enable-scanning == true
     uses: ./.github/workflows/container-scan.yml
     with:
-      image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
+      image-ref: ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
       scan-severity: ${{ inputs.scan-severity }}
       fail-on-vulnerabilities: true
       artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
@@ -875,9 +789,9 @@ jobs:
       needs.manifest.result == 'success'
     uses: ./.github/workflows/container-attest.yml
     with:
-      image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
+      image-ref: ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
       image-name: ${{ inputs.image-name }}
-      registry: ${{ inputs.registry }}
+      registry: ghcr.io
       enable-provenance: ${{ inputs.enable-attestations }}
       enable-sbom: ${{ inputs.enable-sbom }}
       sbom-formats: both
@@ -885,9 +799,6 @@ jobs:
       scan-results-path: ""
       push-to-registry: true
       artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
-    secrets:
-      registry-username: ${{ secrets.registry-username }}
-      registry-password: ${{ secrets.registry-password }}
 
   # Sign container image
   sign:
@@ -907,11 +818,9 @@ jobs:
       needs.manifest.result == 'success'
     uses: ./.github/workflows/container-sign.yml
     with:
-      image-ref: ${{ inputs.registry }}/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
+      image-ref: ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
       image-name: ${{ inputs.image-name }}
-      registry: ${{ inputs.registry }}
+      registry: ghcr.io
       use-keyless: true
     secrets:
       signing-key: ${{ secrets.signing-key }}
-      registry-username: ${{ secrets.registry-username }}
-      registry-password: ${{ secrets.registry-password }}

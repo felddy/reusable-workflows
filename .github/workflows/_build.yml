@@ -46,8 +46,6 @@ jobs:
     with:
       platforms: ${{ needs.config.outputs.platforms_csv }}
       image-name: ${{ needs.config.outputs.image_name }}
-      registry: ghcr.io
-      visibility: public
       context: .
       dockerfile: ./Dockerfile
       enable-attestations: true
@@ -56,8 +54,6 @@ jobs:
       enable-scanning: true  # ✅ Enabled - Task 2.2 complete
       scan-severity: CRITICAL,HIGH
       kubernetes-labels: true
-    secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
 
   build-private:
     name: Build and Publish Container Private
@@ -69,9 +65,7 @@ jobs:
     uses: ./.github/workflows/container-build.yml
     with:
       platforms: ${{ needs.config.outputs.platforms_csv }}
-      image-name: ${{ needs.config.outputs.image_name }}-snow
-      registry: ghcr.io
-      visibility: private
+      image-name: ${{ needs.config.outputs.image_name }}-hid
       context: .
       dockerfile: ./Dockerfile
       enable-attestations: true
@@ -81,7 +75,6 @@ jobs:
       scan-severity: CRITICAL,HIGH
       kubernetes-labels: true
     secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
       private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 
   build-pr:
@@ -95,8 +88,6 @@ jobs:
     with:
       platforms: ${{ needs.config.outputs.test_platform }}
       image-name: ${{ needs.config.outputs.image_name }}
-      registry: ghcr.io
-      visibility: private
       context: .
       dockerfile: ./Dockerfile
       enable-attestations: false
@@ -105,8 +96,6 @@ jobs:
       enable-scanning: true  # ✅ Enabled for PRs with relaxed threshold
       scan-severity: CRITICAL  # Only fail on critical for PRs
       kubernetes-labels: true
-    secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
 
   mirror-to-dockerhub:
     name: Mirror images to DockerHub

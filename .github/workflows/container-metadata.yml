@@ -3,33 +3,14 @@ name: Container Metadata Generation
 
 # This reusable workflow generates OCI-compliant metadata for container images
 # including tags, labels, and version information based on the GitHub event context.
-#
-# Features:
-# - Automatic tag strategy based on event type (PR, branch, release, pre-release)
-# - OCI-compliant labels (org.opencontainers.image.*)
-# - Kubernetes recommended labels (app.kubernetes.io/*)
-# - Semantic version calculation
-# - Latest tag determination
-#
-# Usage:
-#   uses: ./.github/workflows/container-metadata.yml
-#   with:
-#     image-name: ${{ github.repository }}
-#     registry: ghcr.io
 
-"on":
+on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       image-name:
         description: Container image name (without registry)
         required: true
         type: string
-
-      registry:
-        description: Container registry (ghcr.io, docker.io, etc.)
-        required: false
-        type: string
-        default: ghcr.io
 
       kubernetes-labels:
         description: Add Kubernetes-specific labels
@@ -92,7 +73,7 @@ name: Container Metadata Generation
 
       full-image-name:
         description: Full image name with registry
-        value: ${{ jobs.metadata.outputs.full-name }}
+        value: ghcr.io/${{ inputs.image-name }}
 
 jobs:
   metadata:
@@ -104,7 +85,7 @@ jobs:
       labels: ${{ steps.meta.outputs.labels }}
       version: ${{ steps.version.outputs.version }}
       is-latest: ${{ steps.determine-latest.outputs.is-latest }}
-      full-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+      full-name: ghcr.io/${{ inputs.image-name }}
 
     steps:
       - name: Checkout repository
@@ -250,7 +231,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # tag=v5.7.0
         with:
-          images: ${{ inputs.registry }}/${{ inputs.image-name }}
+          images: ghcr.io/${{ inputs.image-name }}
           tags: |
             ${{ steps.tags.outputs.tags }}
             ${{ steps.determine-latest.outputs.is-latest == 'true' && 'latest' || '' }}
@@ -279,7 +260,7 @@ jobs:
         run: |
           echo "## Container Metadata Generated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`${{ inputs.registry }}/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Strategy:** \`${{ steps.context.outputs.strategy }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Is Latest:** \`${{ steps.determine-latest.outputs.is-latest }}\`" >> $GITHUB_STEP_SUMMARY
