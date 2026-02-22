@@ -79,12 +79,8 @@ name: Container Attestation
         default: ""
 
     secrets:
-      registry-username:
-        description: Registry username
-        required: false
-
-      registry-password:
-        description: Registry password or token
+      private-package-token:
+        description: Token for private package authentication (required for scanning private images)
         required: false
 
     outputs:
@@ -135,8 +131,8 @@ jobs:
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ secrets.registry-username || github.actor }}
-          password: ${{ secrets.registry-password || secrets.GITHUB_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Extract image digest
         id: digest

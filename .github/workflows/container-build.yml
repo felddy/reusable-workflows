@@ -804,6 +804,8 @@ jobs:
       scan-results-path: ""
       push-to-registry: true
       artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
+    secrets:
+      private-package-token: ${{ secrets.private-package-token }}
 
   # Sign container image
   sign:
@@ -829,3 +831,4 @@ jobs:
       use-keyless: true
     secrets:
       signing-key: ${{ secrets.signing-key }}
+      private-package-token: ${{ secrets.private-package-token }}
