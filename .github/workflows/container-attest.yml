@@ -364,10 +364,16 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Verify attestations using:" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-            echo "# Verify with GitHub CLI" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify with GitHub CLI (queries GitHub API)" >> $GITHUB_STEP_SUMMARY
             echo "gh attestation verify oci://${{ inputs.image-ref }} --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Verify SLSA Provenance with cosign" >> $GITHUB_STEP_SUMMARY
+            echo "# Download attestations for offline use" >> $GITHUB_STEP_SUMMARY
+            echo "gh attestation download oci://${{ inputs.image-ref }} --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "# Get trusted root certificates for offline verification" >> $GITHUB_STEP_SUMMARY
+            echo "gh attestation trusted-root > trusted_root.jsonl" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify SLSA Provenance with cosign (queries OCI registry)" >> $GITHUB_STEP_SUMMARY
             echo "cosign verify-attestation --type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
             echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
             echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
