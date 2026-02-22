@@ -272,6 +272,8 @@ jobs:
             ${{ inputs.kubernetes-labels && inputs.liveness-path != '' && format('app.kubernetes.io/health-liveness={0}', inputs.liveness-path) || '' }}
             ${{ inputs.kubernetes-labels && inputs.readiness-path != '' && format('app.kubernetes.io/health-readiness={0}', inputs.readiness-path) || '' }}
             ${{ inputs.kubernetes-labels && inputs.startup-path != '' && format('app.kubernetes.io/health-startup={0}', inputs.startup-path) || '' }}
+          annotations: |
+            ${{ inputs.link-repository == false && 'org.opencontainers.image.source=' || '' }}
 
       - name: Output metadata summary
         run: |
