@@ -257,6 +257,10 @@ name: Container Build Workflow
         description: Build secret 5 (individual secret for proper redaction)
         required: false
 
+      private-package-token:
+        description: Token for private package authentication (use instead of registry-password for private builds)
+        required: false
+
     outputs:
       image-digest:
         description: Image digest (sha256:...)
@@ -398,7 +402,7 @@ jobs:
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.registry-username || github.actor }}
-          password: ${{ secrets.registry-password || secrets.GITHUB_TOKEN }}
+          password: ${{ inputs.visibility == 'private' && secrets.private-package-token || secrets.registry-password || secrets.GITHUB_TOKEN }}
 
       - name: Validate required inputs
         run: |
@@ -710,7 +714,7 @@ jobs:
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.registry-username || github.actor }}
-          password: ${{ secrets.registry-password || secrets.GITHUB_TOKEN }}
+          password: ${{ inputs.visibility == 'private' && secrets.private-package-token || secrets.registry-password || secrets.GITHUB_TOKEN }}
 
       - name: Create manifest list and push
         id: manifest

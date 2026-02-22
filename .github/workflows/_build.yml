@@ -82,6 +82,7 @@ jobs:
       kubernetes-labels: true
     secrets:
       registry-password: ${{ secrets.GITHUB_TOKEN }}
+      private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 
   build-pr:
     name: Build Container (PR)
