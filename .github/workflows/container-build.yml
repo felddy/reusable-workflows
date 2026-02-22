@@ -96,43 +96,6 @@ on: # yamllint disable-line rule:truthy
         type: string
         default: ""
 
-      # Kubernetes
-      kubernetes-labels:
-        description: Add Kubernetes-specific labels
-        required: false
-        type: boolean
-        default: true
-
-      component:
-        description: Kubernetes component label value
-        required: false
-        type: string
-        default: ""
-
-      part-of:
-        description: Kubernetes part-of label value
-        required: false
-        type: string
-        default: ""
-
-      liveness-path:
-        description: Kubernetes liveness probe path
-        required: false
-        type: string
-        default: ""
-
-      readiness-path:
-        description: Kubernetes readiness probe path
-        required: false
-        type: string
-        default: ""
-
-      startup-path:
-        description: Kubernetes startup probe path
-        required: false
-        type: string
-        default: ""
-
       # Debug
       debug:
         description: Enable debug mode (verbose logging)
@@ -278,12 +241,6 @@ jobs:
     uses: ./.github/workflows/container-metadata.yml
     with:
       image-name: ${{ inputs.image-name }}
-      kubernetes-labels: ${{ inputs.kubernetes-labels }}
-      component: ${{ inputs.component }}
-      part-of: ${{ inputs.part-of }}
-      liveness-path: ${{ inputs.liveness-path }}
-      readiness-path: ${{ inputs.readiness-path }}
-      startup-path: ${{ inputs.startup-path }}
       link-repository: ${{ needs.determine-visibility.outputs.link-repository == 'true' }}
 
   # Build container image (multi-architecture support)

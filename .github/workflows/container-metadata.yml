@@ -12,42 +12,6 @@ on: # yamllint disable-line rule:truthy
         required: true
         type: string
 
-      kubernetes-labels:
-        description: Add Kubernetes-specific labels
-        required: false
-        type: boolean
-        default: true
-
-      component:
-        description: Kubernetes component label value
-        required: false
-        type: string
-        default: ""
-
-      part-of:
-        description: Kubernetes part-of label value
-        required: false
-        type: string
-        default: ""
-
-      liveness-path:
-        description: Kubernetes liveness probe path
-        required: false
-        type: string
-        default: ""
-
-      readiness-path:
-        description: Kubernetes readiness probe path
-        required: false
-        type: string
-        default: ""
-
-      startup-path:
-        description: Kubernetes startup probe path
-        required: false
-        type: string
-        default: ""
-
       link-repository:
         description: Link package to repository (adds org.opencontainers.image.source label)
         required: false
@@ -60,7 +24,7 @@ on: # yamllint disable-line rule:truthy
         value: ${{ jobs.metadata.outputs.tags }}
 
       image-labels:
-        description: Generated OCI and Kubernetes labels (newline-separated)
+        description: Generated OCI labels (newline-separated)
         value: ${{ jobs.metadata.outputs.labels }}
 
       version:
@@ -245,14 +209,6 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
             org.opencontainers.image.authors=${{ github.repository_owner }}
-            ${{ inputs.kubernetes-labels && format('app.kubernetes.io/name={0}', github.event.repository.name) || '' }}
-            ${{ inputs.kubernetes-labels && format('app.kubernetes.io/version={0}', steps.version.outputs.version) || '' }}
-            ${{ inputs.kubernetes-labels && 'app.kubernetes.io/managed-by=github-actions' || '' }}
-            ${{ inputs.kubernetes-labels && inputs.component != '' && format('app.kubernetes.io/component={0}', inputs.component) || '' }}
-            ${{ inputs.kubernetes-labels && inputs.part-of != '' && format('app.kubernetes.io/part-of={0}', inputs.part-of) || '' }}
-            ${{ inputs.kubernetes-labels && inputs.liveness-path != '' && format('app.kubernetes.io/health-liveness={0}', inputs.liveness-path) || '' }}
-            ${{ inputs.kubernetes-labels && inputs.readiness-path != '' && format('app.kubernetes.io/health-readiness={0}', inputs.readiness-path) || '' }}
-            ${{ inputs.kubernetes-labels && inputs.startup-path != '' && format('app.kubernetes.io/health-startup={0}', inputs.startup-path) || '' }}
           annotations: |
             ${{ inputs.link-repository == false && 'org.opencontainers.image.source=' || '' }}
 

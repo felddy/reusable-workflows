@@ -53,7 +53,6 @@ jobs:
       enable-signing: false  # ✅ Available - Task 2.5 complete (set to true to enable keyless signing)
       enable-scanning: true  # ✅ Enabled - Task 2.2 complete
       scan-severity: CRITICAL,HIGH
-      kubernetes-labels: true
 
   build-private:
     name: Build and Publish Container Private
@@ -73,7 +72,6 @@ jobs:
       enable-signing: false
       enable-scanning: true
       scan-severity: CRITICAL,HIGH
-      kubernetes-labels: true
     secrets:
       private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 
@@ -95,7 +93,6 @@ jobs:
       enable-signing: false
       enable-scanning: true  # ✅ Enabled for PRs with relaxed threshold
       scan-severity: CRITICAL  # Only fail on critical for PRs
-      kubernetes-labels: true
 
   mirror-to-dockerhub:
     name: Mirror images to DockerHub
