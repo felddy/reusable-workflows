@@ -106,7 +106,7 @@ jobs:
             echo "::error::Expected format: registry/name@sha256:abc123..."
             EXIT_CODE=1
           else
-            echo "::notice::✓ Image reference: $IMAGE_REF"
+            echo "✓ Image reference: $IMAGE_REF"
           fi
 
           # Validate registry format
@@ -115,7 +115,7 @@ jobs:
             echo "::error::Use: ghcr.io (not https://ghcr.io)"
             EXIT_CODE=1
           else
-            echo "::notice::✓ Registry: ${{ inputs.registry }}"
+            echo "✓ Registry: ${{ inputs.registry }}"
           fi
 
           echo "::endgroup::"
@@ -131,10 +131,10 @@ jobs:
           # Determine which signing method to use
           if [[ -n "${{ secrets.signing-key }}" ]]; then
             METHOD="key-based"
-            echo "::notice::Using key-based signing (COSIGN_KEY provided)"
+            echo "Using key-based signing (COSIGN_KEY provided)"
           elif [[ "${{ inputs.use-keyless }}" == "true" ]]; then
             METHOD="keyless"
-            echo "::notice::Using keyless signing (GitHub OIDC token)"
+            echo "Using keyless signing (GitHub OIDC token)"
           else
             echo "::error::No signing method available"
             echo "::error::Either provide signing-key secret or enable use-keyless"
@@ -170,7 +170,7 @@ jobs:
           # Sign using GitHub OIDC token (keyless)
           # The signature is automatically uploaded to the registry
           if cosign sign --yes "${{ inputs.image-ref }}"; then
-            echo "::notice::✓ Image signed successfully (keyless)"
+            echo "✓ Image signed successfully (keyless)"
             echo "signed=true" >> $GITHUB_OUTPUT
           else
             echo "::error::Failed to sign image with keyless method"
@@ -194,7 +194,7 @@ jobs:
           # Sign using provided key
           # The --key flag specifies the private key file
           if cosign sign --yes --key /tmp/cosign.key "${{ inputs.image-ref }}"; then
-            echo "::notice::✓ Image signed successfully (key-based)"
+            echo "✓ Image signed successfully (key-based)"
             echo "signed=true" >> $GITHUB_OUTPUT
           else
             echo "::error::Failed to sign image with key-based method"
@@ -220,15 +220,15 @@ jobs:
               --certificate-identity-regexp="^https://github.com/${{ github.repository }}" \
               --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
               "${{ inputs.image-ref }}"; then
-              echo "::notice::✓ Signature verified successfully"
+              echo "✓ Signature verified successfully"
             else
               echo "::warning::Signature verification failed"
               echo "::warning::This may be expected if the signature hasn't propagated yet"
             fi
           else
             # For key-based signing, verification requires the public key
-            echo "::notice::Key-based signature created"
-            echo "::notice::Verification requires the public key (cosign.pub)"
+            echo "Key-based signature created"
+            echo "Verification requires the public key (cosign.pub)"
           fi
 
           echo "::endgroup::"
@@ -242,10 +242,10 @@ jobs:
 
           if [[ -n "$SIGNATURE_DIGEST" ]]; then
             echo "signature-digest=$SIGNATURE_DIGEST" >> $GITHUB_OUTPUT
-            echo "::notice::Signature digest: $SIGNATURE_DIGEST"
+            echo "Signature digest: $SIGNATURE_DIGEST"
           else
             echo "signature-digest=" >> $GITHUB_OUTPUT
-            echo "::notice::Signature digest not available (may not be propagated yet)"
+            echo "Signature digest not available (may not be propagated yet)"
           fi
 
           echo "signed=true" >> $GITHUB_OUTPUT

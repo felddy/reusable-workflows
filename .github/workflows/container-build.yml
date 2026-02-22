@@ -168,7 +168,7 @@ jobs:
           # This ensures each workflow call has unique artifacts
           UNIQUE_ID=$(echo "${{ inputs.image-name }}-${{ github.run_id }}-${{ github.run_attempt }}" | sha256sum | cut -c1-8)
           echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
-          echo "::notice::Workflow call ID: $UNIQUE_ID (use this for all artifacts)"
+          echo "Workflow call ID: $UNIQUE_ID (use this for all artifacts)"
 
   # Parse platforms for matrix strategy
   parse-platforms:
@@ -205,7 +205,7 @@ jobs:
           JSON_ARRAY="${JSON_ARRAY}]"
 
           echo "platforms=$JSON_ARRAY" >> $GITHUB_OUTPUT
-          echo "::notice::Parsed platforms: $JSON_ARRAY"
+          echo "Parsed platforms: $JSON_ARRAY"
 
   # Determine visibility based on presence of private-package-token
   determine-visibility:
@@ -225,11 +225,11 @@ jobs:
           if [[ -n "${{ secrets.private-package-token }}" ]]; then
             echo "link-repository=false" >> $GITHUB_OUTPUT
             echo "is-private=true" >> $GITHUB_OUTPUT
-            echo "::notice::Private package mode: will NOT link to repository"
+            echo "Private package mode: will NOT link to repository"
           else
             echo "link-repository=true" >> $GITHUB_OUTPUT
             echo "is-private=false" >> $GITHUB_OUTPUT
-            echo "::notice::Public package mode: will link to repository"
+            echo "Public package mode: will link to repository"
           fi
 
   # Generate metadata (tags, labels, version)
@@ -277,7 +277,7 @@ jobs:
         run: |
           echo "BUILDKIT_PROGRESS=plain" >> $GITHUB_ENV
           echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
-          echo "::notice::Debug mode enabled - verbose logging active"
+          echo "Debug mode enabled - verbose logging active"
 
       - name: Set up QEMU for multi-arch builds
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # tag=v3.3.0
@@ -310,7 +310,7 @@ jobs:
             echo "::error::Example: platforms: linux/amd64,linux/arm64"
             EXIT_CODE=1
           else
-            echo "::notice::✓ Platforms: ${{ inputs.platforms }}"
+            echo "✓ Platforms: ${{ inputs.platforms }}"
           fi
 
           # Validate image name
@@ -319,7 +319,7 @@ jobs:
             echo "::error::Example: image-name: \${{ github.repository }}"
             EXIT_CODE=1
           else
-            echo "::notice::✓ Image name: ${{ inputs.image-name }}"
+            echo "✓ Image name: ${{ inputs.image-name }}"
           fi
 
           # Validate Dockerfile exists
@@ -332,7 +332,7 @@ jobs:
             echo "::error::  - Check for typos in the filename"
             EXIT_CODE=1
           else
-            echo "::notice::✓ Dockerfile found: ${{ inputs.dockerfile }}"
+            echo "✓ Dockerfile found: ${{ inputs.dockerfile }}"
           fi
 
           # Validate build context exists
@@ -341,7 +341,7 @@ jobs:
             echo "::error::The context must be a directory containing the files to build"
             EXIT_CODE=1
           else
-            echo "::notice::✓ Build context: ${{ inputs.context }}"
+            echo "✓ Build context: ${{ inputs.context }}"
           fi
 
           # Validate scan severity format
@@ -352,7 +352,7 @@ jobs:
               echo "::warning::scan-severity format may be invalid: $SEVERITY"
               echo "::warning::Expected format: CRITICAL,HIGH,MEDIUM,LOW"
             else
-              echo "::notice::✓ Scan severity: $SEVERITY"
+              echo "✓ Scan severity: $SEVERITY"
             fi
           fi
 
@@ -362,13 +362,13 @@ jobs:
               echo "::error::Bake file not found at: ${{ inputs.bake-file }}"
               EXIT_CODE=1
             else
-              echo "::notice::✓ Bake file: ${{ inputs.bake-file }}"
+              echo "✓ Bake file: ${{ inputs.bake-file }}"
             fi
           fi
 
           # Validate target if specified
           if [[ -n "${{ inputs.target }}" ]]; then
-            echo "::notice::✓ Build target: ${{ inputs.target }}"
+            echo "✓ Build target: ${{ inputs.target }}"
           fi
 
           # Check for common misconfigurations
@@ -402,7 +402,7 @@ jobs:
             exit 1
           fi
 
-          echo "::notice::✅ All validations passed"
+          echo "✅ All validations passed"
 
       - name: Parse build arguments
         id: parse-args
@@ -417,10 +417,10 @@ jobs:
             echo "$BUILD_ARGS" >> $GITHUB_OUTPUT
             echo "${delimiter}" >> $GITHUB_OUTPUT
 
-            echo "::notice::Build arguments parsed successfully"
+            echo "Build arguments parsed successfully"
           else
             echo "args=" >> $GITHUB_OUTPUT
-            echo "::notice::No build arguments provided"
+            echo "No build arguments provided"
           fi
 
       - name: Prepare build secrets
@@ -461,7 +461,7 @@ jobs:
           echo "secrets=$SECRETS" >> $GITHUB_OUTPUT
 
           if [[ -n "$SECRETS" ]]; then
-            echo "::notice::Build secrets prepared (count: $(echo $SECRETS | tr ',' '\n' | wc -l))"
+            echo "Build secrets prepared (count: $(echo $SECRETS | tr ',' '\n' | wc -l))"
           fi
 
       - name: Prepare platform-specific cache scope
@@ -475,7 +475,7 @@ jobs:
           PLATFORM_SCOPE="${BASE_SCOPE}-${PLATFORM_SLUG}"
 
           echo "scope=$PLATFORM_SCOPE" >> $GITHUB_OUTPUT
-          echo "::notice::Cache scope: $PLATFORM_SCOPE"
+          echo "Cache scope: $PLATFORM_SCOPE"
 
       - name: Build and push container image
         id: build
@@ -611,7 +611,7 @@ jobs:
             exit 1
           fi
 
-          echo "::notice::Found $DIGEST_COUNT platform digest(s)"
+          echo "Found $DIGEST_COUNT platform digest(s)"
 
           # Create manifest for each tag
           TAGS="${{ needs.metadata.outputs.image-tags }}"
@@ -629,7 +629,7 @@ jobs:
               if docker buildx imagetools create \
                 --tag "$tag" \
                 $DIGESTS; then
-                echo "::notice::✓ Manifest created for $tag"
+                echo "✓ Manifest created for $tag"
               else
                 echo "::error::Failed to create manifest for $tag"
                 echo "::endgroup::"
@@ -668,8 +668,8 @@ jobs:
           fi
 
           echo "digest=$MANIFEST_DIGEST" >> $GITHUB_OUTPUT
-          echo "::notice::✅ Multi-platform manifest created: $MANIFEST_DIGEST"
-          echo "::notice::Created $TAG_COUNT tag(s) for $DIGEST_COUNT platform(s)"
+          echo "✅ Multi-platform manifest created: $MANIFEST_DIGEST"
+          echo "Created $TAG_COUNT tag(s) for $DIGEST_COUNT platform(s)"
 
       - name: Inspect manifest
         run: |
