@@ -771,6 +771,8 @@ jobs:
       scan-severity: ${{ inputs.scan-severity }}
       fail-on-vulnerabilities: true
       artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
+    secrets:
+      private-package-token: ${{ secrets.private-package-token }}
 
   # Generate attestations (SLSA provenance, SBOM)
   attest:

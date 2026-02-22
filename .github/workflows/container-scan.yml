@@ -38,6 +38,11 @@ name: Container Security Scan
         type: string
         default: ""
 
+    secrets:
+      private-package-token:
+        description: Token for private package authentication (required for scanning private images)
+        required: false
+
     outputs:
       scan-passed:
         description: Whether the scan passed without critical vulnerabilities
@@ -66,6 +71,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Log in to container registry
+        if: secrets.private-package-token != ''
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.private-package-token }}
 
       - name: Set up scan parameters
         id: params
