@@ -359,7 +359,22 @@ jobs:
             echo "# Verify with GitHub CLI" >> $GITHUB_STEP_SUMMARY
             echo "gh attestation verify oci://${{ inputs.image-ref }} --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Verify SBOM with cosign" >> $GITHUB_STEP_SUMMARY
-            echo "cosign verify-attestation --type spdx ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify SLSA Provenance with cosign" >> $GITHUB_STEP_SUMMARY
+            echo "cosign verify-attestation --type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
+            echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
+            echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
+            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify SPDX SBOM with cosign" >> $GITHUB_STEP_SUMMARY
+            echo "cosign verify-attestation --type https://spdx.dev/Document/v2.3 \\" >> $GITHUB_STEP_SUMMARY
+            echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
+            echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
+            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify CycloneDX SBOM with cosign" >> $GITHUB_STEP_SUMMARY
+            echo "cosign verify-attestation --type https://cyclonedx.org/bom \\" >> $GITHUB_STEP_SUMMARY
+            echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
+            echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
+            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi

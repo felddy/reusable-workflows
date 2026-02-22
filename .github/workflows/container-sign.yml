@@ -269,17 +269,6 @@ jobs:
             echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
             echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### About Keyless Signing" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Keyless signing uses GitHub's OIDC token to sign images without managing keys." >> $GITHUB_STEP_SUMMARY
-            echo "The signature is tied to the GitHub repository and workflow that created it." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Benefits:**" >> $GITHUB_STEP_SUMMARY
-            echo "- No key management required" >> $GITHUB_STEP_SUMMARY
-            echo "- Automatic key rotation" >> $GITHUB_STEP_SUMMARY
-            echo "- Tied to GitHub identity" >> $GITHUB_STEP_SUMMARY
-            echo "- Transparency log (Rekor) for auditability" >> $GITHUB_STEP_SUMMARY
           else
             echo "### Verify Signature (Key-Based)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -287,22 +276,7 @@ jobs:
             echo "# Verify with cosign (requires public key)" >> $GITHUB_STEP_SUMMARY
             echo "cosign verify --key cosign.pub ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### About Key-Based Signing" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Key-based signing uses a provided private key (COSIGN_KEY secret)." >> $GITHUB_STEP_SUMMARY
-            echo "Verification requires the corresponding public key." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Key Management:**" >> $GITHUB_STEP_SUMMARY
-            echo "- Store private key in GitHub Secrets" >> $GITHUB_STEP_SUMMARY
-            echo "- Distribute public key to consumers" >> $GITHUB_STEP_SUMMARY
-            echo "- Rotate keys periodically" >> $GITHUB_STEP_SUMMARY
-            echo "- Consider using encrypted keys with COSIGN_PASSWORD" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Additional Resources" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- [Cosign Documentation](https://docs.sigstore.dev/cosign/overview/)" >> $GITHUB_STEP_SUMMARY
-          echo "- [Keyless Signing Guide](https://docs.sigstore.dev/cosign/keyless/)" >> $GITHUB_STEP_SUMMARY
-          echo "- [GitHub OIDC Documentation](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect)" >> $GITHUB_STEP_SUMMARY
+          echo "**Learn more:** [Cosign Documentation](https://docs.sigstore.dev/cosign/overview/)" >> $GITHUB_STEP_SUMMARY
