@@ -194,7 +194,7 @@ jobs:
           SBOM_PLATFORMS="[]"
 
           # For each platform, find its attestation manifest and extract SBOM
-          echo "$PLATFORMS" | jq -c '.[]' | while read -r platform_info; do
+          while read -r platform_info; do
             PLATFORM=$(echo "$platform_info" | jq -r '.platform')
             DIGEST=$(echo "$platform_info" | jq -r '.digest')
 
@@ -254,7 +254,7 @@ jobs:
               echo "::error::Failed to download SBOM blob for $PLATFORM"
               echo "failure" >> "$RESULTS_FILE"
             fi
-          done
+          done < <(echo "$PLATFORMS" | jq -c '.[]')
 
           # Check results
           if [ ! -f "$RESULTS_FILE" ] || [ ! -s "$RESULTS_FILE" ]; then
