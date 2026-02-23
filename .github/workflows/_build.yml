@@ -44,7 +44,7 @@ jobs:
     if: github.event_name != 'pull_request'
     uses: ./.github/workflows/container-build.yml
     with:
-      platforms: ${{ needs.config.outputs.platforms_csv }}
+      platforms: ${{ needs.config.outputs.platforms }}
       image-name: ${{ needs.config.outputs.image_name }}
       context: .
       dockerfile: ./Dockerfile
@@ -63,7 +63,7 @@ jobs:
     if: github.event_name != 'pull_request'
     uses: ./.github/workflows/container-build.yml
     with:
-      platforms: ${{ needs.config.outputs.platforms_csv }}
+      platforms: ${{ needs.config.outputs.platforms }}
       image-name: ${{ needs.config.outputs.image_name }}-hid
       context: .
       dockerfile: ./Dockerfile

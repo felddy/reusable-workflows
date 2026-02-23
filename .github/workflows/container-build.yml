@@ -9,7 +9,7 @@ on: # yamllint disable-line rule:truthy
     inputs:
       # Required
       platforms:
-        description: Platforms to build (comma-separated linux/amd64,linux/arm64)
+        description: Platforms to build (JSON array string, e.g. '["linux/amd64","linux/arm64"]')
         required: true
         type: string
 
@@ -182,55 +182,6 @@ jobs:
           echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
           echo "Workflow call ID: $UNIQUE_ID (use this for all artifacts)"
 
-  # Parse platforms for matrix strategy
-  parse-platforms:
-    name: Parse Platforms
-    runs-on: ubuntu-latest
-    needs:
-      - generate-id
-
-    permissions:
-      contents: none
-
-    outputs:
-      platforms: ${{ steps.parse.outputs.platforms }}
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
-        with:
-          disable-sudo: true
-          egress-policy: block
-          allowed-endpoints: ""
-
-      - name: Parse platform list
-        id: parse
-        run: |
-          # Convert comma-separated platforms to JSON array
-          PLATFORMS="${{ inputs.platforms }}"
-
-          # Split by comma and create JSON array
-          IFS=',' read -ra PLATFORM_ARRAY <<< "$PLATFORMS"
-
-          # Trim whitespace and build JSON array
-          JSON_ARRAY="["
-          FIRST=true
-          for platform in "${PLATFORM_ARRAY[@]}"; do
-            # Trim whitespace
-            platform=$(echo "$platform" | xargs)
-
-            if [[ "$FIRST" == "true" ]]; then
-              JSON_ARRAY="${JSON_ARRAY}\"${platform}\""
-              FIRST=false
-            else
-              JSON_ARRAY="${JSON_ARRAY},\"${platform}\""
-            fi
-          done
-          JSON_ARRAY="${JSON_ARRAY}]"
-
-          echo "platforms=$JSON_ARRAY" >> $GITHUB_OUTPUT
-          echo "Parsed platforms: $JSON_ARRAY"
-
   # Determine visibility based on presence of private-package-token
   determine-visibility:
     name: Determine Visibility
@@ -284,16 +235,15 @@ jobs:
     name: Build ${{ matrix.platform }}
     needs:
       - generate-id
-      - parse-platforms
       - metadata
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        # Use parsed platforms for parallel builds
+        # Use platforms directly from input (already JSON array string)
         # This enables per-platform caching and parallel execution
-        platform: ${{ fromJSON(needs.parse-platforms.outputs.platforms) }}
+        platform: ${{ fromJSON(inputs.platforms) }}
 
     outputs:
       digest: ${{ steps.build.outputs.digest }}
@@ -349,7 +299,7 @@ jobs:
           # Validate platforms
           if [[ -z "${{ inputs.platforms }}" ]]; then
             echo "::error::platforms input is required"
-            echo "::error::Example: platforms: linux/amd64,linux/arm64"
+            echo "::error::Example: platforms: '[\"linux/amd64\",\"linux/arm64\"]'"
             EXIT_CODE=1
           else
             echo "✓ Platforms: ${{ inputs.platforms }}"
@@ -639,7 +589,6 @@ jobs:
     name: Create Multi-Platform Manifest
     needs:
       - generate-id
-      - parse-platforms
       - metadata
       - build
       - determine-visibility
