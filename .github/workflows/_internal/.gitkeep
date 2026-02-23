@@ -1,3 +1,0 @@
-# Internal utility workflows
-# These workflows are for internal use by the main reusable workflows
-# and should not be called directly by consumer repositories.
