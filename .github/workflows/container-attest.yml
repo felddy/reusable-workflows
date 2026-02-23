@@ -182,10 +182,13 @@ jobs:
           # Parse platforms JSON
           PLATFORMS='${{ steps.platforms.outputs.platforms }}'
 
+          # Get the multi-platform manifest to find attestation manifests
+          MANIFEST=$(crane manifest ${{ inputs.image-ref }})
+
           # Create a temporary file to track results
           RESULTS_FILE=$(mktemp)
 
-          # For each platform, download SBOM and sign it
+          # For each platform, find its attestation manifest and extract SBOM
           echo "$PLATFORMS" | jq -c '.[]' | while read -r platform_info; do
             PLATFORM=$(echo "$platform_info" | jq -r '.platform')
             DIGEST=$(echo "$platform_info" | jq -r '.digest')
@@ -195,22 +198,51 @@ jobs:
 
             echo "Processing platform: $PLATFORM (digest: $DIGEST)"
 
-            # Use the platform-specific image reference to extract the SBOM
-            PLATFORM_IMAGE="${{ inputs.registry }}/${{ inputs.image-name }}@$DIGEST"
+            # Find the attestation manifest for this platform digest
+            ATTESTATION_DIGEST=$(echo "$MANIFEST" | jq -r --arg digest "$DIGEST" '
+              .manifests[] |
+              select(.annotations."vnd.docker.reference.type" == "attestation-manifest") |
+              select(.annotations."vnd.docker.reference.digest" == $digest) |
+              .digest
+            ')
 
-            # Extract SBOM using docker buildx imagetools inspect
-            # Note: We inspect the platform-specific image, not the multi-platform manifest
-            SBOM_JSON=$(docker buildx imagetools inspect "$PLATFORM_IMAGE" --format "{{ json .SBOM.SPDX }}" 2>/dev/null || echo "")
+            if [ -z "$ATTESTATION_DIGEST" ] || [ "$ATTESTATION_DIGEST" == "null" ]; then
+              echo "⚠️  No attestation manifest found for $PLATFORM"
+              echo "no-attestation" >> "$RESULTS_FILE"
+              continue
+            fi
 
-            if [ -n "$SBOM_JSON" ] && [ "$SBOM_JSON" != "null" ]; then
-              # Save SBOM to file
-              SBOM_FILE="sbom-${PLATFORM_SLUG}.spdx.json"
-              echo "$SBOM_JSON" > "$SBOM_FILE"
+            echo "Found attestation manifest: $ATTESTATION_DIGEST"
 
+            # Get the attestation manifest and find the SBOM blob
+            ATTESTATION_MANIFEST=$(crane manifest ${{ inputs.registry }}/${{ inputs.image-name }}@$ATTESTATION_DIGEST)
+
+            SBOM_BLOB_DIGEST=$(echo "$ATTESTATION_MANIFEST" | jq -r '
+              .layers[] |
+              select(.annotations."in-toto.io/predicate-type" == "https://spdx.dev/Document") |
+              .digest
+            ')
+
+            if [ -z "$SBOM_BLOB_DIGEST" ] || [ "$SBOM_BLOB_DIGEST" == "null" ]; then
+              echo "⚠️  No SBOM found in attestation manifest for $PLATFORM"
+              echo "no-sbom" >> "$RESULTS_FILE"
+              continue
+            fi
+
+            echo "Found SBOM blob: $SBOM_BLOB_DIGEST"
+
+            # Download the SBOM blob
+            SBOM_FILE="sbom-${PLATFORM_SLUG}.spdx.json"
+            if crane blob ${{ inputs.registry }}/${{ inputs.image-name }}@$SBOM_BLOB_DIGEST > "$SBOM_FILE"; then
               echo "✅ Downloaded SBOM for $PLATFORM ($(stat -c%s "$SBOM_FILE") bytes)"
+
+              # The blob is an in-toto attestation, extract the predicate (actual SBOM)
+              SBOM_PREDICATE=$(jq -r '.predicate' "$SBOM_FILE")
+              echo "$SBOM_PREDICATE" > "$SBOM_FILE"
 
               # Sign and upload SBOM as GitHub Actions attestation
               echo "Signing SBOM for $PLATFORM..."
+              PLATFORM_IMAGE="${{ inputs.registry }}/${{ inputs.image-name }}@$DIGEST"
               if gh attestation attest \
                 --predicate-type https://spdx.dev/Document \
                 --predicate "$SBOM_FILE" \
@@ -224,8 +256,8 @@ jobs:
                 echo "failure" >> "$RESULTS_FILE"
               fi
             else
-              echo "⚠️  No SBOM found for $PLATFORM"
-              echo "no-sbom" >> "$RESULTS_FILE"
+              echo "::error::Failed to download SBOM blob for $PLATFORM"
+              echo "failure" >> "$RESULTS_FILE"
             fi
           done
 
@@ -239,6 +271,7 @@ jobs:
           SUCCESS_COUNT=$(grep -c "success" "$RESULTS_FILE" || echo "0")
           FAILURE_COUNT=$(grep -c "failure" "$RESULTS_FILE" || echo "0")
           NO_SBOM_COUNT=$(grep -c "no-sbom" "$RESULTS_FILE" || echo "0")
+          NO_ATT_COUNT=$(grep -c "no-attestation" "$RESULTS_FILE" || echo "0")
 
           rm -f "$RESULTS_FILE"
 
@@ -247,6 +280,7 @@ jobs:
           echo "  ✅ Successfully signed: $SUCCESS_COUNT"
           echo "  ❌ Failed to sign: $FAILURE_COUNT"
           echo "  ⚠️  No SBOM found: $NO_SBOM_COUNT"
+          echo "  ⚠️  No attestation manifest: $NO_ATT_COUNT"
 
           if [ "$SUCCESS_COUNT" -eq 0 ]; then
             echo "::error::Failed to sign any SBOMs"
