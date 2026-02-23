@@ -185,7 +185,7 @@ jobs:
       - name: Attach SPDX SBOM as attestation
         id: attest-sbom-spdx
         if: inputs.enable-sbom && (inputs.sbom-formats == 'spdx-json' || inputs.sbom-formats == 'both')
-        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6 # tag=v1.4.1
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # tag=v3.0.0
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
@@ -206,7 +206,7 @@ jobs:
       - name: Attach CycloneDX SBOM as attestation
         id: attest-sbom-cyclonedx
         if: inputs.enable-sbom && (inputs.sbom-formats == 'cyclonedx-json' || inputs.sbom-formats == 'both')
-        uses: actions/attest-sbom@5026d3663739160db546203eeaffa6aa1c51a4d6 # tag=v1.4.1
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # tag=v3.0.0
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
@@ -234,7 +234,7 @@ jobs:
       - name: Attach vulnerability scan results
         id: attest-scan
         if: inputs.attach-scan-results && (inputs.scan-results-path != '' || inputs.artifact-prefix != '')
-        uses: actions/attest@025375512d7691d20fa59fad9e64a6399960847c # tag=v3.2.0
+        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
@@ -246,7 +246,7 @@ jobs:
       - name: Attach custom attestation predicate
         id: attest-custom
         if: inputs.custom-predicate-type != '' && inputs.custom-predicate-path != ''
-        uses: actions/attest@025375512d7691d20fa59fad9e64a6399960847c # tag=v3.2.0
+        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
@@ -362,25 +362,30 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Verification" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Verify attestations using:" >> $GITHUB_STEP_SUMMARY
+            echo "Attestations are stored in the OCI registry in standard Sigstore format." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Verify and download attestations using:" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-            echo "# Verify with GitHub CLI (queries GitHub API)" >> $GITHUB_STEP_SUMMARY
-            echo "gh attestation verify oci://${{ inputs.image-ref }} --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+            echo "# Download SLSA provenance attestation from OCI registry" >> $GITHUB_STEP_SUMMARY
+            echo "cosign download attestation --predicate-type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
+            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Download attestations for offline use" >> $GITHUB_STEP_SUMMARY
-            echo "gh attestation download oci://${{ inputs.image-ref }} --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+            echo "# Download SPDX SBOM attestation" >> $GITHUB_STEP_SUMMARY
+            echo "cosign download attestation --predicate-type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
+            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Get trusted root certificates for offline verification" >> $GITHUB_STEP_SUMMARY
-            echo "gh attestation trusted-root > trusted_root.jsonl" >> $GITHUB_STEP_SUMMARY
+            echo "# Download CycloneDX SBOM attestation" >> $GITHUB_STEP_SUMMARY
+            echo "cosign download attestation --predicate-type https://cyclonedx.org/bom \\" >> $GITHUB_STEP_SUMMARY
+            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Verify SLSA Provenance with cosign (queries OCI registry)" >> $GITHUB_STEP_SUMMARY
+            echo "# Verify SLSA Provenance with cosign" >> $GITHUB_STEP_SUMMARY
             echo "cosign verify-attestation --type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
             echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
             echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
             echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "# Verify SPDX SBOM with cosign" >> $GITHUB_STEP_SUMMARY
-            echo "cosign verify-attestation --type https://spdx.dev/Document/v2.3 \\" >> $GITHUB_STEP_SUMMARY
+            echo "cosign verify-attestation --type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
             echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
             echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
             echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
