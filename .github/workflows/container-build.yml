@@ -171,7 +171,8 @@ jobs:
         with:
           disable-sudo: true
           egress-policy: block
-          allowed-endpoints: ""
+          allowed-endpoints: >
+            127.0.0.1
 
       - name: Generate unique ID
         id: generate
@@ -202,7 +203,8 @@ jobs:
         with:
           disable-sudo: true
           egress-policy: block
-          allowed-endpoints: ""
+          allowed-endpoints: >
+            127.0.0.1
 
       - name: Check for private package token
         id: check
