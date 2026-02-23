@@ -168,7 +168,12 @@ jobs:
             }
           ' | jq -s '.')
 
-          echo "platforms=$PLATFORMS" >> $GITHUB_OUTPUT
+          # Use heredoc delimiter for multiline JSON output
+          delimiter="$(openssl rand -hex 8)"
+          echo "platforms<<${delimiter}" >> $GITHUB_OUTPUT
+          echo "$PLATFORMS" >> $GITHUB_OUTPUT
+          echo "${delimiter}" >> $GITHUB_OUTPUT
+
           echo "Detected platforms:"
           echo "$PLATFORMS" | jq -r '.[] | "  - \(.platform) (\(.digest))"'
 
