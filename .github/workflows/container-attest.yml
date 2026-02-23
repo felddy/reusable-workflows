@@ -310,6 +310,7 @@ jobs:
         id: provenance
         uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # tag=v1.4.3
         with:
+          show-summary: false
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           push-to-registry: true
@@ -350,6 +351,7 @@ jobs:
         id: attest-build-env
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
+          show-summary: false
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           predicate-type: https://github.com/felddy/reusable-workflows/build-environment/v1
@@ -371,6 +373,7 @@ jobs:
         id: attest-scan
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
+          show-summary: false
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           predicate-type: https://cosign.sigstore.dev/attestation/vuln/v1
@@ -383,6 +386,7 @@ jobs:
         if: inputs.custom-predicate-type != '' && inputs.custom-predicate-path != ''
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
+          show-summary: false
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           predicate-type: ${{ inputs.custom-predicate-type }}
@@ -565,6 +569,7 @@ jobs:
       - name: Attest SBOM for ${{ matrix.platform.platform }}
         uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # tag=v3.0.0
         with:
+          show-summary: false
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ matrix.platform.digest }}
           sbom-path: ./sboms/sbom-${{ matrix.platform.slug }}.spdx.json
