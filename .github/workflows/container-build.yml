@@ -58,31 +58,7 @@ on: # yamllint disable-line rule:truthy
         type: string
         default: ""
 
-      # Features
-      enable-attestations:
-        description: Generate SLSA provenance and attestations
-        required: false
-        type: boolean
-        default: true
-
-      enable-sbom:
-        description: Generate and attach SBOM
-        required: false
-        type: boolean
-        default: true
-
-      enable-signing:
-        description: Sign images with cosign
-        required: false
-        type: boolean
-        default: false
-
-      enable-scanning:
-        description: Scan images for vulnerabilities
-        required: false
-        type: boolean
-        default: true
-
+      # Security Configuration
       scan-severity:
         description: Fail on vulnerabilities at or above this severity
         required: false
@@ -365,16 +341,8 @@ jobs:
             echo "✓ Build target: ${{ inputs.target }}"
           fi
 
-          # Check for common misconfigurations
-          if [[ "${{ inputs.enable-signing }}" == "true" ]] && [[ -z "${{ secrets.signing-key }}" ]]; then
-            echo "::warning::Image signing enabled but no signing-key secret provided"
-            echo "::warning::Keyless signing will be used (requires OIDC token)"
-          fi
-
-          if [[ "${{ inputs.enable-attestations }}" == "false" ]] && [[ "${{ inputs.enable-sbom }}" == "true" ]]; then
-            echo "::warning::SBOM generation enabled but attestations disabled"
-            echo "::warning::SBOM will be generated but not attached as attestation"
-          fi
+          # Security features are always enabled (secure-by-design)
+          echo "✓ Security features: SBOM, attestations, scanning, and signing are mandatory"
 
           echo "::endgroup::"
 
@@ -544,8 +512,8 @@ jobs:
           target: ${{ inputs.target }}
           cache-from: type=gha,scope=${{ steps.cache-scope.outputs.scope }}
           cache-to: type=gha,mode=max,scope=${{ steps.cache-scope.outputs.scope }}
-          provenance: ${{ inputs.enable-attestations }}
-          sbom: ${{ inputs.enable-sbom }}
+          provenance: true
+          sbom: true
           secrets: ${{ steps.secrets.outputs.secrets }}
           outputs: type=image,name=ghcr.io/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=true
         continue-on-error: true
@@ -814,24 +782,22 @@ jobs:
           echo "docker buildx imagetools inspect $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
-  # Security scanning
+  # Security scanning (always enabled)
   scan:
     name: Security Scan
     needs:
       - generate-id
       - metadata
       - manifest
-    if: inputs.enable-scanning == true
     uses: ./.github/workflows/container-scan.yml
     with:
       image-ref: ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
       scan-severity: ${{ inputs.scan-severity }}
-      fail-on-vulnerabilities: true
       artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
     secrets:
       private-package-token: ${{ secrets.private-package-token }}
 
-  # Generate attestations (SLSA provenance, SBOM)
+  # Generate attestations (SLSA provenance, SBOM) - always enabled
   attest:
     name: Generate Attestations
     needs:
@@ -839,28 +805,20 @@ jobs:
       - metadata
       - manifest
       - scan
-    # Run if attestations OR sbom is enabled
-    # Skip scan dependency if scanning is disabled
     if: |
       always() &&
-      (inputs.enable-attestations == true || inputs.enable-sbom == true) &&
-      (needs.scan.result == 'success' || needs.scan.result == 'skipped') &&
+      needs.scan.result == 'success' &&
       needs.manifest.result == 'success'
     uses: ./.github/workflows/container-attest.yml
     with:
       image-ref: ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
       image-name: ${{ inputs.image-name }}
       registry: ghcr.io
-      enable-provenance: ${{ inputs.enable-attestations }}
-      enable-sbom: ${{ inputs.enable-sbom }}
-      sbom-formats: both
-      attach-scan-results: ${{ inputs.enable-scanning }}
-      push-to-registry: true
       artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
     secrets:
       private-package-token: ${{ secrets.private-package-token }}
 
-  # Sign container image
+  # Sign container image (always enabled)
   sign:
     name: Sign Container Image
     needs:
@@ -868,13 +826,10 @@ jobs:
       - manifest
       - scan
       - attest
-    # Run if signing is enabled
-    # Skip scan and attest dependencies if they're disabled
     if: |
       always() &&
-      inputs.enable-signing == true &&
-      (needs.scan.result == 'success' || needs.scan.result == 'skipped') &&
-      (needs.attest.result == 'success' || needs.attest.result == 'skipped') &&
+      needs.scan.result == 'success' &&
+      needs.attest.result == 'success' &&
       needs.manifest.result == 'success'
     uses: ./.github/workflows/container-sign.yml
     with:

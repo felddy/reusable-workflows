@@ -48,10 +48,6 @@ jobs:
       image-name: ${{ needs.config.outputs.image_name }}
       context: .
       dockerfile: ./Dockerfile
-      enable-attestations: true
-      enable-sbom: true
-      enable-signing: false  # ✅ Available - Task 2.5 complete (set to true to enable keyless signing)
-      enable-scanning: true  # ✅ Enabled - Task 2.2 complete
       scan-severity: CRITICAL,HIGH
 
   build-private:
@@ -67,10 +63,6 @@ jobs:
       image-name: ${{ needs.config.outputs.image_name }}-hid
       context: .
       dockerfile: ./Dockerfile
-      enable-attestations: true
-      enable-sbom: true
-      enable-signing: false
-      enable-scanning: true
       scan-severity: CRITICAL,HIGH
     secrets:
       private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
@@ -88,10 +80,6 @@ jobs:
       image-name: ${{ needs.config.outputs.image_name }}
       context: .
       dockerfile: ./Dockerfile
-      enable-attestations: false
-      enable-sbom: false
-      enable-signing: false
-      enable-scanning: true  # ✅ Enabled for PRs with relaxed threshold
       scan-severity: CRITICAL  # Only fail on critical for PRs
 
   mirror-to-dockerhub:

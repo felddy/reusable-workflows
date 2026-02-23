@@ -30,24 +30,6 @@ on: # yamllint disable-line rule:truthy
         type: string
         default: ghcr.io
 
-      enable-provenance:
-        description: Generate SLSA provenance attestation
-        required: false
-        type: boolean
-        default: true
-
-      enable-sbom:
-        description: Enable SBOM generation (handled by BuildKit during build with platform-specific SBOMs)
-        required: false
-        type: boolean
-        default: true
-
-      attach-scan-results:
-        description: Attach vulnerability scan results as attestation
-        required: false
-        type: boolean
-        default: false
-
       scan-results-path:
         description: Path to vulnerability scan results JSON file
         required: false
@@ -65,12 +47,6 @@ on: # yamllint disable-line rule:truthy
         required: false
         type: string
         default: ""
-
-      push-to-registry:
-        description: Push attestations to registry
-        required: false
-        type: boolean
-        default: true
 
       artifact-prefix:
         description: Unique prefix for artifact names to prevent collisions in parallel builds
@@ -144,7 +120,6 @@ jobs:
           fi
 
       - name: Download scan results artifact
-        if: inputs.attach-scan-results == true
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
         with:
           name: security-scan-results${{ inputs.artifact-prefix != '' && format('-{0}', inputs.artifact-prefix) || '' }}
@@ -152,7 +127,6 @@ jobs:
         continue-on-error: true
 
       - name: Log in to container registry
-        if: inputs.push-to-registry == true
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ${{ inputs.registry }}
@@ -170,16 +144,14 @@ jobs:
 
       - name: Generate SLSA provenance
         id: provenance
-        if: inputs.enable-provenance
         uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # tag=v1.4.3
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
-          push-to-registry: ${{ inputs.push-to-registry }}
+          push-to-registry: true
 
       - name: Capture build environment metadata
         id: build-env
-        if: inputs.enable-provenance
         run: |
           # Capture additional build environment details for reproducibility
           # This supplements the SLSA provenance with environment-specific information
@@ -212,19 +184,17 @@ jobs:
 
       - name: Attach build environment as custom attestation
         id: attest-build-env
-        if: inputs.enable-provenance
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           predicate-type: https://github.com/felddy/reusable-workflows/build-environment/v1
           predicate-path: build-environment.json
-          push-to-registry: ${{ inputs.push-to-registry }}
+          push-to-registry: true
         continue-on-error: true
 
       - name: Set provenance paths
         id: provenance-paths
-        if: inputs.enable-provenance
         run: |
           echo "provenance-file=provenance.json" >> $GITHUB_OUTPUT
 
@@ -235,14 +205,13 @@ jobs:
 
       - name: Attach vulnerability scan results
         id: attest-scan
-        if: inputs.attach-scan-results && (inputs.scan-results-path != '' || inputs.artifact-prefix != '')
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           predicate-type: https://cosign.sigstore.dev/attestation/vuln/v1
           predicate-path: ${{ inputs.scan-results-path != '' && inputs.scan-results-path || './scan-results/trivy-results.json' }}
-          push-to-registry: ${{ inputs.push-to-registry }}
+          push-to-registry: true
         continue-on-error: true
 
       - name: Attach custom attestation predicate
@@ -254,7 +223,7 @@ jobs:
           subject-digest: ${{ steps.digest.outputs.digest }}
           predicate-type: ${{ inputs.custom-predicate-type }}
           predicate-path: ${{ inputs.custom-predicate-path }}
-          push-to-registry: ${{ inputs.push-to-registry }}
+          push-to-registry: true
         continue-on-error: true
 
       - name: Calculate attestation digest
@@ -299,39 +268,25 @@ jobs:
           echo "### Generated Attestations" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ inputs.enable-provenance }}" = "true" ]; then
-            if [ -n "${{ steps.provenance.outputs.bundle-path }}" ]; then
-              echo "✅ SLSA Provenance: Generated" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "❌ SLSA Provenance: Failed" >> $GITHUB_STEP_SUMMARY
-            fi
+          if [ -n "${{ steps.provenance.outputs.bundle-path }}" ]; then
+            echo "✅ SLSA Provenance: Generated" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⏭️  SLSA Provenance: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "❌ SLSA Provenance: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [ "${{ inputs.enable-sbom }}" = "true" ]; then
-            echo "✅ SBOM (SPDX): Generated by BuildKit during build" >> $GITHUB_STEP_SUMMARY
-            echo "   Platform-specific SBOMs are automatically attached to each architecture's image" >> $GITHUB_STEP_SUMMARY
+          echo "✅ SBOM (SPDX): Generated by BuildKit during build" >> $GITHUB_STEP_SUMMARY
+          echo "   Platform-specific SBOMs are automatically attached to each architecture's image" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.attest-scan.outcome }}" = "success" ]; then
+            echo "✅ Vulnerability Scan Attestation: Attached" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⏭️  SBOM: Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Vulnerability Scan Attestation: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
-          if [ "${{ inputs.attach-scan-results }}" = "true" ]; then
-            if [ "${{ steps.attest-scan.outcome }}" = "success" ]; then
-              echo "✅ Vulnerability Scan Attestation: Attached" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "❌ Vulnerability Scan Attestation: Failed" >> $GITHUB_STEP_SUMMARY
-            fi
+          if [ "${{ steps.attest-build-env.outcome }}" = "success" ]; then
+            echo "✅ Build Environment Attestation: Attached" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⏭️  Vulnerability Scan Attestation: Skipped" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ "${{ inputs.enable-provenance }}" = "true" ]; then
-            if [ "${{ steps.attest-build-env.outcome }}" = "success" ]; then
-              echo "✅ Build Environment Attestation: Attached" >> $GITHUB_STEP_SUMMARY
-            else
-              echo "⚠️  Build Environment Attestation: Failed (non-critical)" >> $GITHUB_STEP_SUMMARY
-            fi
+            echo "⚠️  Build Environment Attestation: Failed (non-critical)" >> $GITHUB_STEP_SUMMARY
           fi
 
           if [ -n "${{ inputs.custom-predicate-type }}" ]; then
@@ -345,46 +300,44 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Attestation Bundle Digest:** \`${{ steps.attestation-digest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ inputs.push-to-registry }}" = "true" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Verification" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Attestations are stored in the OCI registry in standard Sigstore format." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Verify and download attestations using:" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-            echo "# View all supply chain artifacts attached to the image" >> $GITHUB_STEP_SUMMARY
-            echo "cosign tree ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Download SLSA provenance attestation from OCI registry" >> $GITHUB_STEP_SUMMARY
-            echo "cosign download attestation --predicate-type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
-            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Download SPDX SBOM attestation (generated by BuildKit)" >> $GITHUB_STEP_SUMMARY
-            echo "cosign download attestation --predicate-type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
-            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Download build environment attestation" >> $GITHUB_STEP_SUMMARY
-            echo "cosign download attestation --predicate-type https://github.com/felddy/reusable-workflows/build-environment/v1 \\" >> $GITHUB_STEP_SUMMARY
-            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Extract SPDX SBOM content (generated by BuildKit)" >> $GITHUB_STEP_SUMMARY
-            echo "cosign download attestation --predicate-type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
-            echo "  ${{ inputs.image-ref }} | jq -r '.dsseEnvelope.payload' | base64 -d | jq '.predicate'" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Verify SLSA Provenance with cosign" >> $GITHUB_STEP_SUMMARY
-            echo "cosign verify-attestation --type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
-            echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
-            echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
-            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Verify SPDX SBOM with cosign (generated by BuildKit)" >> $GITHUB_STEP_SUMMARY
-            echo "cosign verify-attestation --type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
-            echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
-            echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
-            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "# Download all attestations using gh CLI" >> $GITHUB_STEP_SUMMARY
-            echo "gh attestation download oci://${{ inputs.image-ref }} --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Attestations are stored in the OCI registry in standard Sigstore format." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Verify and download attestations using:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# View all supply chain artifacts attached to the image" >> $GITHUB_STEP_SUMMARY
+          echo "cosign tree ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Download SLSA provenance attestation from OCI registry" >> $GITHUB_STEP_SUMMARY
+          echo "cosign download attestation --predicate-type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Download SPDX SBOM attestation (generated by BuildKit)" >> $GITHUB_STEP_SUMMARY
+          echo "cosign download attestation --predicate-type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Download build environment attestation" >> $GITHUB_STEP_SUMMARY
+          echo "cosign download attestation --predicate-type https://github.com/felddy/reusable-workflows/build-environment/v1 \\" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Extract SPDX SBOM content (generated by BuildKit)" >> $GITHUB_STEP_SUMMARY
+          echo "cosign download attestation --predicate-type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ inputs.image-ref }} | jq -r '.dsseEnvelope.payload' | base64 -d | jq '.predicate'" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Verify SLSA Provenance with cosign" >> $GITHUB_STEP_SUMMARY
+          echo "cosign verify-attestation --type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Verify SPDX SBOM with cosign (generated by BuildKit)" >> $GITHUB_STEP_SUMMARY
+          echo "cosign verify-attestation --type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
+          echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Download all attestations using gh CLI" >> $GITHUB_STEP_SUMMARY
+          echo "gh attestation download oci://${{ inputs.image-ref }} --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

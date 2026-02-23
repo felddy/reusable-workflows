@@ -27,11 +27,6 @@ name: Container Security Scan
         required: false
         type: string
         default: ""
-      fail-on-vulnerabilities:
-        description: Whether to fail the build on vulnerabilities
-        required: false
-        type: boolean
-        default: true
       artifact-prefix:
         description: Unique prefix for artifact names to prevent collisions in parallel builds
         required: false
@@ -91,13 +86,8 @@ jobs:
           echo "image-ref=${{ inputs.image-ref }}" >> $GITHUB_OUTPUT
           echo "severity=${{ inputs.scan-severity }}" >> $GITHUB_OUTPUT
           echo "scan-type=${{ inputs.scan-type }}" >> $GITHUB_OUTPUT
-
-          # Set exit code based on fail-on-vulnerabilities
-          if [ "${{ inputs.fail-on-vulnerabilities }}" = "true" ]; then
-            echo "exit-code=1" >> $GITHUB_OUTPUT
-          else
-            echo "exit-code=0" >> $GITHUB_OUTPUT
-          fi
+          # Always fail on vulnerabilities (secure-by-design)
+          echo "exit-code=1" >> $GITHUB_OUTPUT
 
       - name: Run Trivy vulnerability scanner (SARIF)
         id: trivy-sarif
@@ -206,7 +196,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Fail if vulnerabilities found
-        if: steps.trivy-sarif.outcome == 'failure' && inputs.fail-on-vulnerabilities
+        if: steps.trivy-sarif.outcome == 'failure'
         run: |
           echo "::error::Security scan failed - vulnerabilities found above threshold: ${{ inputs.scan-severity }}"
           exit 1
