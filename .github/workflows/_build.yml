@@ -39,7 +39,6 @@ jobs:
     name: Build and Publish Container
     needs:
       - config
-      - lint
     # Skip on pull requests to save time, only build test platform
     if: github.event_name != 'pull_request'
     uses: ./.github/workflows/container-build.yml
@@ -54,7 +53,6 @@ jobs:
     name: Build and Publish Container Private
     needs:
       - config
-      - lint
     # Skip on pull requests to save time, only build test platform
     if: github.event_name != 'pull_request'
     uses: ./.github/workflows/container-build.yml
@@ -71,7 +69,6 @@ jobs:
     name: Build Container (PR)
     needs:
       - config
-      - lint
     # Only build test platform for PRs
     if: github.event_name == 'pull_request'
     uses: ./.github/workflows/container-build.yml
@@ -82,11 +79,50 @@ jobs:
       dockerfile: ./Dockerfile
       scan-severity: CRITICAL  # Only fail on critical for PRs
 
+  check:
+    name: Check Quality Gates
+    needs:
+      - lint
+      - diagnostics
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      actions: write  # Required to cancel workflow runs
+    steps:
+      - name: Verify quality gates passed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LINT_RESULT="${{ needs.lint.result }}"
+          DIAGNOSTICS_RESULT="${{ needs.diagnostics.result }}"
+
+          if [[ "$LINT_RESULT" != "success" ]] || [[ "$DIAGNOSTICS_RESULT" != "success" ]]; then
+            echo "::error::Quality gates failed"
+
+            if [[ "$LINT_RESULT" != "success" ]]; then
+              echo "::error::Lint failed with status: $LINT_RESULT"
+            fi
+
+            if [[ "$DIAGNOSTICS_RESULT" != "success" ]]; then
+              echo "::error::Diagnostics failed with status: $DIAGNOSTICS_RESULT"
+            fi
+
+            # Cancel the workflow run
+            echo "Cancelling workflow run..."
+            gh run cancel ${{ github.run_id }}
+            gh run watch ${{ github.run_id }}
+
+            exit 1
+          fi
+
+          echo "✅ All quality gates passed"
+
   mirror-to-dockerhub:
     name: Mirror images to DockerHub
     needs:
       - build
       - config
+      - check
     if: github.event_name == 'release' && !github.event.release.prerelease
     permissions:
       contents: read
@@ -105,6 +141,7 @@ jobs:
     needs:
       - build
       - config
+      - check
     if: github.event_name == 'release'
     uses: ./.github/workflows/dockerhub-description.yml
     with:
