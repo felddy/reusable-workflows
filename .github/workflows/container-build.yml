@@ -505,12 +505,35 @@ jobs:
           echo "scope=$PLATFORM_SCOPE" >> $GITHUB_OUTPUT
           echo "Cache scope: $PLATFORM_SCOPE"
 
+      - name: Set SOURCE_DATE_EPOCH for reproducible builds
+        id: source-date-epoch
+        run: |
+          # Set SOURCE_DATE_EPOCH for deterministic timestamps in builds
+          # This ensures reproducible builds (same inputs produce identical outputs)
+          # Use the commit timestamp for reproducibility
+          if [ -d .git ]; then
+            # Get the commit timestamp from git
+            COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
+            echo "SOURCE_DATE_EPOCH=$COMMIT_TIMESTAMP" >> $GITHUB_ENV
+            echo "source-date-epoch=$COMMIT_TIMESTAMP" >> $GITHUB_OUTPUT
+            COMMIT_DATE=$(date -u -d "@$COMMIT_TIMESTAMP" '+%Y-%m-%d %H:%M:%S UTC')
+            echo "Reproducible build timestamp: $COMMIT_DATE (epoch: $COMMIT_TIMESTAMP)"
+          else
+            # Fallback to Unix epoch (0) for reproducibility
+            FALLBACK_TIMESTAMP=0
+            echo "SOURCE_DATE_EPOCH=$FALLBACK_TIMESTAMP" >> $GITHUB_ENV
+            echo "source-date-epoch=$FALLBACK_TIMESTAMP" >> $GITHUB_OUTPUT
+            echo "::warning::Not in a git repository, using Unix epoch (0) for SOURCE_DATE_EPOCH"
+          fi
+
       - name: Build and push container image
         id: build
         uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # tag=v6.10.0
         env:
           # Only upload build records in debug mode to reduce artifact storage
           DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.debug == true || env.ACTIONS_STEP_DEBUG == 'true' }}
+          # SOURCE_DATE_EPOCH for reproducible builds (set in previous step)
+          SOURCE_DATE_EPOCH: ${{ env.SOURCE_DATE_EPOCH }}
         with:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
@@ -585,6 +608,12 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Cache Scope:** \`${{ steps.cache-scope.outputs.scope }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Reproducibility Information" >> $GITHUB_STEP_SUMMARY
+          echo "**SOURCE_DATE_EPOCH:** \`${{ steps.source-date-epoch.outputs.source-date-epoch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This build uses deterministic timestamps for reproducibility." >> $GITHUB_STEP_SUMMARY
+          echo "Rebuilding the same commit with the same inputs should produce the same digest." >> $GITHUB_STEP_SUMMARY
 
   # Create multi-platform manifest
   manifest:
@@ -712,6 +741,30 @@ jobs:
           docker buildx imagetools inspect "$FIRST_TAG" || true
           echo "::endgroup::"
 
+      - name: Validate reproducibility best practices
+        run: |
+          echo "::group::Reproducibility Validation"
+
+          # Check if Dockerfile uses pinned base images
+          if [ -f "${{ inputs.dockerfile }}" ]; then
+            echo "Checking Dockerfile for reproducibility best practices..."
+
+            # Look for FROM statements without digests
+            UNPINNED=$(grep -E '^FROM\s+[^@]+$' "${{ inputs.dockerfile }}" || true)
+
+            if [ -n "$UNPINNED" ]; then
+              echo "::warning::Base images without pinned digests detected in ${{ inputs.dockerfile }}"
+              echo "::warning::For reproducible builds, pin base images to digests:"
+              echo "$UNPINNED" | while read -r line; do
+                echo "::warning::  $line"
+              done
+            else
+              echo "✅ All base images appear to use digests (good for reproducibility)"
+            fi
+          fi
+
+          echo "::endgroup::"
+
       - name: Output manifest summary
         run: |
           echo "## Multi-Platform Manifest Created" >> $GITHUB_STEP_SUMMARY
@@ -719,6 +772,16 @@ jobs:
           echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Manifest Digest:** \`${{ steps.manifest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** \`${{ inputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Add reproducibility note
+          echo "### 🔄 Reproducibility" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This build uses SOURCE_DATE_EPOCH for deterministic timestamps." >> $GITHUB_STEP_SUMMARY
+          echo "For fully reproducible builds, ensure:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Base images are pinned to digests (not just tags)" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ All dependencies use exact versions" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Build process is deterministic" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [[ "${{ needs.determine-visibility.outputs.link-repository }}" == "false" ]]; then

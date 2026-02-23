@@ -132,6 +132,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
 
+      - name: Set SOURCE_DATE_EPOCH for reproducible builds
+        id: source-date-epoch
+        run: |
+          # Set SOURCE_DATE_EPOCH for deterministic timestamps
+          # This ensures reproducible builds (same inputs produce identical outputs)
+          # Use the commit timestamp for reproducibility
+          if [ -d .git ]; then
+            # Get the commit timestamp from git
+            COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
+            echo "SOURCE_DATE_EPOCH=$COMMIT_TIMESTAMP" >> $GITHUB_ENV
+            echo "source-date-epoch=$COMMIT_TIMESTAMP" >> $GITHUB_OUTPUT
+            COMMIT_DATE=$(date -u -d "@$COMMIT_TIMESTAMP" '+%Y-%m-%d %H:%M:%S UTC')
+            echo "Reproducible build timestamp: $COMMIT_DATE (epoch: $COMMIT_TIMESTAMP)"
+          else
+            # Fallback to Unix epoch (0) for reproducibility
+            FALLBACK_TIMESTAMP=0
+            echo "SOURCE_DATE_EPOCH=$FALLBACK_TIMESTAMP" >> $GITHUB_ENV
+            echo "source-date-epoch=$FALLBACK_TIMESTAMP" >> $GITHUB_OUTPUT
+            echo "::warning::Not in a git repository, using Unix epoch (0) for SOURCE_DATE_EPOCH"
+          fi
+
       - name: Download scan results artifact
         if: inputs.attach-scan-results == true
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
@@ -165,6 +186,51 @@ jobs:
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           push-to-registry: ${{ inputs.push-to-registry }}
+
+      - name: Capture build environment metadata
+        id: build-env
+        if: inputs.enable-provenance
+        run: |
+          # Capture additional build environment details for reproducibility
+          # This supplements the SLSA provenance with environment-specific information
+
+          cat > build-environment.json <<EOF
+          {
+            "buildEnvironment": {
+              "sourceRepository": "${{ github.repository }}",
+              "sourceCommit": "${{ github.sha }}",
+              "sourceRef": "${{ github.ref }}",
+              "sourceDateEpoch": "${SOURCE_DATE_EPOCH:-}",
+              "buildTimestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "builder": {
+                "id": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "platform": "GitHub Actions",
+                "runnerOS": "${{ runner.os }}",
+                "runnerArch": "${{ runner.arch }}"
+              },
+              "tools": {
+                "docker": "$(docker --version | cut -d' ' -f3 | tr -d ',')",
+                "buildx": "$(docker buildx version | cut -d' ' -f2)",
+                "git": "$(git --version | cut -d' ' -f3)"
+              }
+            }
+          }
+          EOF
+
+          echo "Build environment metadata captured"
+          cat build-environment.json | jq '.'
+
+      - name: Attach build environment as custom attestation
+        id: attest-build-env
+        if: inputs.enable-provenance
+        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
+        with:
+          subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+          subject-digest: ${{ steps.digest.outputs.digest }}
+          predicate-type: https://github.com/felddy/reusable-workflows/build-environment/v1
+          predicate-path: build-environment.json
+          push-to-registry: ${{ inputs.push-to-registry }}
+        continue-on-error: true
 
       - name: Set provenance paths
         id: provenance-paths
@@ -353,6 +419,14 @@ jobs:
             echo "⏭️  Vulnerability Scan Attestation: Skipped" >> $GITHUB_STEP_SUMMARY
           fi
 
+          if [ "${{ inputs.enable-provenance }}" = "true" ]; then
+            if [ "${{ steps.attest-build-env.outcome }}" = "success" ]; then
+              echo "✅ Build Environment Attestation: Attached" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️  Build Environment Attestation: Failed (non-critical)" >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+
           if [ -n "${{ inputs.custom-predicate-type }}" ]; then
             if [ "${{ steps.attest-custom.outcome }}" = "success" ]; then
               echo "✅ Custom Attestation: Attached" >> $GITHUB_STEP_SUMMARY
@@ -385,6 +459,10 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "# Download CycloneDX SBOM attestation" >> $GITHUB_STEP_SUMMARY
             echo "cosign download attestation --predicate-type https://cyclonedx.org/bom \\" >> $GITHUB_STEP_SUMMARY
+            echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "# Download build environment attestation" >> $GITHUB_STEP_SUMMARY
+            echo "cosign download attestation --predicate-type https://github.com/felddy/reusable-workflows/build-environment/v1 \\" >> $GITHUB_STEP_SUMMARY
             echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "# Extract SPDX SBOM content" >> $GITHUB_STEP_SUMMARY
