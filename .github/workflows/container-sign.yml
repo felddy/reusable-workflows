@@ -44,12 +44,6 @@ name: Container Sign Workflow
         type: boolean
         default: true
 
-      cosign-version:
-        description: Cosign version to install
-        required: false
-        type: string
-        default: latest
-
     secrets:
       signing-key:
         description: Cosign signing key (for key-based signing)
@@ -150,9 +144,7 @@ jobs:
           echo "method=$METHOD" >> $GITHUB_OUTPUT
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
-        with:
-          cosign-release: ${{ inputs.cosign-version }}
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # tag=v4.0.0
 
       - name: Verify cosign installation
         run: |
