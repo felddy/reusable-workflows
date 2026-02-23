@@ -88,6 +88,7 @@ jobs:
       attestation-digest: ${{ steps.attestation-digest.outputs.digest }}
       provenance-file: ${{ steps.provenance-paths.outputs.provenance-file }}
       provenance-bundle-path: ${{ steps.provenance.outputs.bundle-path }}
+      sbom-platforms: ${{ steps.download-sboms.outputs.sbom-platforms }}
 
     steps:
       - name: Harden Runner
@@ -177,7 +178,8 @@ jobs:
           echo "Detected platforms:"
           echo "$PLATFORMS" | jq -r '.[] | "  - \(.platform) (\(.digest))"'
 
-      - name: Download and sign BuildKit SBOMs
+      - name: Download BuildKit SBOMs
+        id: download-sboms
         run: |
           # Parse platforms JSON
           PLATFORMS='${{ steps.platforms.outputs.platforms }}'
@@ -187,6 +189,9 @@ jobs:
 
           # Create a temporary file to track results
           RESULTS_FILE=$(mktemp)
+
+          # Array to store platforms with successfully downloaded SBOMs
+          SBOM_PLATFORMS="[]"
 
           # For each platform, find its attestation manifest and extract SBOM
           echo "$PLATFORMS" | jq -c '.[]' | while read -r platform_info; do
@@ -240,21 +245,11 @@ jobs:
               SBOM_PREDICATE=$(jq -r '.predicate' "$SBOM_FILE")
               echo "$SBOM_PREDICATE" > "$SBOM_FILE"
 
-              # Sign and upload SBOM as GitHub Actions attestation
-              echo "Signing SBOM for $PLATFORM..."
-              PLATFORM_IMAGE="${{ inputs.registry }}/${{ inputs.image-name }}@$DIGEST"
-              if gh attestation attest \
-                --predicate-type https://spdx.dev/Document \
-                --predicate "$SBOM_FILE" \
-                --digest-alg sha256 \
-                --subject "$PLATFORM_IMAGE" \
-                --repo ${{ github.repository }}; then
-                echo "✅ Signed and uploaded SBOM attestation for $PLATFORM"
-                echo "success" >> "$RESULTS_FILE"
-              else
-                echo "::error::Failed to sign SBOM for $PLATFORM"
-                echo "failure" >> "$RESULTS_FILE"
-              fi
+              # Add to SBOM platforms array
+              SBOM_PLATFORMS=$(echo "$SBOM_PLATFORMS" | jq --arg platform "$PLATFORM" --arg digest "$DIGEST" --arg slug "$PLATFORM_SLUG" \
+                '. += [{"platform": $platform, "digest": $digest, "slug": $slug}]')
+
+              echo "success" >> "$RESULTS_FILE"
             else
               echo "::error::Failed to download SBOM blob for $PLATFORM"
               echo "failure" >> "$RESULTS_FILE"
@@ -276,24 +271,40 @@ jobs:
           rm -f "$RESULTS_FILE"
 
           echo ""
-          echo "SBOM Processing Summary:"
-          echo "  ✅ Successfully signed: $SUCCESS_COUNT"
-          echo "  ❌ Failed to sign: $FAILURE_COUNT"
+          echo "SBOM Download Summary:"
+          echo "  ✅ Successfully downloaded: $SUCCESS_COUNT"
+          echo "  ❌ Failed to download: $FAILURE_COUNT"
           echo "  ⚠️  No SBOM found: $NO_SBOM_COUNT"
           echo "  ⚠️  No attestation manifest: $NO_ATT_COUNT"
 
           if [ "$SUCCESS_COUNT" -eq 0 ]; then
-            echo "::error::Failed to sign any SBOMs"
+            echo "::error::Failed to download any SBOMs"
             exit 1
           fi
 
           if [ "$FAILURE_COUNT" -gt 0 ]; then
-            echo "::warning::Some SBOMs failed to sign"
+            echo "::warning::Some SBOMs failed to download"
           fi
 
-          echo "✅ Successfully signed $SUCCESS_COUNT SBOM(s)"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          echo "✅ Successfully downloaded $SUCCESS_COUNT SBOM(s)"
+
+          # Save SBOM platforms array to output
+          delimiter="$(openssl rand -hex 8)"
+          echo "sbom-platforms<<${delimiter}" >> $GITHUB_OUTPUT
+          echo "$SBOM_PLATFORMS" >> $GITHUB_OUTPUT
+          echo "${delimiter}" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "Platforms with SBOMs:"
+          echo "$SBOM_PLATFORMS" | jq -r '.[] | "  - \(.platform) (\(.digest))"'
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
+        with:
+          name: sbom-files${{ inputs.artifact-prefix != '' && format('-{0}', inputs.artifact-prefix) || '' }}
+          path: sbom-*.spdx.json
+          retention-days: 90
+          if-no-files-found: ignore
 
       - name: Generate SLSA provenance
         id: provenance
@@ -519,3 +530,36 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "</details>" >> $GITHUB_STEP_SUMMARY
+
+  attest-sboms:
+    name: Attest SBOMs
+    runs-on: ubuntu-latest
+    needs: attest
+    if: needs.attest.outputs.sbom-platforms != '[]' && needs.attest.outputs.sbom-platforms != ''
+
+    strategy:
+      matrix:
+        platform: ${{ fromJSON(needs.attest.outputs.sbom-platforms) }}
+      fail-fast: false
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Download SBOM artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
+        with:
+          name: sbom-files${{ inputs.artifact-prefix != '' && format('-{0}', inputs.artifact-prefix) || '' }}
+          path: ./sboms
+
+      - name: Attest SBOM for ${{ matrix.platform.platform }}
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # tag=v3.0.0
+        with:
+          subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
+          subject-digest: ${{ matrix.platform.digest }}
+          sbom-path: ./sboms/sbom-${{ matrix.platform.slug }}.spdx.json
+          push-to-registry: true
+        continue-on-error: true
