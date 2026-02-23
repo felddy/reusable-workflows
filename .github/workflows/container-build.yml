@@ -594,6 +594,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
+      - name: Install crane
+        run: |
+          # Install crane for manifest digest extraction
+          VERSION="v0.20.2"
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin crane
+          crane version
+
       - name: Create manifest list and push
         id: manifest
         working-directory: /tmp/digests
@@ -643,17 +650,8 @@ jobs:
 
               # Get the digest of the manifest (same for all tags)
               if [[ -z "$MANIFEST_DIGEST" ]]; then
-                # Use docker buildx imagetools inspect with --raw to get the manifest index digest
-                MANIFEST_DIGEST=$(docker buildx imagetools inspect "$tag" --raw | jq -r '.digest // empty' 2>/dev/null || echo "")
-
-                # Fallback to crane digest if available
-                if [[ -z "$MANIFEST_DIGEST" ]] && command -v crane &> /dev/null; then
-                  MANIFEST_DIGEST=$(crane digest "$tag" 2>/dev/null || echo "")
-                fi
-
-                if [[ -z "$MANIFEST_DIGEST" ]]; then
-                  echo "::warning::Could not extract manifest digest from $tag"
-                fi
+                MANIFEST_DIGEST=$(crane digest "$tag")
+                echo "Manifest digest: $MANIFEST_DIGEST"
               fi
             fi
           done
