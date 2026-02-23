@@ -3,11 +3,12 @@
 # Generates SLSA provenance and attestations for container images
 # Supports custom attestation predicates and vulnerability scan results
 #
-# Note: SBOM generation is handled by BuildKit during the build process (via sbom: true
-# in build-push-action). BuildKit automatically generates platform-specific SBOMs in SPDX
-# format for each architecture (amd64, arm64, etc.) and attaches them to the image.
-# This workflow does NOT regenerate SBOMs to avoid overwriting the correct multi-platform
-# SBOMs with incorrect single-platform ones. See: https://github.com/actions/attest-sbom/issues/60
+# Note: BuildKit generates per-architecture SBOMs during the build process when
+# sbom: true is set in build-push-action. These SBOMs are attached as attestation
+# manifests to the multi-platform image index. Different architectures may have
+# different dependencies, so per-architecture SBOMs are more accurate than a single
+# SBOM. This workflow downloads those BuildKit-generated SBOMs and re-uploads them
+# as signed GitHub Actions attestations, providing cryptographic verification.
 
 name: Container Attestation
 
@@ -142,6 +143,119 @@ jobs:
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
           echo "Extracted digest: $DIGEST"
 
+      - name: Install crane
+        run: |
+          # Install crane for manifest inspection
+          VERSION="v0.20.2"
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin crane
+          crane version
+
+      - name: Extract platform list and digests
+        id: platforms
+        run: |
+          # Get the multi-platform manifest
+          MANIFEST=$(crane manifest ${{ inputs.image-ref }})
+
+          # Extract platform digests (filter out attestation manifests)
+          # Attestation manifests have platform.os = "unknown"
+          # Real platform manifests have platform.os = "linux"
+          PLATFORMS=$(echo "$MANIFEST" | jq -r '
+            .manifests[] |
+            select(.platform.os == "linux") |
+            {
+              platform: (.platform.os + "/" + .platform.architecture + (if .platform.variant then "/" + .platform.variant else "" end)),
+              digest: .digest
+            }
+          ' | jq -s '.')
+
+          echo "platforms=$PLATFORMS" >> $GITHUB_OUTPUT
+          echo "Detected platforms:"
+          echo "$PLATFORMS" | jq -r '.[] | "  - \(.platform) (\(.digest))"'
+
+      - name: Download and sign BuildKit SBOMs
+        run: |
+          # Parse platforms JSON
+          PLATFORMS='${{ steps.platforms.outputs.platforms }}'
+
+          # Create a temporary file to track results
+          RESULTS_FILE=$(mktemp)
+
+          # For each platform, download SBOM and sign it
+          echo "$PLATFORMS" | jq -c '.[]' | while read -r platform_info; do
+            PLATFORM=$(echo "$platform_info" | jq -r '.platform')
+            DIGEST=$(echo "$platform_info" | jq -r '.digest')
+
+            # Convert platform string to filename-safe format (e.g., linux/amd64 -> linux-amd64)
+            PLATFORM_SLUG=$(echo "$PLATFORM" | tr '/' '-')
+
+            echo "Processing platform: $PLATFORM (digest: $DIGEST)"
+
+            # Use the platform-specific image reference to extract the SBOM
+            PLATFORM_IMAGE="${{ inputs.registry }}/${{ inputs.image-name }}@$DIGEST"
+
+            # Extract SBOM using docker buildx imagetools inspect
+            # Note: We inspect the platform-specific image, not the multi-platform manifest
+            SBOM_JSON=$(docker buildx imagetools inspect "$PLATFORM_IMAGE" --format "{{ json .SBOM.SPDX }}" 2>/dev/null || echo "")
+
+            if [ -n "$SBOM_JSON" ] && [ "$SBOM_JSON" != "null" ]; then
+              # Save SBOM to file
+              SBOM_FILE="sbom-${PLATFORM_SLUG}.spdx.json"
+              echo "$SBOM_JSON" > "$SBOM_FILE"
+
+              echo "✅ Downloaded SBOM for $PLATFORM ($(stat -c%s "$SBOM_FILE") bytes)"
+
+              # Sign and upload SBOM as GitHub Actions attestation
+              echo "Signing SBOM for $PLATFORM..."
+              if gh attestation attest \
+                --predicate-type https://spdx.dev/Document \
+                --predicate "$SBOM_FILE" \
+                --digest-alg sha256 \
+                --subject "$PLATFORM_IMAGE" \
+                --repo ${{ github.repository }}; then
+                echo "✅ Signed and uploaded SBOM attestation for $PLATFORM"
+                echo "success" >> "$RESULTS_FILE"
+              else
+                echo "::error::Failed to sign SBOM for $PLATFORM"
+                echo "failure" >> "$RESULTS_FILE"
+              fi
+            else
+              echo "⚠️  No SBOM found for $PLATFORM"
+              echo "no-sbom" >> "$RESULTS_FILE"
+            fi
+          done
+
+          # Check results
+          if [ ! -f "$RESULTS_FILE" ] || [ ! -s "$RESULTS_FILE" ]; then
+            echo "::error::No platforms processed"
+            rm -f "$RESULTS_FILE"
+            exit 1
+          fi
+
+          SUCCESS_COUNT=$(grep -c "success" "$RESULTS_FILE" || echo "0")
+          FAILURE_COUNT=$(grep -c "failure" "$RESULTS_FILE" || echo "0")
+          NO_SBOM_COUNT=$(grep -c "no-sbom" "$RESULTS_FILE" || echo "0")
+
+          rm -f "$RESULTS_FILE"
+
+          echo ""
+          echo "SBOM Processing Summary:"
+          echo "  ✅ Successfully signed: $SUCCESS_COUNT"
+          echo "  ❌ Failed to sign: $FAILURE_COUNT"
+          echo "  ⚠️  No SBOM found: $NO_SBOM_COUNT"
+
+          if [ "$SUCCESS_COUNT" -eq 0 ]; then
+            echo "::error::Failed to sign any SBOMs"
+            exit 1
+          fi
+
+          if [ "$FAILURE_COUNT" -gt 0 ]; then
+            echo "::warning::Some SBOMs failed to sign"
+          fi
+
+          echo "✅ Successfully signed $SUCCESS_COUNT SBOM(s)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Generate SLSA provenance
         id: provenance
         uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # tag=v1.4.3
@@ -274,8 +388,7 @@ jobs:
             echo "❌ SLSA Provenance: Failed" >> $GITHUB_STEP_SUMMARY
           fi
 
-          echo "✅ SBOM (SPDX): Generated by BuildKit during build" >> $GITHUB_STEP_SUMMARY
-          echo "   Platform-specific SBOMs are automatically attached to each architecture's image" >> $GITHUB_STEP_SUMMARY
+          echo "✅ SBOM (SPDX): Per-architecture SBOMs signed and attached" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ steps.attest-scan.outcome }}" = "success" ]; then
             echo "✅ Vulnerability Scan Attestation: Attached" >> $GITHUB_STEP_SUMMARY
@@ -303,6 +416,9 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Verification" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "<details>" >> $GITHUB_STEP_SUMMARY
+          echo "<summary>View verification commands</summary>" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "Attestations are stored in the OCI registry in standard Sigstore format." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Verify and download attestations using:" >> $GITHUB_STEP_SUMMARY
@@ -318,8 +434,9 @@ jobs:
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download SPDX SBOM attestation (generated by BuildKit):" >> $GITHUB_STEP_SUMMARY
+          echo "Download per-architecture SPDX SBOM attestations (BuildKit-generated):" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# View all SBOMs for all architectures" >> $GITHUB_STEP_SUMMARY
           echo "cosign download attestation --predicate-type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -330,8 +447,9 @@ jobs:
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Extract SPDX SBOM content (generated by BuildKit):" >> $GITHUB_STEP_SUMMARY
+          echo "Extract SPDX SBOM content for a specific architecture:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "# SBOMs are per-architecture; each platform has its own SBOM" >> $GITHUB_STEP_SUMMARY
           echo "cosign download attestation --predicate-type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
           echo "  ${{ inputs.image-ref }} | jq -r '.dsseEnvelope.payload' | base64 -d | jq '.predicate'" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -344,7 +462,7 @@ jobs:
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Verify SPDX SBOM with cosign (generated by BuildKit):" >> $GITHUB_STEP_SUMMARY
+          echo "Verify SBOM attestations with cosign:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "cosign verify-attestation --type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
           echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
@@ -352,7 +470,13 @@ jobs:
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** BuildKit generates per-architecture SBOMs during the build process." >> $GITHUB_STEP_SUMMARY
+          echo "This workflow downloads those SBOMs and re-uploads them as signed GitHub Actions attestations." >> $GITHUB_STEP_SUMMARY
+          echo "All attestations (SLSA provenance, SBOMs, build environment, vulnerability scan) are now signed and cryptographically verifiable." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download all attestations using gh CLI:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "gh attestation download oci://${{ inputs.image-ref }} --owner ${{ github.repository_owner }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "</details>" >> $GITHUB_STEP_SUMMARY
