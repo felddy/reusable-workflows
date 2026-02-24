@@ -258,9 +258,9 @@ jobs:
             # Get the attestation manifest and find the SBOM blob
             ATTESTATION_MANIFEST=$(crane manifest ${{ inputs.registry }}/${{ inputs.image-name }}@$ATTESTATION_DIGEST)
 
-            SBOM_BLOB_DIGEST=$(echo "$ATTESTATION_MANIFEST" | jq -r '
+            SBOM_BLOB_DIGEST=$(echo "$ATTESTATION_MANIFEST" | jq -r --arg predicate_type "${{ env.PREDICATE_TYPE_SBOM }}" '
               .layers[] |
-              select(.annotations."in-toto.io/predicate-type" == "${{ env.PREDICATE_TYPE_SBOM }}") |
+              select(.annotations."in-toto.io/predicate-type" == $predicate_type) |
               .digest
             ')
 
