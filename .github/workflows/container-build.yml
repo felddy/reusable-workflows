@@ -159,6 +159,52 @@ jobs:
           echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
           echo "Workflow call ID: $UNIQUE_ID (use this for all artifacts)"
 
+  # Calculate SOURCE_DATE_EPOCH for reproducible builds
+  calculate-source-date-epoch:
+    name: Calculate SOURCE_DATE_EPOCH
+    needs:
+      - generate-id
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    outputs:
+      source-date-epoch: ${{ steps.calculate.outputs.source-date-epoch }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Calculate SOURCE_DATE_EPOCH
+        id: calculate
+        run: |
+          # Calculate commit timestamp for SOURCE_DATE_EPOCH
+          # This value is used conditionally in the build step:
+          # - Release builds (refs/tags/*): Use commit timestamp for release tracking
+          # - Development builds (branches, PRs): Use 0 for maximum cache reuse
+          # The build step automatically selects the appropriate value based on github.ref
+          if [ -d .git ]; then
+            # Get the commit timestamp from git
+            COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
+            echo "source-date-epoch=$COMMIT_TIMESTAMP" >> $GITHUB_OUTPUT
+            COMMIT_DATE=$(date -u -d "@$COMMIT_TIMESTAMP" '+%Y-%m-%d %H:%M:%S UTC')
+            echo "Reproducible build timestamp: $COMMIT_DATE (epoch: $COMMIT_TIMESTAMP)"
+          else
+            # Fallback to Unix epoch (0) for reproducibility
+            FALLBACK_TIMESTAMP=0
+            echo "source-date-epoch=$FALLBACK_TIMESTAMP" >> $GITHUB_OUTPUT
+            echo "::warning::Not in a git repository, using Unix epoch (0) for SOURCE_DATE_EPOCH"
+          fi
+
   # Determine visibility based on presence of private-package-token
   determine-visibility:
     name: Determine Visibility
@@ -213,6 +259,7 @@ jobs:
     name: Build ${{ matrix.platform }}
     needs:
       - generate-id
+      - calculate-source-date-epoch
       - metadata
     runs-on: ubuntu-latest
 
@@ -231,6 +278,16 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      security-events: write
+
+    env:
+      PREDICATE_TYPE_PROVENANCE: https://slsa.dev/provenance/v1
+      PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
+      PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
+      PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
+      # Tool versions
+      COSIGN_VERSION: v2.6.2
+      CRANE_VERSION: v0.21.0
 
     steps:
       - name: Harden Runner
@@ -341,83 +398,29 @@ jobs:
           echo "scope=$PLATFORM_SCOPE" >> $GITHUB_OUTPUT
           echo "Cache scope: $PLATFORM_SCOPE"
 
-      - name: Set SOURCE_DATE_EPOCH for reproducible builds
-        id: source-date-epoch
-        run: |
-          # Calculate commit timestamp for SOURCE_DATE_EPOCH
-          # This value is used conditionally in the build step:
-          # - Release builds (refs/tags/*): Use commit timestamp for release tracking
-          # - Development builds (branches, PRs): Use 0 for maximum cache reuse
-          # The build step automatically selects the appropriate value based on github.ref
-          if [ -d .git ]; then
-            # Get the commit timestamp from git
-            COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
-            echo "SOURCE_DATE_EPOCH=$COMMIT_TIMESTAMP" >> $GITHUB_ENV
-            echo "source-date-epoch=$COMMIT_TIMESTAMP" >> $GITHUB_OUTPUT
-            COMMIT_DATE=$(date -u -d "@$COMMIT_TIMESTAMP" '+%Y-%m-%d %H:%M:%S UTC')
-            echo "Reproducible build timestamp: $COMMIT_DATE (epoch: $COMMIT_TIMESTAMP)"
-          else
-            # Fallback to Unix epoch (0) for reproducibility
-            FALLBACK_TIMESTAMP=0
-            echo "SOURCE_DATE_EPOCH=$FALLBACK_TIMESTAMP" >> $GITHUB_ENV
-            echo "source-date-epoch=$FALLBACK_TIMESTAMP" >> $GITHUB_OUTPUT
-            echo "::warning::Not in a git repository, using Unix epoch (0) for SOURCE_DATE_EPOCH"
-          fi
-
       - name: Build and push container image
         id: build
         uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # tag=v6.10.0
         env:
           # Only upload build records in debug mode to reduce artifact storage
           DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.debug == true || env.ACTIONS_STEP_DEBUG == 'true' }}
-          # SOURCE_DATE_EPOCH for reproducible builds (set in previous step)
-          SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') && env.SOURCE_DATE_EPOCH || '0' }}
+          # SOURCE_DATE_EPOCH for reproducible builds (from calculate-source-date-epoch job)
+          SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') && needs.calculate-source-date-epoch.outputs.source-date-epoch || '0' }}
         with:
-          context: ${{ inputs.context }}
-          file: ${{ inputs.dockerfile }}
-          platforms: ${{ matrix.platform }}
-          labels: ${{ needs.metadata.outputs.image-labels }}
           annotations: ${{ needs.metadata.outputs.annotations }}
           build-args: ${{ steps.parse-args.outputs.args }}
-          target: ${{ inputs.target }}
           cache-from: type=gha,scope=${{ steps.cache-scope.outputs.scope }}
           cache-to: type=gha,mode=max,scope=${{ steps.cache-scope.outputs.scope }}
-          provenance: true
-          sbom: true
-          secrets: ${{ steps.secrets.outputs.secrets }}
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          labels: ${{ needs.metadata.outputs.image-labels }}
           outputs: type=image,name=ghcr.io/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=true
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          sbom: false
+          secrets: ${{ steps.secrets.outputs.secrets }}
+          target: ${{ inputs.target }}
         continue-on-error: true
-
-      - name: Check build status
-        if: steps.build.outcome == 'failure'
-        run: |
-          echo "::error::Container build failed for platform: ${{ matrix.platform }}"
-          echo "::error::Common build failures:"
-          echo "::error::  - Syntax errors in Dockerfile"
-          echo "::error::  - Missing files in build context"
-          echo "::error::  - Invalid base image or tag"
-          echo "::error::  - Network issues downloading dependencies"
-          echo "::error::  - Insufficient disk space"
-          echo "::error::  - Build argument or secret issues"
-          echo ""
-          echo "## Build Failed ❌" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Platform:** \`${{ matrix.platform }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Troubleshooting Steps" >> $GITHUB_STEP_SUMMARY
-          echo "1. Check the build logs above for specific error messages" >> $GITHUB_STEP_SUMMARY
-          echo "2. Verify Dockerfile syntax is correct" >> $GITHUB_STEP_SUMMARY
-          echo "3. Ensure all required files are in the build context" >> $GITHUB_STEP_SUMMARY
-          echo "4. Check that base image exists and is accessible" >> $GITHUB_STEP_SUMMARY
-          echo "5. Verify build arguments and secrets are correct" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Debug Mode" >> $GITHUB_STEP_SUMMARY
-          echo "Enable debug mode for verbose logging:" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`yaml" >> $GITHUB_STEP_SUMMARY
-          echo "with:" >> $GITHUB_STEP_SUMMARY
-          echo "  debug: true" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          exit 1
 
       - name: Export digest
         id: digest
@@ -427,13 +430,157 @@ jobs:
           touch "/tmp/digests/${digest#sha256:}"
           echo "digest=$digest" >> $GITHUB_OUTPUT
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
+        with:
+          cosign-release: ${{ env.COSIGN_VERSION }}
+
+      - name: Check attestation existence
+        id: check-attestations
+        continue-on-error: true
+        run: |
+          IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}"
+
+          echo "Checking for existing attestations on platform image..."
+
+          # Check SBOM attestation
+          if timeout 5 cosign download attestation \
+            --predicate-type="${{ env.PREDICATE_TYPE_SBOM }}" \
+            "$IMAGE_REF" > /dev/null 2>&1; then
+            echo "sbom-exists=true" >> "$GITHUB_OUTPUT"
+            echo "✓ SBOM attestation exists for ${{ matrix.platform }}, will skip SBOM generation"
+          else
+            echo "sbom-exists=false" >> "$GITHUB_OUTPUT"
+            echo "✗ SBOM attestation missing for ${{ matrix.platform }}, will generate SBOM"
+          fi
+
+          # Check vulnerability scan attestation
+          if timeout 5 cosign download attestation \
+            --predicate-type="${{ env.PREDICATE_TYPE_VULN }}" \
+            "$IMAGE_REF" > /dev/null 2>&1; then
+            echo "vuln-scan-exists=true" >> "$GITHUB_OUTPUT"
+            echo "✓ Vulnerability scan attestation exists for ${{ matrix.platform }}, will skip scanning"
+          else
+            echo "vuln-scan-exists=false" >> "$GITHUB_OUTPUT"
+            echo "✗ Vulnerability scan attestation missing for ${{ matrix.platform }}, will scan"
+          fi
+
       - name: Upload digest
+        if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
+          if-no-files-found: error
           name: digests-${{ needs.generate-id.outputs.workflow-call-id }}-${{ strategy.job-index }}
           path: /tmp/digests/*
-          if-no-files-found: error
           retention-days: 1
+
+      # Scan platform image
+      - name: Run Trivy vulnerability scanner (SARIF)
+        id: trivy-sarif
+        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # tag=0.34.0
+        with:
+          exit-code: 1
+          format: sarif
+          ignore-unfixed: true
+          image-ref: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
+          output: trivy-results-${{ strategy.job-index }}.sarif
+          severity: ${{ inputs.scan-severity }}
+          vuln-type: os,library
+        continue-on-error: true
+
+      - name: Run Trivy vulnerability scanner (JSON)
+        id: trivy-json
+        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # tag=0.34.0
+        with:
+          exit-code: 0
+          format: json
+          ignore-unfixed: true
+          image-ref: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
+          output: trivy-results-${{ strategy.job-index }}.json
+          severity: ${{ inputs.scan-severity }}
+          vuln-type: os,library
+
+      - name: Parse scan results
+        id: scan-result
+        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        run: |
+          # Parse JSON results to count vulnerabilities by severity
+          if [ -f trivy-results-${{ strategy.job-index }}.json ]; then
+            CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
+            HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
+            MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
+            LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
+
+            echo "Platform ${{ matrix.platform }} vulnerabilities: CRITICAL=$CRITICAL, HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW"
+          fi
+
+          # Set scan passed status
+          if [ "${{ steps.trivy-sarif.outcome }}" = "success" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Scan passed for ${{ matrix.platform }}"
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Scan failed for ${{ matrix.platform }}"
+          fi
+
+      - name: Upload scan results
+        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
+        with:
+          name: security-scan-results-${{ needs.generate-id.outputs.workflow-call-id }}-${{ strategy.job-index }}
+          path: |
+            trivy-results-${{ strategy.job-index }}.sarif
+            trivy-results-${{ strategy.job-index }}.json
+          retention-days: 30
+
+      - name: Upload SARIF to GitHub Security
+        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6 # tag=codeql-bundle-v4.32.3
+        with:
+          category: container-scan-${{ matrix.platform }}
+          sarif_file: trivy-results-${{ strategy.job-index }}.sarif
+
+      - name: Fail if vulnerabilities found
+        if: steps.check-attestations.outputs.vuln-scan-exists != 'true' && steps.trivy-sarif.outcome == 'failure'
+        run: |
+          echo "::error::Security scan failed for ${{ matrix.platform }} - vulnerabilities found above threshold: ${{ inputs.scan-severity }}"
+          exit 1
+
+      # Generate attestations for platform
+      - name: Install Syft
+        if: steps.check-attestations.outputs.sbom-exists != 'true'
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          syft version
+
+      - name: Generate SBOM
+        id: generate-sbom
+        if: steps.check-attestations.outputs.sbom-exists != 'true'
+        run: |
+          PLATFORM_SLUG=$(echo "${{ matrix.platform }}" | tr '/' '-')
+          syft "ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}" \
+            -o spdx-json > "sbom-${PLATFORM_SLUG}.spdx.json"
+          echo "sbom-file=sbom-${PLATFORM_SLUG}.spdx.json" >> $GITHUB_OUTPUT
+          echo "✅ Generated SBOM for ${{ matrix.platform }}"
+
+      - name: Attest SBOM
+        if: steps.check-attestations.outputs.sbom-exists != 'true'
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # tag=v3.0.0
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: ${{ steps.generate-sbom.outputs.sbom-file }}
+          push-to-registry: true
+
+      - name: Upload SBOM artifact
+        if: steps.generate-sbom.outputs.sbom-file != ''
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
+        with:
+          name: sbom-${{ needs.generate-id.outputs.workflow-call-id }}-${{ strategy.job-index }}
+          path: ${{ steps.generate-sbom.outputs.sbom-file }}
+          retention-days: 90
 
       - name: Clean up secret files
         if: always()
@@ -441,14 +588,32 @@ jobs:
           rm -f /tmp/build-secret-*
 
       - name: Output platform build summary
+        if: always()
         run: |
           echo "## Platform Build Complete: ${{ matrix.platform }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
           echo "**Cache Scope:** \`${{ steps.cache-scope.outputs.scope }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check-attestations.outputs.sbom-exists }}" = "true" ] || [ "${{ steps.check-attestations.outputs.vuln-scan-exists }}" = "true" ]; then
+            echo "### ⏭️  Attestations Already Exist" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Skipped work for existing attestations:" >> $GITHUB_STEP_SUMMARY
+
+            if [ "${{ steps.check-attestations.outputs.vuln-scan-exists }}" = "true" ]; then
+              echo "- ✓ Vulnerability scanning (attestation exists)" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "${{ steps.check-attestations.outputs.sbom-exists }}" = "true" ]; then
+              echo "- ✓ SBOM generation (attestation exists)" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
           echo "### Reproducibility Information" >> $GITHUB_STEP_SUMMARY
-          echo "**SOURCE_DATE_EPOCH:** \`${{ steps.source-date-epoch.outputs.source-date-epoch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**SOURCE_DATE_EPOCH:** \`${{ needs.calculate-source-date-epoch.outputs.source-date-epoch }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "This build uses deterministic timestamps for reproducibility." >> $GITHUB_STEP_SUMMARY
           echo "Rebuilding the same commit with the same inputs should produce the same digest." >> $GITHUB_STEP_SUMMARY
@@ -480,9 +645,9 @@ jobs:
       - name: Download all digests
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
         with:
+          merge-multiple: true
           path: /tmp/digests
           pattern: digests-${{ needs.generate-id.outputs.workflow-call-id }}-*
-          merge-multiple: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
@@ -490,9 +655,9 @@ jobs:
       - name: Log in to container registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
+          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Install crane
         run: |
@@ -652,40 +817,244 @@ jobs:
           echo "docker buildx imagetools inspect $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
-  scan:
-    name: Security Scan
+  # Generate attestations for multi-platform manifest
+  attest-manifest:
+    name: Attest Manifest
     needs:
       - generate-id
       - metadata
       - manifest
-    uses: ./.github/workflows/container-scan.yml
-    with:
-      image-ref: ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
-      scan-severity: ${{ inputs.scan-severity }}
-      artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
-    secrets:
-      private-package-token: ${{ secrets.private-package-token }}
+    runs-on: ubuntu-latest
 
-  # Generate attestations (SLSA provenance, SBOM)
-  attest:
-    name: Generate Attestations
-    needs:
-      - generate-id
-      - metadata
-      - manifest
-      - scan
-    if: |
-      always() &&
-      needs.scan.result == 'success' &&
-      needs.manifest.result == 'success'
-    uses: ./.github/workflows/container-attest.yml
-    with:
-      image-ref: ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
-      image-name: ${{ inputs.image-name }}
-      registry: ghcr.io
-      artifact-prefix: ${{ needs.generate-id.outputs.workflow-call-id }}
-    secrets:
-      private-package-token: ${{ secrets.private-package-token }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    env:
+      PREDICATE_TYPE_PROVENANCE: https://slsa.dev/provenance/v1
+      PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
+      PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
+        with:
+          cosign-release: v2.6.2
+
+      - name: Set SOURCE_DATE_EPOCH for reproducible builds
+        id: source-date-epoch
+        run: |
+          if [ -d .git ]; then
+            COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
+            echo "SOURCE_DATE_EPOCH=$COMMIT_TIMESTAMP" >> $GITHUB_ENV
+            echo "source-date-epoch=$COMMIT_TIMESTAMP" >> $GITHUB_OUTPUT
+            COMMIT_DATE=$(date -u -d "@$COMMIT_TIMESTAMP" '+%Y-%m-%d %H:%M:%S UTC')
+            echo "Reproducible build timestamp: $COMMIT_DATE (epoch: $COMMIT_TIMESTAMP)"
+          else
+            FALLBACK_TIMESTAMP=0
+            echo "SOURCE_DATE_EPOCH=$FALLBACK_TIMESTAMP" >> $GITHUB_ENV
+            echo "source-date-epoch=$FALLBACK_TIMESTAMP" >> $GITHUB_OUTPUT
+            echo "::warning::Not in a git repository, using Unix epoch (0) for SOURCE_DATE_EPOCH"
+          fi
+
+      - name: Log in to container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
+
+      - name: Check attestation existence
+        id: check-attestations
+        continue-on-error: true
+        timeout-minutes: 2
+        run: |
+          IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}"
+
+          echo "Checking for existing attestations on manifest..."
+
+          # Check provenance attestation
+          if timeout 5 cosign download attestation \
+            --predicate-type="${{ env.PREDICATE_TYPE_PROVENANCE }}" \
+            "$IMAGE_REF" > /dev/null 2>&1; then
+            echo "provenance-exists=true" >> "$GITHUB_OUTPUT"
+            echo "✓ Provenance attestation exists (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}), will skip"
+          else
+            echo "provenance-exists=false" >> "$GITHUB_OUTPUT"
+            echo "✗ Provenance attestation missing (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}), will create"
+          fi
+
+          # Check vulnerability scan attestation
+          if timeout 5 cosign download attestation \
+            --predicate-type="${{ env.PREDICATE_TYPE_VULN }}" \
+            "$IMAGE_REF" > /dev/null 2>&1; then
+            echo "vuln-scan-exists=true" >> "$GITHUB_OUTPUT"
+            echo "✓ Vulnerability scan attestation exists (predicateType ${{ env.PREDICATE_TYPE_VULN }}), will skip"
+          else
+            echo "vuln-scan-exists=false" >> "$GITHUB_OUTPUT"
+            echo "✗ Vulnerability scan attestation missing (predicateType ${{ env.PREDICATE_TYPE_VULN }}), will create"
+          fi
+
+          # Check build environment attestation
+          if timeout 5 cosign download attestation \
+            --predicate-type="${{ env.PREDICATE_TYPE_BUILD_ENV }}" \
+            "$IMAGE_REF" > /dev/null 2>&1; then
+            echo "build-env-exists=true" >> "$GITHUB_OUTPUT"
+            echo "✓ Build environment attestation exists (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}), will skip"
+          else
+            echo "build-env-exists=false" >> "$GITHUB_OUTPUT"
+            echo "✗ Build environment attestation missing (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}), will create"
+          fi
+
+      - name: Download scan results
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
+        with:
+          path: ./scan-results
+          pattern: security-scan-results-${{ needs.generate-id.outputs.workflow-call-id }}-*
+          merge-multiple: true
+        continue-on-error: true
+
+      - name: Merge scan results
+        id: merge-scans
+        run: |
+          # Merge all platform scan results into a single JSON
+          if [ -d ./scan-results ]; then
+            echo "Merging scan results from all platforms..."
+
+            # Create merged results structure
+            echo '{"Results":[]}' > merged-scan-results.json
+
+            # Merge all JSON files
+            for scan_file in ./scan-results/trivy-results-*.json; do
+              if [ -f "$scan_file" ]; then
+                echo "Merging $scan_file"
+                jq -s '.[0].Results += .[1].Results | .[0]' merged-scan-results.json "$scan_file" > temp.json
+                mv temp.json merged-scan-results.json
+              fi
+            done
+
+            echo "scan-file=merged-scan-results.json" >> $GITHUB_OUTPUT
+            echo "✅ Merged scan results from all platforms"
+          else
+            echo "::warning::No scan results found to merge"
+            echo "scan-file=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate SLSA provenance
+        id: provenance
+        if: steps.check-attestations.outputs.provenance-exists != 'true'
+        uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # tag=v1.4.3
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ needs.manifest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Capture build environment metadata
+        id: build-env
+        run: |
+          cat > build-environment.json <<EOF
+          {
+            "buildEnvironment": {
+              "sourceRepository": "${{ github.repository }}",
+              "sourceCommit": "${{ github.sha }}",
+              "sourceRef": "${{ github.ref }}",
+              "sourceDateEpoch": "${SOURCE_DATE_EPOCH:-}",
+              "buildTimestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+              "builder": {
+                "id": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "platform": "GitHub Actions",
+                "runnerOS": "${{ runner.os }}",
+                "runnerArch": "${{ runner.arch }}"
+              },
+              "tools": {
+                "docker": "$(docker --version | cut -d' ' -f3 | tr -d ',')",
+                "buildx": "$(docker buildx version | cut -d' ' -f2)",
+                "git": "$(git --version | cut -d' ' -f3)"
+              }
+            }
+          }
+          EOF
+          echo "Build environment metadata captured"
+
+      - name: Attach build environment as custom attestation
+        id: attest-build-env
+        if: steps.check-attestations.outputs.build-env-exists != 'true'
+        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ needs.manifest.outputs.digest }}
+          predicate-type: ${{ env.PREDICATE_TYPE_BUILD_ENV }}
+          predicate-path: build-environment.json
+          push-to-registry: true
+        continue-on-error: true
+
+      - name: Attach vulnerability scan results
+        id: attest-scan
+        if: |
+          steps.check-attestations.outputs.vuln-scan-exists != 'true' &&
+          steps.merge-scans.outputs.scan-file != ''
+        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ needs.manifest.outputs.digest }}
+          predicate-type: ${{ env.PREDICATE_TYPE_VULN }}
+          predicate-path: ${{ steps.merge-scans.outputs.scan-file }}
+          push-to-registry: true
+        continue-on-error: true
+
+      - name: Upload attestation artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
+        with:
+          name: attestations-${{ needs.generate-id.outputs.workflow-call-id }}
+          path: |
+            build-environment.json
+            merged-scan-results.json
+            ${{ steps.provenance.outputs.bundle-path }}
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Generate attestation summary
+        if: always()
+        run: |
+          echo "## Attestation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Manifest Digest:** \`${{ needs.manifest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Attestations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.provenance.outcome }}" = "success" ]; then
+            echo "✅ SLSA Provenance (manifest)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️  SLSA Provenance (skipped - already exists)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "✅ SBOM (per-platform, generated during build)" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.attest-scan.outcome }}" = "success" ]; then
+            echo "✅ Vulnerability Scan (manifest)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️  Vulnerability Scan (skipped)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ "${{ steps.attest-build-env.outcome }}" = "success" ]; then
+            echo "✅ Build Environment (manifest)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⏭️  Build Environment (skipped)" >> $GITHUB_STEP_SUMMARY
+          fi
 
   # Sign container image (always enabled)
   sign:
@@ -693,12 +1062,10 @@ jobs:
     needs:
       - metadata
       - manifest
-      - scan
-      - attest
+      - attest-manifest
     if: |
       always() &&
-      needs.scan.result == 'success' &&
-      needs.attest.result == 'success' &&
+      needs.attest-manifest.result == 'success' &&
       needs.manifest.result == 'success'
     uses: ./.github/workflows/container-sign.yml
     with:
