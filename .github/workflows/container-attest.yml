@@ -90,6 +90,12 @@ jobs:
     name: Generate Attestations
     runs-on: ubuntu-latest
 
+    env:
+      PREDICATE_TYPE_PROVENANCE: https://slsa.dev/provenance/v1
+      PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
+      PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
+      PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
+
     outputs:
       attestation-digest: ${{ steps.attestation-digest.outputs.digest }}
       provenance-file: ${{ steps.provenance-paths.outputs.provenance-file }}
@@ -196,7 +202,7 @@ jobs:
         timeout-minutes: 1
         run: |
           if timeout 5 cosign download attestation \
-            --predicate-type="https://slsa.dev/provenance/v1" \
+            --predicate-type="${{ env.PREDICATE_TYPE_PROVENANCE }}" \
             "${{ inputs.image-ref }}" > /dev/null 2>&1; then
             echo "ATTESTATION_EXISTS=true" >> "$GITHUB_OUTPUT"
             echo "Found existing provenance attestation"
@@ -251,7 +257,7 @@ jobs:
 
             SBOM_BLOB_DIGEST=$(echo "$ATTESTATION_MANIFEST" | jq -r '
               .layers[] |
-              select(.annotations."in-toto.io/predicate-type" == "https://spdx.dev/Document") |
+              select(.annotations."in-toto.io/predicate-type" == "${{ env.PREDICATE_TYPE_SBOM }}") |
               .digest
             ')
 
@@ -350,9 +356,9 @@ jobs:
         run: |
           if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
             if [ "${{ steps.check-provenance.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
-              echo "Skipped provenance attestation (predicateType https://slsa.dev/provenance/v1 already exists)"
+              echo "Skipped provenance attestation (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }} already exists)"
             else
-              echo "Created provenance attestation (predicateType https://slsa.dev/provenance/v1)"
+              echo "Created provenance attestation (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }})"
             fi
           else
             echo "Created provenance attestation (deduplication disabled)"
@@ -397,7 +403,7 @@ jobs:
         timeout-minutes: 1
         run: |
           if timeout 5 cosign download attestation \
-            --predicate-type="https://github.com/felddy/reusable-workflows/build-environment/v1" \
+            --predicate-type="${{ env.PREDICATE_TYPE_BUILD_ENV }}" \
             "${{ inputs.image-ref }}" > /dev/null 2>&1; then
             echo "ATTESTATION_EXISTS=true" >> "$GITHUB_OUTPUT"
             echo "Found existing build environment attestation"
@@ -416,7 +422,7 @@ jobs:
           show-summary: false
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
-          predicate-type: https://github.com/felddy/reusable-workflows/build-environment/v1
+          predicate-type: ${{ env.PREDICATE_TYPE_BUILD_ENV }}
           predicate-path: build-environment.json
           push-to-registry: true
         continue-on-error: true
@@ -426,9 +432,9 @@ jobs:
         run: |
           if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
             if [ "${{ steps.check-build-env.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
-              echo "Skipped build environment attestation (predicateType https://github.com/felddy/reusable-workflows/build-environment/v1 already exists)"
+              echo "Skipped build environment attestation (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }} already exists)"
             else
-              echo "Created build environment attestation (predicateType https://github.com/felddy/reusable-workflows/build-environment/v1)"
+              echo "Created build environment attestation (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }})"
             fi
           else
             echo "Created build environment attestation (deduplication disabled)"
@@ -451,7 +457,7 @@ jobs:
         timeout-minutes: 1
         run: |
           if timeout 5 cosign download attestation \
-            --predicate-type="https://cosign.sigstore.dev/attestation/vuln/v1" \
+            --predicate-type="${{ env.PREDICATE_TYPE_VULN }}" \
             "${{ inputs.image-ref }}" > /dev/null 2>&1; then
             echo "ATTESTATION_EXISTS=true" >> "$GITHUB_OUTPUT"
             echo "Found existing vulnerability scan attestation"
@@ -470,7 +476,7 @@ jobs:
           show-summary: false
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
-          predicate-type: https://cosign.sigstore.dev/attestation/vuln/v1
+          predicate-type: ${{ env.PREDICATE_TYPE_VULN }}
           predicate-path: ${{ inputs.scan-results-path != '' && inputs.scan-results-path || './scan-results/trivy-results.json' }}
           push-to-registry: true
         continue-on-error: true
@@ -480,9 +486,9 @@ jobs:
         run: |
           if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
             if [ "${{ steps.check-scan.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
-              echo "Skipped vulnerability scan attestation (predicateType https://cosign.sigstore.dev/attestation/vuln/v1 already exists)"
+              echo "Skipped vulnerability scan attestation (predicateType ${{ env.PREDICATE_TYPE_VULN }} already exists)"
             else
-              echo "Created vulnerability scan attestation (predicateType https://cosign.sigstore.dev/attestation/vuln/v1)"
+              echo "Created vulnerability scan attestation (predicateType ${{ env.PREDICATE_TYPE_VULN }})"
             fi
           else
             echo "Created vulnerability scan attestation (deduplication disabled)"
@@ -591,33 +597,33 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download SLSA provenance attestation from OCI registry:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "cosign download attestation --predicate-type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
+          echo "cosign download attestation --predicate-type ${{ env.PREDICATE_TYPE_PROVENANCE }} \\" >> $GITHUB_STEP_SUMMARY
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download per-architecture SPDX SBOM attestations (BuildKit-generated):" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "# View all SBOMs for all architectures" >> $GITHUB_STEP_SUMMARY
-          echo "cosign download attestation --predicate-type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
+          echo "cosign download attestation --predicate-type ${{ env.PREDICATE_TYPE_SBOM }} \\" >> $GITHUB_STEP_SUMMARY
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download build environment attestation:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "cosign download attestation --predicate-type https://github.com/felddy/reusable-workflows/build-environment/v1 \\" >> $GITHUB_STEP_SUMMARY
+          echo "cosign download attestation --predicate-type ${{ env.PREDICATE_TYPE_BUILD_ENV }} \\" >> $GITHUB_STEP_SUMMARY
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Extract SPDX SBOM content for a specific architecture:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "# SBOMs are per-architecture; each platform has its own SBOM" >> $GITHUB_STEP_SUMMARY
-          echo "cosign download attestation --predicate-type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
+          echo "cosign download attestation --predicate-type ${{ env.PREDICATE_TYPE_SBOM }} \\" >> $GITHUB_STEP_SUMMARY
           echo "  ${{ inputs.image-ref }} | jq -r '.dsseEnvelope.payload' | base64 -d | jq '.predicate'" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Verify SLSA Provenance with cosign:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "cosign verify-attestation --type https://slsa.dev/provenance/v1 \\" >> $GITHUB_STEP_SUMMARY
+          echo "cosign verify-attestation --type ${{ env.PREDICATE_TYPE_PROVENANCE }} \\" >> $GITHUB_STEP_SUMMARY
           echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
           echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
@@ -625,7 +631,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Verify SBOM attestations with cosign:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "cosign verify-attestation --type https://spdx.dev/Document \\" >> $GITHUB_STEP_SUMMARY
+          echo "cosign verify-attestation --type ${{ env.PREDICATE_TYPE_SBOM }} \\" >> $GITHUB_STEP_SUMMARY
           echo "  --certificate-identity-regexp=\"^https://github.com/${{ github.repository }}\" \\" >> $GITHUB_STEP_SUMMARY
           echo "  --certificate-oidc-issuer=\"https://token.actions.githubusercontent.com\" \\" >> $GITHUB_STEP_SUMMARY
           echo "  ${{ inputs.image-ref }}" >> $GITHUB_STEP_SUMMARY
@@ -647,6 +653,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: attest
     if: needs.attest.outputs.sbom-platforms != '[]' && needs.attest.outputs.sbom-platforms != ''
+
+    env:
+      PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
 
     strategy:
       matrix:
@@ -685,7 +694,7 @@ jobs:
         timeout-minutes: 1
         run: |
           if timeout 5 cosign download attestation \
-            --predicate-type="https://spdx.dev/Document" \
+            --predicate-type="${{ env.PREDICATE_TYPE_SBOM }}" \
             "${{ inputs.registry }}/${{ inputs.image-name }}@${{ matrix.platform.digest }}" > /dev/null 2>&1; then
             echo "ATTESTATION_EXISTS=true" >> "$GITHUB_OUTPUT"
             echo "Found existing SBOM attestation for ${{ matrix.platform.platform }}"
@@ -712,9 +721,9 @@ jobs:
         run: |
           if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
             if [ "${{ steps.check-sbom.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
-              echo "Skipped SBOM attestation for ${{ matrix.platform.platform }} (predicateType https://spdx.dev/Document already exists)"
+              echo "Skipped SBOM attestation for ${{ matrix.platform.platform }} (predicateType ${{ env.PREDICATE_TYPE_SBOM }} already exists)"
             else
-              echo "Created SBOM attestation for ${{ matrix.platform.platform }} (predicateType https://spdx.dev/Document)"
+              echo "Created SBOM attestation for ${{ matrix.platform.platform }} (predicateType ${{ env.PREDICATE_TYPE_SBOM }})"
             fi
           else
             echo "Created SBOM attestation for ${{ matrix.platform.platform }} (deduplication disabled)"
