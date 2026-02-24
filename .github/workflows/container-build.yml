@@ -437,32 +437,37 @@ jobs:
 
       - name: Check attestation existence
         id: check-attestations
-        continue-on-error: true
+        timeout-minutes: 2
         run: |
           IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}"
 
           echo "Checking for existing attestations on platform image..."
+          echo "Image reference: $IMAGE_REF"
 
           # Check SBOM attestation
-          if timeout 5 cosign download attestation \
+          echo "Checking for SBOM attestation (predicate: ${{ env.PREDICATE_TYPE_SBOM }})..."
+          if timeout 15 cosign download attestation \
             --predicate-type="${{ env.PREDICATE_TYPE_SBOM }}" \
             "$IMAGE_REF" > /dev/null 2>&1; then
             echo "sbom-exists=true" >> "$GITHUB_OUTPUT"
             echo "✓ SBOM attestation exists for ${{ matrix.platform }}, will skip SBOM generation"
           else
+            SBOM_EXIT_CODE=$?
             echo "sbom-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ SBOM attestation missing for ${{ matrix.platform }}, will generate SBOM"
+            echo "✗ SBOM attestation missing for ${{ matrix.platform }} (exit code: $SBOM_EXIT_CODE), will generate SBOM"
           fi
 
           # Check vulnerability scan attestation
-          if timeout 5 cosign download attestation \
+          echo "Checking for vulnerability scan attestation (predicate: ${{ env.PREDICATE_TYPE_VULN }})..."
+          if timeout 15 cosign download attestation \
             --predicate-type="${{ env.PREDICATE_TYPE_VULN }}" \
             "$IMAGE_REF" > /dev/null 2>&1; then
             echo "vuln-scan-exists=true" >> "$GITHUB_OUTPUT"
             echo "✓ Vulnerability scan attestation exists for ${{ matrix.platform }}, will skip scanning"
           else
+            VULN_EXIT_CODE=$?
             echo "vuln-scan-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Vulnerability scan attestation missing for ${{ matrix.platform }}, will scan"
+            echo "✗ Vulnerability scan attestation missing for ${{ matrix.platform }} (exit code: $VULN_EXIT_CODE), will scan"
           fi
 
       - name: Upload digest
@@ -877,44 +882,50 @@ jobs:
 
       - name: Check attestation existence
         id: check-attestations
-        continue-on-error: true
         timeout-minutes: 2
         run: |
           IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}"
 
           echo "Checking for existing attestations on manifest..."
+          echo "Image reference: $IMAGE_REF"
 
           # Check provenance attestation
-          if timeout 5 cosign download attestation \
+          echo "Checking for provenance attestation (predicate: ${{ env.PREDICATE_TYPE_PROVENANCE }})..."
+          if timeout 15 cosign download attestation \
             --predicate-type="${{ env.PREDICATE_TYPE_PROVENANCE }}" \
             "$IMAGE_REF" > /dev/null 2>&1; then
             echo "provenance-exists=true" >> "$GITHUB_OUTPUT"
             echo "✓ Provenance attestation exists (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}), will skip"
           else
+            PROV_EXIT_CODE=$?
             echo "provenance-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Provenance attestation missing (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}), will create"
+            echo "✗ Provenance attestation missing (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}) (exit code: $PROV_EXIT_CODE), will create"
           fi
 
           # Check vulnerability scan attestation
-          if timeout 5 cosign download attestation \
+          echo "Checking for vulnerability scan attestation (predicate: ${{ env.PREDICATE_TYPE_VULN }})..."
+          if timeout 15 cosign download attestation \
             --predicate-type="${{ env.PREDICATE_TYPE_VULN }}" \
             "$IMAGE_REF" > /dev/null 2>&1; then
             echo "vuln-scan-exists=true" >> "$GITHUB_OUTPUT"
             echo "✓ Vulnerability scan attestation exists (predicateType ${{ env.PREDICATE_TYPE_VULN }}), will skip"
           else
+            VULN_EXIT_CODE=$?
             echo "vuln-scan-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Vulnerability scan attestation missing (predicateType ${{ env.PREDICATE_TYPE_VULN }}), will create"
+            echo "✗ Vulnerability scan attestation missing (predicateType ${{ env.PREDICATE_TYPE_VULN }}) (exit code: $VULN_EXIT_CODE), will create"
           fi
 
           # Check build environment attestation
-          if timeout 5 cosign download attestation \
+          echo "Checking for build environment attestation (predicate: ${{ env.PREDICATE_TYPE_BUILD_ENV }})..."
+          if timeout 15 cosign download attestation \
             --predicate-type="${{ env.PREDICATE_TYPE_BUILD_ENV }}" \
             "$IMAGE_REF" > /dev/null 2>&1; then
             echo "build-env-exists=true" >> "$GITHUB_OUTPUT"
             echo "✓ Build environment attestation exists (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}), will skip"
           else
+            BUILD_ENV_EXIT_CODE=$?
             echo "build-env-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Build environment attestation missing (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}), will create"
+            echo "✗ Build environment attestation missing (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}) (exit code: $BUILD_ENV_EXIT_CODE), will create"
           fi
 
       - name: Download scan results
