@@ -55,6 +55,12 @@ on: # yamllint disable-line rule:truthy
         type: string
         default: ""
 
+      enable-deduplication:
+        description: Enable attestation deduplication (skip if predicateType exists)
+        required: false
+        type: boolean
+        default: false
+
     secrets:
       private-package-token:
         description: Token for private package authentication (required for scanning private images)
@@ -99,6 +105,11 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
+        with:
+          cosign-release: v2.4.1
 
       - name: Set SOURCE_DATE_EPOCH for reproducible builds
         id: source-date-epoch
@@ -177,6 +188,22 @@ jobs:
 
           echo "Detected platforms:"
           echo "$PLATFORMS" | jq -r '.[] | "  - \(.platform) (\(.digest))"'
+
+      - name: Check provenance attestation existence
+        id: check-provenance
+        if: inputs.enable-deduplication
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          if timeout 5 cosign download attestation \
+            --predicate-type="https://slsa.dev/provenance/v1" \
+            "${{ inputs.image-ref }}" > /dev/null 2>&1; then
+            echo "ATTESTATION_EXISTS=true" >> "$GITHUB_OUTPUT"
+            echo "Found existing provenance attestation"
+          else
+            echo "ATTESTATION_EXISTS=false" >> "$GITHUB_OUTPUT"
+            echo "No existing provenance attestation"
+          fi
 
       - name: Download BuildKit SBOMs
         id: download-sboms
@@ -308,12 +335,28 @@ jobs:
 
       - name: Generate SLSA provenance
         id: provenance
+        if: |
+          !inputs.enable-deduplication ||
+          steps.check-provenance.outputs.ATTESTATION_EXISTS != 'true'
         uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # tag=v1.4.3
         with:
           show-summary: false
           subject-name: ${{ inputs.registry }}/${{ inputs.image-name }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           push-to-registry: true
+
+      - name: Log provenance attestation decision
+        if: always()
+        run: |
+          if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
+            if [ "${{ steps.check-provenance.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
+              echo "::notice::Skipped provenance attestation (predicateType https://slsa.dev/provenance/v1 already exists)"
+            else
+              echo "::notice::Created provenance attestation (predicateType https://slsa.dev/provenance/v1)"
+            fi
+          else
+            echo "::notice::Created provenance attestation (deduplication disabled)"
+          fi
 
       - name: Capture build environment metadata
         id: build-env
@@ -347,8 +390,27 @@ jobs:
           echo "Build environment metadata captured"
           cat build-environment.json | jq '.'
 
+      - name: Check build environment attestation existence
+        id: check-build-env
+        if: inputs.enable-deduplication
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          if timeout 5 cosign download attestation \
+            --predicate-type="https://github.com/felddy/reusable-workflows/build-environment/v1" \
+            "${{ inputs.image-ref }}" > /dev/null 2>&1; then
+            echo "ATTESTATION_EXISTS=true" >> "$GITHUB_OUTPUT"
+            echo "Found existing build environment attestation"
+          else
+            echo "ATTESTATION_EXISTS=false" >> "$GITHUB_OUTPUT"
+            echo "No existing build environment attestation"
+          fi
+
       - name: Attach build environment as custom attestation
         id: attest-build-env
+        if: |
+          !inputs.enable-deduplication ||
+          steps.check-build-env.outputs.ATTESTATION_EXISTS != 'true'
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
           show-summary: false
@@ -358,6 +420,19 @@ jobs:
           predicate-path: build-environment.json
           push-to-registry: true
         continue-on-error: true
+
+      - name: Log build environment attestation decision
+        if: always()
+        run: |
+          if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
+            if [ "${{ steps.check-build-env.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
+              echo "::notice::Skipped build environment attestation (predicateType https://github.com/felddy/reusable-workflows/build-environment/v1 already exists)"
+            else
+              echo "::notice::Created build environment attestation (predicateType https://github.com/felddy/reusable-workflows/build-environment/v1)"
+            fi
+          else
+            echo "::notice::Created build environment attestation (deduplication disabled)"
+          fi
 
       - name: Set provenance paths
         id: provenance-paths
@@ -369,8 +444,27 @@ jobs:
             echo "Provenance bundle created at: ${{ steps.provenance.outputs.bundle-path }}"
           fi
 
+      - name: Check vulnerability scan attestation existence
+        id: check-scan
+        if: inputs.enable-deduplication
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          if timeout 5 cosign download attestation \
+            --predicate-type="https://cosign.sigstore.dev/attestation/vuln/v1" \
+            "${{ inputs.image-ref }}" > /dev/null 2>&1; then
+            echo "ATTESTATION_EXISTS=true" >> "$GITHUB_OUTPUT"
+            echo "Found existing vulnerability scan attestation"
+          else
+            echo "ATTESTATION_EXISTS=false" >> "$GITHUB_OUTPUT"
+            echo "No existing vulnerability scan attestation"
+          fi
+
       - name: Attach vulnerability scan results
         id: attest-scan
+        if: |
+          !inputs.enable-deduplication ||
+          steps.check-scan.outputs.ATTESTATION_EXISTS != 'true'
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
           show-summary: false
@@ -380,6 +474,19 @@ jobs:
           predicate-path: ${{ inputs.scan-results-path != '' && inputs.scan-results-path || './scan-results/trivy-results.json' }}
           push-to-registry: true
         continue-on-error: true
+
+      - name: Log vulnerability scan attestation decision
+        if: always()
+        run: |
+          if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
+            if [ "${{ steps.check-scan.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
+              echo "::notice::Skipped vulnerability scan attestation (predicateType https://cosign.sigstore.dev/attestation/vuln/v1 already exists)"
+            else
+              echo "::notice::Created vulnerability scan attestation (predicateType https://cosign.sigstore.dev/attestation/vuln/v1)"
+            fi
+          else
+            echo "::notice::Created vulnerability scan attestation (deduplication disabled)"
+          fi
 
       - name: Attach custom attestation predicate
         id: attest-custom
@@ -553,6 +660,11 @@ jobs:
           disable-sudo: true
           egress-policy: audit
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
+        with:
+          cosign-release: v2.4.1
+
       - name: Log in to container registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
@@ -566,7 +678,26 @@ jobs:
           name: sbom-files${{ inputs.artifact-prefix != '' && format('-{0}', inputs.artifact-prefix) || '' }}
           path: ./sboms
 
+      - name: Check SBOM attestation existence for ${{ matrix.platform.platform }}
+        id: check-sbom
+        if: inputs.enable-deduplication
+        continue-on-error: true
+        timeout-minutes: 1
+        run: |
+          if timeout 5 cosign download attestation \
+            --predicate-type="https://spdx.dev/Document" \
+            "${{ inputs.registry }}/${{ inputs.image-name }}@${{ matrix.platform.digest }}" > /dev/null 2>&1; then
+            echo "ATTESTATION_EXISTS=true" >> "$GITHUB_OUTPUT"
+            echo "Found existing SBOM attestation for ${{ matrix.platform.platform }}"
+          else
+            echo "ATTESTATION_EXISTS=false" >> "$GITHUB_OUTPUT"
+            echo "No existing SBOM attestation for ${{ matrix.platform.platform }}"
+          fi
+
       - name: Attest SBOM for ${{ matrix.platform.platform }}
+        if: |
+          !inputs.enable-deduplication ||
+          steps.check-sbom.outputs.ATTESTATION_EXISTS != 'true'
         uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # tag=v3.0.0
         with:
           show-summary: false
@@ -575,3 +706,16 @@ jobs:
           sbom-path: ./sboms/sbom-${{ matrix.platform.slug }}.spdx.json
           push-to-registry: true
         continue-on-error: true
+
+      - name: Log SBOM attestation decision for ${{ matrix.platform.platform }}
+        if: always()
+        run: |
+          if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
+            if [ "${{ steps.check-sbom.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
+              echo "::notice::Skipped SBOM attestation for ${{ matrix.platform.platform }} (predicateType https://spdx.dev/Document already exists)"
+            else
+              echo "::notice::Created SBOM attestation for ${{ matrix.platform.platform }} (predicateType https://spdx.dev/Document)"
+            fi
+          else
+            echo "::notice::Created SBOM attestation for ${{ matrix.platform.platform }} (deduplication disabled)"
+          fi
