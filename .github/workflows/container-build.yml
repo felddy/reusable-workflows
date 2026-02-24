@@ -268,104 +268,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
-      - name: Validate required inputs
-        run: |
-          EXIT_CODE=0
-
-          echo "::group::Validating inputs"
-
-          # Validate platforms
-          if [[ -z "${{ inputs.platforms }}" ]]; then
-            echo "::error::platforms input is required"
-            echo "::error::Example: platforms: '[\"linux/amd64\",\"linux/arm64\"]'"
-            EXIT_CODE=1
-          else
-            echo "✓ Platforms: ${{ inputs.platforms }}"
-          fi
-
-          # Validate image name
-          if [[ -z "${{ inputs.image-name }}" ]]; then
-            echo "::error::image-name input is required"
-            echo "::error::Example: image-name: \${{ github.repository }}"
-            EXIT_CODE=1
-          else
-            echo "✓ Image name: ${{ inputs.image-name }}"
-          fi
-
-          # Validate Dockerfile exists
-          if [[ ! -f "${{ inputs.dockerfile }}" ]]; then
-            echo "::error::Dockerfile not found at: ${{ inputs.dockerfile }}"
-            echo "::error::Common issues:"
-            echo "::error::  - Check the dockerfile input parameter"
-            echo "::error::  - Ensure the file exists in the repository"
-            echo "::error::  - Verify the path is relative to the repository root"
-            echo "::error::  - Check for typos in the filename"
-            EXIT_CODE=1
-          else
-            echo "✓ Dockerfile found: ${{ inputs.dockerfile }}"
-          fi
-
-          # Validate build context exists
-          if [[ ! -d "${{ inputs.context }}" ]]; then
-            echo "::error::Build context not found at: ${{ inputs.context }}"
-            echo "::error::The context must be a directory containing the files to build"
-            EXIT_CODE=1
-          else
-            echo "✓ Build context: ${{ inputs.context }}"
-          fi
-
-          # Validate scan severity format
-          SEVERITY="${{ inputs.scan-severity }}"
-          if [[ -n "$SEVERITY" ]]; then
-            # Check if severity contains valid values
-            if [[ ! "$SEVERITY" =~ ^(CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN)(,(CRITICAL|HIGH|MEDIUM|LOW|UNKNOWN))*$ ]]; then
-              echo "::warning::scan-severity format may be invalid: $SEVERITY"
-              echo "::warning::Expected format: CRITICAL,HIGH,MEDIUM,LOW"
-            else
-              echo "✓ Scan severity: $SEVERITY"
-            fi
-          fi
-
-          # Validate bake file if specified
-          if [[ -n "${{ inputs.bake-file }}" ]]; then
-            if [[ ! -f "${{ inputs.bake-file }}" ]]; then
-              echo "::error::Bake file not found at: ${{ inputs.bake-file }}"
-              EXIT_CODE=1
-            else
-              echo "✓ Bake file: ${{ inputs.bake-file }}"
-            fi
-          fi
-
-          # Validate target if specified
-          if [[ -n "${{ inputs.target }}" ]]; then
-            echo "✓ Build target: ${{ inputs.target }}"
-          fi
-
-          # Security features are always enabled (secure-by-design)
-          echo "✓ Security features: SBOM, attestations, scanning, and signing are mandatory"
-
-          echo "::endgroup::"
-
-          if [[ $EXIT_CODE -ne 0 ]]; then
-            echo ""
-            echo "::error::Validation failed. Please fix the errors above and try again."
-            echo ""
-            echo "## Validation Failed ❌" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Please check the workflow logs for detailed error messages." >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Common Issues" >> $GITHUB_STEP_SUMMARY
-            echo "- Missing required inputs (platforms, image-name)" >> $GITHUB_STEP_SUMMARY
-            echo "- Dockerfile not found at specified path" >> $GITHUB_STEP_SUMMARY
-            echo "- Build context directory doesn't exist" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Documentation" >> $GITHUB_STEP_SUMMARY
-            echo "See [USAGE.md](../../USAGE.md) for detailed parameter documentation." >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-          echo "✅ All validations passed"
-
       - name: Parse build arguments
         id: parse-args
         run: |
@@ -425,40 +327,6 @@ jobs:
           if [[ -n "$SECRETS" ]]; then
             echo "Build secrets prepared (count: $(echo $SECRETS | tr ',' '\n' | wc -l))"
           fi
-
-      - name: Validate secret redaction
-        run: |
-          # Validate that secrets are properly configured for redaction
-          # GitHub can only redact individual secret values, not structured data
-          echo "::group::Secret Redaction Validation"
-
-          # Check that we're using individual secrets (not JSON blobs)
-          # This is enforced by the workflow design - each secret is separate
-
-          SECRET_COUNT=0
-          if [[ -n "${{ secrets.build-secret-1 }}" ]]; then SECRET_COUNT=$((SECRET_COUNT + 1)); fi
-          if [[ -n "${{ secrets.build-secret-2 }}" ]]; then SECRET_COUNT=$((SECRET_COUNT + 1)); fi
-          if [[ -n "${{ secrets.build-secret-3 }}" ]]; then SECRET_COUNT=$((SECRET_COUNT + 1)); fi
-          if [[ -n "${{ secrets.build-secret-4 }}" ]]; then SECRET_COUNT=$((SECRET_COUNT + 1)); fi
-          if [[ -n "${{ secrets.build-secret-5 }}" ]]; then SECRET_COUNT=$((SECRET_COUNT + 1)); fi
-
-          if [[ $SECRET_COUNT -gt 0 ]]; then
-            echo "✓ Using $SECRET_COUNT individual build secret(s)"
-            echo "✓ Each secret is passed separately for proper GitHub redaction"
-            echo "✓ BuildKit secret mounts will prevent secrets from appearing in image layers"
-          else
-            echo "No build secrets provided"
-          fi
-
-          # Remind about secret handling best practices
-          echo ""
-          echo "Secret Handling Best Practices:"
-          echo "- ✓ Individual secrets (not JSON/XML/YAML blobs)"
-          echo "- ✓ BuildKit secret mounts (not build args)"
-          echo "- ✓ Secrets stored in temporary files with restricted permissions"
-          echo "- ✓ Automatic cleanup after build"
-
-          echo "::endgroup::"
 
       - name: Prepare platform-specific cache scope
         id: cache-scope
@@ -782,7 +650,6 @@ jobs:
           echo "docker buildx imagetools inspect $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
-  # Security scanning (always enabled)
   scan:
     name: Security Scan
     needs:
@@ -797,7 +664,7 @@ jobs:
     secrets:
       private-package-token: ${{ secrets.private-package-token }}
 
-  # Generate attestations (SLSA provenance, SBOM) - always enabled
+  # Generate attestations (SLSA provenance, SBOM)
   attest:
     name: Generate Attestations
     needs:
