@@ -92,6 +92,7 @@ jobs:
 
     env:
       PREDICATE_TYPE_PROVENANCE: https://slsa.dev/provenance/v1
+      PREDICATE_TYPE_SBOM_BASE: https://spdx.dev/Document
       PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
       PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
       PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
@@ -258,7 +259,7 @@ jobs:
             # Get the attestation manifest and find the SBOM blob
             ATTESTATION_MANIFEST=$(crane manifest ${{ inputs.registry }}/${{ inputs.image-name }}@$ATTESTATION_DIGEST)
 
-            SBOM_BLOB_DIGEST=$(echo "$ATTESTATION_MANIFEST" | jq -r --arg predicate_type "${{ env.PREDICATE_TYPE_SBOM }}" '
+            SBOM_BLOB_DIGEST=$(echo "$ATTESTATION_MANIFEST" | jq -r --arg predicate_type "${{ env.PREDICATE_TYPE_SBOM_BASE }}" '
               .layers[] |
               select(.annotations."in-toto.io/predicate-type" == $predicate_type) |
               .digest
@@ -658,6 +659,7 @@ jobs:
     if: needs.attest.outputs.sbom-platforms != '[]' && needs.attest.outputs.sbom-platforms != ''
 
     env:
+      PREDICATE_TYPE_SBOM_BASE: https://spdx.dev/Document
       PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
       # Tool versions
       COSIGN_VERSION: v2.6.2
@@ -698,8 +700,14 @@ jobs:
         continue-on-error: true
         timeout-minutes: 1
         run: |
+          # Check for both predicate types:
+          # 1. https://spdx.dev/Document/v2.3 (our re-attested version)
+          # 2. https://spdx.dev/Document (BuildKit original)
           if timeout 5 cosign download attestation \
             --predicate-type="${{ env.PREDICATE_TYPE_SBOM }}" \
+            "${{ inputs.registry }}/${{ inputs.image-name }}@${{ matrix.platform.digest }}" > /dev/null 2>&1 || \
+             timeout 5 cosign download attestation \
+            --predicate-type="${{ env.PREDICATE_TYPE_SBOM_BASE }}" \
             "${{ inputs.registry }}/${{ inputs.image-name }}@${{ matrix.platform.digest }}" > /dev/null 2>&1; then
             echo "ATTESTATION_EXISTS=true" >> "$GITHUB_OUTPUT"
             echo "Found existing SBOM attestation for ${{ matrix.platform.platform }}"
