@@ -59,7 +59,7 @@ on: # yamllint disable-line rule:truthy
         description: Enable attestation deduplication (skip if predicateType exists)
         required: false
         type: boolean
-        default: false
+        default: true
 
     secrets:
       private-package-token:
@@ -350,12 +350,12 @@ jobs:
         run: |
           if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
             if [ "${{ steps.check-provenance.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
-              echo "::notice::Skipped provenance attestation (predicateType https://slsa.dev/provenance/v1 already exists)"
+              echo "Skipped provenance attestation (predicateType https://slsa.dev/provenance/v1 already exists)"
             else
-              echo "::notice::Created provenance attestation (predicateType https://slsa.dev/provenance/v1)"
+              echo "Created provenance attestation (predicateType https://slsa.dev/provenance/v1)"
             fi
           else
-            echo "::notice::Created provenance attestation (deduplication disabled)"
+            echo "Created provenance attestation (deduplication disabled)"
           fi
 
       - name: Capture build environment metadata
@@ -426,12 +426,12 @@ jobs:
         run: |
           if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
             if [ "${{ steps.check-build-env.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
-              echo "::notice::Skipped build environment attestation (predicateType https://github.com/felddy/reusable-workflows/build-environment/v1 already exists)"
+              echo "Skipped build environment attestation (predicateType https://github.com/felddy/reusable-workflows/build-environment/v1 already exists)"
             else
-              echo "::notice::Created build environment attestation (predicateType https://github.com/felddy/reusable-workflows/build-environment/v1)"
+              echo "Created build environment attestation (predicateType https://github.com/felddy/reusable-workflows/build-environment/v1)"
             fi
           else
-            echo "::notice::Created build environment attestation (deduplication disabled)"
+            echo "Created build environment attestation (deduplication disabled)"
           fi
 
       - name: Set provenance paths
@@ -480,12 +480,12 @@ jobs:
         run: |
           if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
             if [ "${{ steps.check-scan.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
-              echo "::notice::Skipped vulnerability scan attestation (predicateType https://cosign.sigstore.dev/attestation/vuln/v1 already exists)"
+              echo "Skipped vulnerability scan attestation (predicateType https://cosign.sigstore.dev/attestation/vuln/v1 already exists)"
             else
-              echo "::notice::Created vulnerability scan attestation (predicateType https://cosign.sigstore.dev/attestation/vuln/v1)"
+              echo "Created vulnerability scan attestation (predicateType https://cosign.sigstore.dev/attestation/vuln/v1)"
             fi
           else
-            echo "::notice::Created vulnerability scan attestation (deduplication disabled)"
+            echo "Created vulnerability scan attestation (deduplication disabled)"
           fi
 
       - name: Attach custom attestation predicate
@@ -712,10 +712,10 @@ jobs:
         run: |
           if [ "${{ inputs.enable-deduplication }}" = "true" ]; then
             if [ "${{ steps.check-sbom.outputs.ATTESTATION_EXISTS }}" = "true" ]; then
-              echo "::notice::Skipped SBOM attestation for ${{ matrix.platform.platform }} (predicateType https://spdx.dev/Document already exists)"
+              echo "Skipped SBOM attestation for ${{ matrix.platform.platform }} (predicateType https://spdx.dev/Document already exists)"
             else
-              echo "::notice::Created SBOM attestation for ${{ matrix.platform.platform }} (predicateType https://spdx.dev/Document)"
+              echo "Created SBOM attestation for ${{ matrix.platform.platform }} (predicateType https://spdx.dev/Document)"
             fi
           else
-            echo "::notice::Created SBOM attestation for ${{ matrix.platform.platform }} (deduplication disabled)"
+            echo "Created SBOM attestation for ${{ matrix.platform.platform }} (deduplication disabled)"
           fi
