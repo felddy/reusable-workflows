@@ -95,6 +95,9 @@ jobs:
       PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
       PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
       PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
+      # Tool versions
+      COSIGN_VERSION: v3.0.4
+      CRANE_VERSION: v0.21.0
 
     outputs:
       attestation-digest: ${{ steps.attestation-digest.outputs.digest }}
@@ -115,7 +118,7 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
         with:
-          cosign-release: v2.4.1
+          cosign-release: ${{ env.COSIGN_VERSION }}
 
       - name: Set SOURCE_DATE_EPOCH for reproducible builds
         id: source-date-epoch
@@ -164,7 +167,7 @@ jobs:
       - name: Install crane
         run: |
           # Install crane for manifest inspection
-          VERSION="v0.20.2"
+          VERSION="${{ env.CRANE_VERSION }}"
           curl -sL "https://github.com/google/go-containerregistry/releases/download/${VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin crane
           crane version
 
@@ -656,6 +659,8 @@ jobs:
 
     env:
       PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
+      # Tool versions
+      COSIGN_VERSION: v3.0.4
 
     strategy:
       matrix:
@@ -672,7 +677,7 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
         with:
-          cosign-release: v2.4.1
+          cosign-release: ${{ env.COSIGN_VERSION }}
 
       - name: Log in to container registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
