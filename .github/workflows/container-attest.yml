@@ -96,7 +96,7 @@ jobs:
       PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
       PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
       # Tool versions
-      COSIGN_VERSION: v3.0.4
+      COSIGN_VERSION: v2.6.2
       CRANE_VERSION: v0.21.0
 
     outputs:
@@ -660,7 +660,7 @@ jobs:
     env:
       PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
       # Tool versions
-      COSIGN_VERSION: v3.0.4
+      COSIGN_VERSION: v2.6.2
 
     strategy:
       matrix:
