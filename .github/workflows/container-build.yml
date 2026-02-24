@@ -344,9 +344,11 @@ jobs:
       - name: Set SOURCE_DATE_EPOCH for reproducible builds
         id: source-date-epoch
         run: |
-          # Set SOURCE_DATE_EPOCH for deterministic timestamps in builds
-          # This ensures reproducible builds (same inputs produce identical outputs)
-          # Use the commit timestamp for reproducibility
+          # Calculate commit timestamp for SOURCE_DATE_EPOCH
+          # This value is used conditionally in the build step:
+          # - Release builds (refs/tags/*): Use commit timestamp for release tracking
+          # - Development builds (branches, PRs): Use 0 for maximum cache reuse
+          # The build step automatically selects the appropriate value based on github.ref
           if [ -d .git ]; then
             # Get the commit timestamp from git
             COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
@@ -376,7 +378,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ needs.metadata.outputs.image-labels }}
           annotations: ${{ needs.metadata.outputs.annotations }}
-          build-args: ${{ steps.parse-args.outputs.args }}
+          build-args: |
+            ${{ steps.parse-args.outputs.args }}
+            SOURCE_DATE_EPOCH=${{ startsWith(github.ref, 'refs/tags/') && env.SOURCE_DATE_EPOCH || '0' }}
           target: ${{ inputs.target }}
           cache-from: type=gha,scope=${{ steps.cache-scope.outputs.scope }}
           cache-to: type=gha,mode=max,scope=${{ steps.cache-scope.outputs.scope }}
