@@ -435,39 +435,63 @@ jobs:
         with:
           cosign-release: ${{ env.COSIGN_VERSION }}
 
+      - name: Authenticate cosign with registry
+        run: |
+          # Cosign needs explicit authentication to read attestations
+          echo "${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}" | \
+            cosign login ghcr.io -u ${{ github.actor }} --password-stdin
+          echo "✅ Cosign authenticated with registry"
+
       - name: Check attestation existence
         id: check-attestations
-        timeout-minutes: 2
+        timeout-minutes: 3
         run: |
           IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}"
 
           echo "Checking for existing attestations on platform image..."
           echo "Image reference: $IMAGE_REF"
 
+          # Function to check attestation existence
+          check_attestation() {
+            local predicate_type=$1
+            local predicate_name=$2
+
+            echo "Checking for $predicate_name attestation (predicate: $predicate_type)..."
+
+            # Try to download attestation - if it exists, cosign will succeed
+            if cosign download attestation \
+              --predicate-type="$predicate_type" \
+              "$IMAGE_REF" > /tmp/attestation-check.json 2>&1; then
+              echo "✓ $predicate_name attestation exists, will skip"
+              return 0
+            else
+              # Check if it's an auth error vs. not found
+              if grep -q "UNAUTHORIZED\|FORBIDDEN\|401\|403" /tmp/attestation-check.json 2>/dev/null; then
+                echo "::warning::Authentication issue checking $predicate_name attestation, will recreate to be safe"
+                cat /tmp/attestation-check.json
+              else
+                echo "✗ $predicate_name attestation not found, will create"
+              fi
+              return 1
+            fi
+          }
+
           # Check SBOM attestation
-          echo "Checking for SBOM attestation (predicate: ${{ env.PREDICATE_TYPE_SBOM }})..."
-          if timeout 15 cosign download attestation \
-            --predicate-type="${{ env.PREDICATE_TYPE_SBOM }}" \
-            "$IMAGE_REF" > /dev/null 2>&1; then
+          if check_attestation "${{ env.PREDICATE_TYPE_SBOM }}" "SBOM"; then
             echo "sbom-exists=true" >> "$GITHUB_OUTPUT"
             echo "✓ SBOM attestation exists for ${{ matrix.platform }}, will skip SBOM generation"
           else
-            SBOM_EXIT_CODE=$?
             echo "sbom-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ SBOM attestation missing for ${{ matrix.platform }} (exit code: $SBOM_EXIT_CODE), will generate SBOM"
+            echo "✗ SBOM attestation missing for ${{ matrix.platform }}, will generate SBOM"
           fi
 
           # Check vulnerability scan attestation
-          echo "Checking for vulnerability scan attestation (predicate: ${{ env.PREDICATE_TYPE_VULN }})..."
-          if timeout 15 cosign download attestation \
-            --predicate-type="${{ env.PREDICATE_TYPE_VULN }}" \
-            "$IMAGE_REF" > /dev/null 2>&1; then
+          if check_attestation "${{ env.PREDICATE_TYPE_VULN }}" "vulnerability scan"; then
             echo "vuln-scan-exists=true" >> "$GITHUB_OUTPUT"
             echo "✓ Vulnerability scan attestation exists for ${{ matrix.platform }}, will skip scanning"
           else
-            VULN_EXIT_CODE=$?
             echo "vuln-scan-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Vulnerability scan attestation missing for ${{ matrix.platform }} (exit code: $VULN_EXIT_CODE), will scan"
+            echo "✗ Vulnerability scan attestation missing for ${{ matrix.platform }}, will scan"
           fi
 
       - name: Upload digest
@@ -552,6 +576,18 @@ jobs:
         run: |
           echo "::error::Security scan failed for ${{ matrix.platform }} - vulnerabilities found above threshold: ${{ inputs.scan-severity }}"
           exit 1
+
+      - name: Attest vulnerability scan results
+        id: attest-vuln-scan
+        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          predicate-type: ${{ env.PREDICATE_TYPE_VULN }}
+          predicate-path: trivy-results-${{ strategy.job-index }}.json
+          push-to-registry: true
+        continue-on-error: true
 
       # Generate attestations for platform
       - name: Install Syft
@@ -839,7 +875,6 @@ jobs:
 
     env:
       PREDICATE_TYPE_PROVENANCE: https://slsa.dev/provenance/v1
-      PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
       PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
 
     steps:
@@ -880,86 +915,63 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
+      - name: Authenticate cosign with registry
+        run: |
+          # Cosign needs explicit authentication to read attestations
+          echo "${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}" | \
+            cosign login ghcr.io -u ${{ github.actor }} --password-stdin
+          echo "✅ Cosign authenticated with registry"
+
       - name: Check attestation existence
         id: check-attestations
-        timeout-minutes: 2
+        timeout-minutes: 3
         run: |
           IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}"
 
           echo "Checking for existing attestations on manifest..."
           echo "Image reference: $IMAGE_REF"
 
+          # Function to check attestation existence
+          check_attestation() {
+            local predicate_type=$1
+            local predicate_name=$2
+
+            echo "Checking for $predicate_name attestation (predicate: $predicate_type)..."
+
+            # Try to download attestation - if it exists, cosign will succeed
+            if cosign download attestation \
+              --predicate-type="$predicate_type" \
+              "$IMAGE_REF" > /tmp/attestation-check.json 2>&1; then
+              echo "✓ $predicate_name attestation exists, will skip"
+              return 0
+            else
+              # Check if it's an auth error vs. not found
+              if grep -q "UNAUTHORIZED\|FORBIDDEN\|401\|403" /tmp/attestation-check.json 2>/dev/null; then
+                echo "::warning::Authentication issue checking $predicate_name attestation, will recreate to be safe"
+                cat /tmp/attestation-check.json
+              else
+                echo "✗ $predicate_name attestation not found, will create"
+              fi
+              return 1
+            fi
+          }
+
           # Check provenance attestation
-          echo "Checking for provenance attestation (predicate: ${{ env.PREDICATE_TYPE_PROVENANCE }})..."
-          if timeout 15 cosign download attestation \
-            --predicate-type="${{ env.PREDICATE_TYPE_PROVENANCE }}" \
-            "$IMAGE_REF" > /dev/null 2>&1; then
+          if check_attestation "${{ env.PREDICATE_TYPE_PROVENANCE }}" "provenance"; then
             echo "provenance-exists=true" >> "$GITHUB_OUTPUT"
             echo "✓ Provenance attestation exists (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}), will skip"
           else
-            PROV_EXIT_CODE=$?
             echo "provenance-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Provenance attestation missing (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}) (exit code: $PROV_EXIT_CODE), will create"
-          fi
-
-          # Check vulnerability scan attestation
-          echo "Checking for vulnerability scan attestation (predicate: ${{ env.PREDICATE_TYPE_VULN }})..."
-          if timeout 15 cosign download attestation \
-            --predicate-type="${{ env.PREDICATE_TYPE_VULN }}" \
-            "$IMAGE_REF" > /dev/null 2>&1; then
-            echo "vuln-scan-exists=true" >> "$GITHUB_OUTPUT"
-            echo "✓ Vulnerability scan attestation exists (predicateType ${{ env.PREDICATE_TYPE_VULN }}), will skip"
-          else
-            VULN_EXIT_CODE=$?
-            echo "vuln-scan-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Vulnerability scan attestation missing (predicateType ${{ env.PREDICATE_TYPE_VULN }}) (exit code: $VULN_EXIT_CODE), will create"
+            echo "✗ Provenance attestation missing (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}), will create"
           fi
 
           # Check build environment attestation
-          echo "Checking for build environment attestation (predicate: ${{ env.PREDICATE_TYPE_BUILD_ENV }})..."
-          if timeout 15 cosign download attestation \
-            --predicate-type="${{ env.PREDICATE_TYPE_BUILD_ENV }}" \
-            "$IMAGE_REF" > /dev/null 2>&1; then
+          if check_attestation "${{ env.PREDICATE_TYPE_BUILD_ENV }}" "build environment"; then
             echo "build-env-exists=true" >> "$GITHUB_OUTPUT"
             echo "✓ Build environment attestation exists (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}), will skip"
           else
-            BUILD_ENV_EXIT_CODE=$?
             echo "build-env-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Build environment attestation missing (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}) (exit code: $BUILD_ENV_EXIT_CODE), will create"
-          fi
-
-      - name: Download scan results
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
-        with:
-          path: ./scan-results
-          pattern: security-scan-results-${{ needs.generate-id.outputs.workflow-call-id }}-*
-          merge-multiple: true
-        continue-on-error: true
-
-      - name: Merge scan results
-        id: merge-scans
-        run: |
-          # Merge all platform scan results into a single JSON
-          if [ -d ./scan-results ]; then
-            echo "Merging scan results from all platforms..."
-
-            # Create merged results structure
-            echo '{"Results":[]}' > merged-scan-results.json
-
-            # Merge all JSON files
-            for scan_file in ./scan-results/trivy-results-*.json; do
-              if [ -f "$scan_file" ]; then
-                echo "Merging $scan_file"
-                jq -s '.[0].Results += .[1].Results | .[0]' merged-scan-results.json "$scan_file" > temp.json
-                mv temp.json merged-scan-results.json
-              fi
-            done
-
-            echo "scan-file=merged-scan-results.json" >> $GITHUB_OUTPUT
-            echo "✅ Merged scan results from all platforms"
-          else
-            echo "::warning::No scan results found to merge"
-            echo "scan-file=" >> $GITHUB_OUTPUT
+            echo "✗ Build environment attestation missing (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}), will create"
           fi
 
       - name: Generate SLSA provenance
@@ -1010,20 +1022,6 @@ jobs:
           push-to-registry: true
         continue-on-error: true
 
-      - name: Attach vulnerability scan results
-        id: attest-scan
-        if: |
-          steps.check-attestations.outputs.vuln-scan-exists != 'true' &&
-          steps.merge-scans.outputs.scan-file != ''
-        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
-        with:
-          subject-name: ghcr.io/${{ inputs.image-name }}
-          subject-digest: ${{ needs.manifest.outputs.digest }}
-          predicate-type: ${{ env.PREDICATE_TYPE_VULN }}
-          predicate-path: ${{ steps.merge-scans.outputs.scan-file }}
-          push-to-registry: true
-        continue-on-error: true
-
       - name: Upload attestation artifacts
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
@@ -1031,7 +1029,6 @@ jobs:
           name: attestations-${{ needs.generate-id.outputs.workflow-call-id }}
           path: |
             build-environment.json
-            merged-scan-results.json
             ${{ steps.provenance.outputs.bundle-path }}
           retention-days: 90
           if-no-files-found: ignore
@@ -1054,12 +1051,7 @@ jobs:
           fi
 
           echo "✅ SBOM (per-platform, generated during build)" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ steps.attest-scan.outcome }}" = "success" ]; then
-            echo "✅ Vulnerability Scan (manifest)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⏭️  Vulnerability Scan (skipped)" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "✅ Vulnerability Scan (per-platform, generated during build)" >> $GITHUB_STEP_SUMMARY
 
           if [ "${{ steps.attest-build-env.outcome }}" = "success" ]; then
             echo "✅ Build Environment (manifest)" >> $GITHUB_STEP_SUMMARY
