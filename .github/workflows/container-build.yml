@@ -451,75 +451,20 @@ jobs:
           echo "Checking for existing attestations on platform image..."
           echo "Image reference: $IMAGE_REF"
 
-          # Function to check attestation existence
-          check_attestation() {
-            local predicate_type=$1
-            local predicate_name=$2
-            local max_attempts=3
-            local attempt=1
+          json="$(oras discover --format json "${IMAGE_REF}")"
 
-            echo "Checking for $predicate_name attestation (predicate: $predicate_type)..."
-
-            while [ $attempt -le $max_attempts ]; do
-              echo "Attempt $attempt of $max_attempts..."
-
-              # Use oras discover to check for attestations
-              if oras discover --format json "$IMAGE_REF" >/tmp/attestation-check.json 2>/tmp/attestation-error.json; then
-                # Check if any referrers have the matching predicate type
-                if jq -e --arg predicate "$predicate_type" \
-                  '.referrers[]? | select(.annotations."dev.sigstore.bundle.predicateType" == $predicate)' \
-                  /tmp/attestation-check.json >/dev/null 2>&1; then
-                  echo "✓ $predicate_name attestation exists, will skip"
-                  return 0
-                else
-                  echo "✗ $predicate_name attestation not found, will create"
-                  return 1
-                fi
-              else
-                # Check error type
-                if grep -q "UNAUTHORIZED\|FORBIDDEN\|401\|403" /tmp/attestation-error.json 2>/dev/null; then
-                  echo "::warning::Authentication issue checking $predicate_name attestation"
-                  cat /tmp/attestation-error.json
-                  return 1  # Don't retry auth errors, recreate to be safe
-                elif grep -qi "not found" /tmp/attestation-error.json 2>/dev/null; then
-                  echo "✗ $predicate_name attestation not found (image not found), will create"
-                  return 1
-                else
-                  echo "⚠ Transient error checking $predicate_name (attempt $attempt)"
-                  cat /tmp/attestation-error.json
-                fi
-              fi
-
-              # Retry with backoff if not last attempt
-              if [ $attempt -lt $max_attempts ]; then
-                echo "Retrying in 2 seconds..."
-                sleep 2
-              fi
-
-              attempt=$((attempt + 1))
-            done
-
-            echo "✗ Failed to verify $predicate_name attestation after $max_attempts attempts, will recreate"
-            return 1
+          # Returns "true" or "false" (as text)
+          has_pred() {
+            local predicate="$1"
+            jq -r --arg p "${predicate}" '
+              any(.referrers[]?; .annotations["dev.sigstore.bundle.predicateType"] == $p)
+            ' <<<"${json}"
           }
 
-          # Check SBOM attestation
-          if check_attestation "${{ env.PREDICATE_TYPE_SBOM }}" "SBOM"; then
-            echo "sbom-exists=true" >> "$GITHUB_OUTPUT"
-            echo "✓ SBOM attestation exists for ${{ matrix.platform }}, will skip SBOM generation"
-          else
-            echo "sbom-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ SBOM attestation missing for ${{ matrix.platform }}, will generate SBOM"
-          fi
-
-          # Check vulnerability scan attestation
-          if check_attestation "${{ env.PREDICATE_TYPE_VULN }}" "vulnerability scan"; then
-            echo "vuln-scan-exists=true" >> "$GITHUB_OUTPUT"
-            echo "✓ Vulnerability scan attestation exists for ${{ matrix.platform }}, will skip scanning"
-          else
-            echo "vuln-scan-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Vulnerability scan attestation missing for ${{ matrix.platform }}, will scan"
-          fi
+          echo "has_provenance=$(has_pred "${{ env.PREDICATE_TYPE_PROVENANCE }}")" >> "${GITHUB_OUTPUT}"
+          echo "has_sbom=$(has_pred "${{ env.PREDICATE_TYPE_SBOM }}")" >> "${GITHUB_OUTPUT}"
+          echo "has_vuln=$(has_pred "${{ env.PREDICATE_TYPE_VULN }}")" >> "${GITHUB_OUTPUT}"
+          echo "has_build_env=$(has_pred "${{ env.PREDICATE_TYPE_BUILD_ENV }}")" >> "${GITHUB_OUTPUT}"
 
       - name: Upload digest
         if: always()
@@ -533,7 +478,7 @@ jobs:
       # Scan platform image
       - name: Run Trivy vulnerability scanner (SARIF)
         id: trivy-sarif
-        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        if: steps.check-attestations.outputs.has_vuln != 'true'
         uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # tag=0.34.0
         with:
           exit-code: 1
@@ -547,7 +492,7 @@ jobs:
 
       - name: Run Trivy vulnerability scanner (JSON)
         id: trivy-json
-        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        if: steps.check-attestations.outputs.has_vuln != 'true'
         uses: aquasecurity/trivy-action@c1824fd6edce30d7ab345a9989de00bbd46ef284 # tag=0.34.0
         with:
           exit-code: 0
@@ -560,7 +505,7 @@ jobs:
 
       - name: Parse scan results
         id: scan-result
-        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        if: steps.check-attestations.outputs.has_vuln != 'true'
         run: |
           # Parse JSON results to count vulnerabilities by severity
           if [ -f trivy-results-${{ strategy.job-index }}.json ]; then
@@ -582,7 +527,7 @@ jobs:
           fi
 
       - name: Upload scan results
-        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        if: steps.check-attestations.outputs.has_vuln != 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
           name: security-scan-results-${{ needs.generate-id.outputs.workflow-call-id }}-${{ strategy.job-index }}
@@ -592,21 +537,21 @@ jobs:
           retention-days: 30
 
       - name: Upload SARIF to GitHub Security
-        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        if: steps.check-attestations.outputs.has_vuln != 'true'
         uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6 # tag=codeql-bundle-v4.32.3
         with:
           category: container-scan-${{ matrix.platform }}
           sarif_file: trivy-results-${{ strategy.job-index }}.sarif
 
       - name: Fail if vulnerabilities found
-        if: steps.check-attestations.outputs.vuln-scan-exists != 'true' && steps.trivy-sarif.outcome == 'failure'
+        if: steps.check-attestations.outputs.has_vuln != 'true' && steps.trivy-sarif.outcome == 'failure'
         run: |
           echo "::error::Security scan failed for ${{ matrix.platform }} - vulnerabilities found above threshold: ${{ inputs.scan-severity }}"
           exit 1
 
       - name: Attest vulnerability scan results
         id: attest-vuln-scan
-        if: steps.check-attestations.outputs.vuln-scan-exists != 'true'
+        if: steps.check-attestations.outputs.has_vuln != 'true'
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
@@ -618,14 +563,14 @@ jobs:
 
       # Generate attestations for platform
       - name: Install Syft
-        if: steps.check-attestations.outputs.sbom-exists != 'true'
+        if: steps.check-attestations.outputs.has_sbom != 'true'
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
           syft version
 
       - name: Generate SBOM
         id: generate-sbom
-        if: steps.check-attestations.outputs.sbom-exists != 'true'
+        if: steps.check-attestations.outputs.has_sbom != 'true'
         run: |
           PLATFORM_SLUG=$(echo "${{ matrix.platform }}" | tr '/' '-')
           syft "ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}" \
@@ -634,7 +579,7 @@ jobs:
           echo "✅ Generated SBOM for ${{ matrix.platform }}"
 
       - name: Attest SBOM
-        if: steps.check-attestations.outputs.sbom-exists != 'true'
+        if: steps.check-attestations.outputs.has_sbom != 'true'
         uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # tag=v3.0.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
@@ -664,16 +609,16 @@ jobs:
           echo "**Cache Scope:** \`${{ steps.cache-scope.outputs.scope }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ steps.check-attestations.outputs.sbom-exists }}" = "true" ] || [ "${{ steps.check-attestations.outputs.vuln-scan-exists }}" = "true" ]; then
+          if [ "${{ steps.check-attestations.outputs.has_sbom }}" = "true" ] || [ "${{ steps.check-attestations.outputs.has_vuln }}" = "true" ]; then
             echo "### ⏭️  Attestations Already Exist" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Skipped work for existing attestations:" >> $GITHUB_STEP_SUMMARY
 
-            if [ "${{ steps.check-attestations.outputs.vuln-scan-exists }}" = "true" ]; then
+            if [ "${{ steps.check-attestations.outputs.has_vuln }}" = "true" ]; then
               echo "- ✓ Vulnerability scanning (attestation exists)" >> $GITHUB_STEP_SUMMARY
             fi
 
-            if [ "${{ steps.check-attestations.outputs.sbom-exists }}" = "true" ]; then
+            if [ "${{ steps.check-attestations.outputs.has_sbom }}" = "true" ]; then
               echo "- ✓ SBOM generation (attestation exists)" >> $GITHUB_STEP_SUMMARY
             fi
 
@@ -958,79 +903,22 @@ jobs:
           echo "Checking for existing attestations on manifest..."
           echo "Image reference: $IMAGE_REF"
 
-          # Function to check attestation existence
-          check_attestation() {
-            local predicate_type=$1
-            local predicate_name=$2
-            local max_attempts=3
-            local attempt=1
+          json="$(oras discover --format json "${IMAGE_REF}")"
 
-            echo "Checking for $predicate_name attestation (predicate: $predicate_type)..."
-
-            while [ $attempt -le $max_attempts ]; do
-              echo "Attempt $attempt of $max_attempts..."
-
-              # Use oras discover to check for attestations
-              if oras discover --format json "$IMAGE_REF" >/tmp/attestation-check.json 2>/tmp/attestation-error.json; then
-                # Check if any referrers have the matching predicate type
-                if jq -e --arg predicate "$predicate_type" \
-                  '.referrers[]? | select(.annotations."dev.sigstore.bundle.predicateType" == $predicate)' \
-                  /tmp/attestation-check.json >/dev/null 2>&1; then
-                  echo "✓ $predicate_name attestation exists, will skip"
-                  return 0
-                else
-                  echo "✗ $predicate_name attestation not found, will create"
-                  return 1
-                fi
-              else
-                # Check error type
-                if grep -q "UNAUTHORIZED\|FORBIDDEN\|401\|403" /tmp/attestation-error.json 2>/dev/null; then
-                  echo "::warning::Authentication issue checking $predicate_name attestation"
-                  cat /tmp/attestation-error.json
-                  return 1  # Don't retry auth errors, recreate to be safe
-                elif grep -qi "not found" /tmp/attestation-error.json 2>/dev/null; then
-                  echo "✗ $predicate_name attestation not found (image not found), will create"
-                  return 1
-                else
-                  echo "⚠ Transient error checking $predicate_name (attempt $attempt)"
-                  cat /tmp/attestation-error.json
-                fi
-              fi
-
-              # Retry with backoff if not last attempt
-              if [ $attempt -lt $max_attempts ]; then
-                echo "Retrying in 2 seconds..."
-                sleep 2
-              fi
-
-              attempt=$((attempt + 1))
-            done
-
-            echo "✗ Failed to verify $predicate_name attestation after $max_attempts attempts, will recreate"
-            return 1
+          # Returns "true" or "false" (as text)
+          has_pred() {
+            local predicate="$1"
+            jq -r --arg p "${predicate}" '
+              any(.referrers[]?; .annotations["dev.sigstore.bundle.predicateType"] == $p)
+            ' <<<"${json}"
           }
 
-          # Check provenance attestation
-          if check_attestation "${{ env.PREDICATE_TYPE_PROVENANCE }}" "provenance"; then
-            echo "provenance-exists=true" >> "$GITHUB_OUTPUT"
-            echo "✓ Provenance attestation exists (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}), will skip"
-          else
-            echo "provenance-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Provenance attestation missing (predicateType ${{ env.PREDICATE_TYPE_PROVENANCE }}), will create"
-          fi
-
-          # Check build environment attestation
-          if check_attestation "${{ env.PREDICATE_TYPE_BUILD_ENV }}" "build environment"; then
-            echo "build-env-exists=true" >> "$GITHUB_OUTPUT"
-            echo "✓ Build environment attestation exists (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}), will skip"
-          else
-            echo "build-env-exists=false" >> "$GITHUB_OUTPUT"
-            echo "✗ Build environment attestation missing (predicateType ${{ env.PREDICATE_TYPE_BUILD_ENV }}), will create"
-          fi
+          echo "has_provenance=$(has_pred "${{ env.PREDICATE_TYPE_PROVENANCE }}")" >> "${GITHUB_OUTPUT}"
+          echo "has_build_env=$(has_pred "${{ env.PREDICATE_TYPE_BUILD_ENV }}")" >> "${GITHUB_OUTPUT}"
 
       - name: Generate SLSA provenance
         id: provenance
-        if: steps.check-attestations.outputs.provenance-exists != 'true'
+        if: steps.check-attestations.outputs.has_provenance != 'true'
         uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # tag=v1.4.3
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
@@ -1066,7 +954,7 @@ jobs:
 
       - name: Attach build environment as custom attestation
         id: attest-build-env
-        if: steps.check-attestations.outputs.build-env-exists != 'true'
+        if: steps.check-attestations.outputs.has_build_env != 'true'
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
