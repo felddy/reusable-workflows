@@ -455,25 +455,52 @@ jobs:
           check_attestation() {
             local predicate_type=$1
             local predicate_name=$2
+            local max_attempts=3
+            local attempt=1
 
             echo "Checking for $predicate_name attestation (predicate: $predicate_type)..."
 
-            # Try to download attestation - if it exists, cosign will succeed
-            if cosign download attestation \
-              --predicate-type="$predicate_type" \
-              "$IMAGE_REF" > /tmp/attestation-check.json 2>&1; then
-              echo "✓ $predicate_name attestation exists, will skip"
-              return 0
-            else
-              # Check if it's an auth error vs. not found
-              if grep -q "UNAUTHORIZED\|FORBIDDEN\|401\|403" /tmp/attestation-check.json 2>/dev/null; then
-                echo "::warning::Authentication issue checking $predicate_name attestation, will recreate to be safe"
-                cat /tmp/attestation-check.json
+            while [ $attempt -le $max_attempts ]; do
+              echo "Attempt $attempt of $max_attempts..."
+
+              # Separate stdout and stderr for better error handling
+              if cosign download attestation \
+                --predicate-type="$predicate_type" \
+                "$IMAGE_REF" >/tmp/attestation-check.json 2>/tmp/attestation-error.json; then
+
+                # Verify we actually got attestation data
+                if [ -s /tmp/attestation-check.json ]; then
+                  echo "✓ $predicate_name attestation exists, will skip"
+                  return 0
+                else
+                  echo "⚠ Cosign succeeded but returned empty data (attempt $attempt)"
+                fi
               else
-                echo "✗ $predicate_name attestation not found, will create"
+                # Check error type
+                if grep -q "UNAUTHORIZED\|FORBIDDEN\|401\|403" /tmp/attestation-error.json 2>/dev/null; then
+                  echo "::warning::Authentication issue checking $predicate_name attestation"
+                  cat /tmp/attestation-error.json
+                  return 1  # Don't retry auth errors, recreate to be safe
+                elif grep -q "no attestations found\|not found" /tmp/attestation-error.json 2>/dev/null; then
+                  echo "✗ $predicate_name attestation not found, will create"
+                  return 1
+                else
+                  echo "⚠ Transient error checking $predicate_name (attempt $attempt)"
+                  cat /tmp/attestation-error.json
+                fi
               fi
-              return 1
-            fi
+
+              # Retry with backoff if not last attempt
+              if [ $attempt -lt $max_attempts ]; then
+                echo "Retrying in 2 seconds..."
+                sleep 2
+              fi
+
+              attempt=$((attempt + 1))
+            done
+
+            echo "✗ Failed to verify $predicate_name attestation after $max_attempts attempts, will recreate"
+            return 1
           }
 
           # Check SBOM attestation
@@ -935,25 +962,52 @@ jobs:
           check_attestation() {
             local predicate_type=$1
             local predicate_name=$2
+            local max_attempts=3
+            local attempt=1
 
             echo "Checking for $predicate_name attestation (predicate: $predicate_type)..."
 
-            # Try to download attestation - if it exists, cosign will succeed
-            if cosign download attestation \
-              --predicate-type="$predicate_type" \
-              "$IMAGE_REF" > /tmp/attestation-check.json 2>&1; then
-              echo "✓ $predicate_name attestation exists, will skip"
-              return 0
-            else
-              # Check if it's an auth error vs. not found
-              if grep -q "UNAUTHORIZED\|FORBIDDEN\|401\|403" /tmp/attestation-check.json 2>/dev/null; then
-                echo "::warning::Authentication issue checking $predicate_name attestation, will recreate to be safe"
-                cat /tmp/attestation-check.json
+            while [ $attempt -le $max_attempts ]; do
+              echo "Attempt $attempt of $max_attempts..."
+
+              # Separate stdout and stderr for better error handling
+              if cosign download attestation \
+                --predicate-type="$predicate_type" \
+                "$IMAGE_REF" >/tmp/attestation-check.json 2>/tmp/attestation-error.json; then
+
+                # Verify we actually got attestation data
+                if [ -s /tmp/attestation-check.json ]; then
+                  echo "✓ $predicate_name attestation exists, will skip"
+                  return 0
+                else
+                  echo "⚠ Cosign succeeded but returned empty data (attempt $attempt)"
+                fi
               else
-                echo "✗ $predicate_name attestation not found, will create"
+                # Check error type
+                if grep -q "UNAUTHORIZED\|FORBIDDEN\|401\|403" /tmp/attestation-error.json 2>/dev/null; then
+                  echo "::warning::Authentication issue checking $predicate_name attestation"
+                  cat /tmp/attestation-error.json
+                  return 1  # Don't retry auth errors, recreate to be safe
+                elif grep -q "no attestations found\|not found" /tmp/attestation-error.json 2>/dev/null; then
+                  echo "✗ $predicate_name attestation not found, will create"
+                  return 1
+                else
+                  echo "⚠ Transient error checking $predicate_name (attempt $attempt)"
+                  cat /tmp/attestation-error.json
+                fi
               fi
-              return 1
-            fi
+
+              # Retry with backoff if not last attempt
+              if [ $attempt -lt $max_attempts ]; then
+                echo "Retrying in 2 seconds..."
+                sleep 2
+              fi
+
+              attempt=$((attempt + 1))
+            done
+
+            echo "✗ Failed to verify $predicate_name attestation after $max_attempts attempts, will recreate"
+            return 1
           }
 
           # Check provenance attestation
