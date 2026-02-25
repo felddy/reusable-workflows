@@ -442,6 +442,9 @@ jobs:
             cosign login ghcr.io -u ${{ github.actor }} --password-stdin
           echo "✅ Cosign authenticated with registry"
 
+      - name: Install ORAS
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # tag=v1.2.4
+
       - name: Check attestation existence
         id: check-attestations
         timeout-minutes: 3
@@ -893,6 +896,9 @@ jobs:
           echo "${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}" | \
             cosign login ghcr.io -u ${{ github.actor }} --password-stdin
           echo "✅ Cosign authenticated with registry"
+
+      - name: Install ORAS
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # tag=v1.2.4
 
       - name: Check attestation existence
         id: check-attestations
