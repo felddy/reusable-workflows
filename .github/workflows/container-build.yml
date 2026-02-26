@@ -4,6 +4,10 @@ name: Container Build Workflow
 # This reusable workflow builds OCI-compliant container images with modern
 # supply chain security features.
 
+# Tool Versions - Update these to bump tool versions across the workflow
+env:
+  CRANE_VERSION: v0.21.1
+
 on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
@@ -285,9 +289,6 @@ jobs:
       PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
       PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
       PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
-      # Tool versions
-      COSIGN_VERSION: v2.6.2
-      CRANE_VERSION: v0.21.0
 
     steps:
       - name: Harden Runner
@@ -432,8 +433,6 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
-        with:
-          cosign-release: ${{ env.COSIGN_VERSION }}
 
       - name: Authenticate cosign with registry
         run: |
@@ -565,21 +564,16 @@ jobs:
         continue-on-error: true
 
       # Generate attestations for platform
-      - name: Install Syft
-        if: steps.check-attestations.outputs.has_sbom != 'true'
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          syft version
-
-      - name: Generate SBOM
+      - name: Generate SBOM with Syft
         id: generate-sbom
         if: steps.check-attestations.outputs.has_sbom != 'true'
-        run: |
-          PLATFORM_SLUG=$(echo "${{ matrix.platform }}" | tr '/' '-')
-          syft "ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}" \
-            -o spdx-json > "sbom-${PLATFORM_SLUG}.spdx.json"
-          echo "sbom-file=sbom-${PLATFORM_SLUG}.spdx.json" >> $GITHUB_OUTPUT
-          echo "✅ Generated SBOM for ${{ matrix.platform }}"
+        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11 # tag=v0.23.0
+        with:
+          image: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ strategy.job-index }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
 
       - name: Attest SBOM
         if: steps.check-attestations.outputs.has_sbom != 'true'
@@ -587,15 +581,15 @@ jobs:
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.build.outputs.digest }}
-          sbom-path: ${{ steps.generate-sbom.outputs.sbom-file }}
+          sbom-path: sbom-${{ strategy.job-index }}.spdx.json
           push-to-registry: true
 
       - name: Upload SBOM artifact
-        if: steps.generate-sbom.outputs.sbom-file != ''
+        if: steps.generate-sbom.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
           name: sbom-${{ needs.generate-id.outputs.workflow-call-id }}-${{ strategy.job-index }}
-          path: ${{ steps.generate-sbom.outputs.sbom-file }}
+          path: sbom-${{ strategy.job-index }}.spdx.json
           retention-days: 90
 
       - name: Clean up secret files
@@ -678,8 +672,7 @@ jobs:
       - name: Install crane
         run: |
           # Install crane for manifest digest extraction
-          VERSION="v0.20.2"
-          curl -sL "https://github.com/google/go-containerregistry/releases/download/${VERSION}/go-containerregistry_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin crane
+          curl -sL "https://github.com/google/go-containerregistry/releases/download/${{ env.CRANE_VERSION }}/go-containerregistry_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin crane
           crane version
 
       - name: Create manifest list and push
@@ -864,8 +857,6 @@ jobs:
 
       - name: Install cosign
         uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
-        with:
-          cosign-release: v2.6.2
 
       - name: Set SOURCE_DATE_EPOCH for reproducible builds
         id: source-date-epoch
