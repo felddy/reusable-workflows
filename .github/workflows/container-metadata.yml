@@ -42,7 +42,7 @@ jobs:
       tags: ${{ steps.prep.outputs.tags }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        uses: step-security/harden-runner@fa2e9d605c4eeb9fcad4c99c224cee0c6c7f3594 # tag=v2.16.0
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -72,7 +72,7 @@ jobs:
 
       - name: Calculate container metadata
         id: container_meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # tag=v5.10.0
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # tag=v6.0.0
         with:
           flavor: |
             latest=false
