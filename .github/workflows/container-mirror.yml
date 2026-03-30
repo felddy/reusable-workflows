@@ -190,7 +190,12 @@ jobs:
 
             # Multi-architecture verification
             # Fetch source manifest to check if it's a manifest list
-            source_manifest=$(oras manifest fetch "${source_image}" 2>&1)
+            if ! source_manifest=$(oras manifest fetch "${source_image}" 2>&1); then
+              echo "Error: Failed to fetch source manifest for platform verification"
+              echo "Image: ${source_image}"
+              echo "Error: ${source_manifest}"
+              exit 1
+            fi
 
             if echo "${source_manifest}" | jq -e '.manifests' > /dev/null 2>&1; then
               echo "Multi-architecture image detected: ${source_image}"
@@ -201,7 +206,12 @@ jobs:
               echo "Source platforms (${platform_count}): ${source_platforms}"
 
               # Fetch target manifest list and compare platforms
-              target_manifest=$(oras manifest fetch "${target_image}" 2>&1)
+              if ! target_manifest=$(oras manifest fetch "${target_image}" 2>&1); then
+                echo "Error: Failed to fetch target manifest for platform verification"
+                echo "Image: ${target_image}"
+                echo "Error: ${target_manifest}"
+                exit 1
+              fi
               if ! echo "${target_manifest}" | jq -e '.manifests' > /dev/null 2>&1; then
                 echo "Error: Target image is missing manifest list"
                 echo "Image: ${target_image}"
