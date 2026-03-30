@@ -868,22 +868,28 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
         run: |
-          # Package name may contain slashes (e.g. org/image-name) — URL-encode for API
-          PACKAGE_NAME="${{ inputs.image-name }}"
-          PACKAGE_NAME="${PACKAGE_NAME##*/}"
+          # Package name for the GitHub Packages API is the image name without the owner prefix
+          # e.g. inputs.image-name = "felddy/reusable-workflow-hid" -> "reusable-workflow-hid"
+          IMAGE_NAME="${{ inputs.image-name }}"
+          PACKAGE_NAME="${IMAGE_NAME##*/}"
+          # URL-encode the package name (replace / with %2F for any remaining slashes)
           PACKAGE_NAME_ENCODED="${PACKAGE_NAME//\//%2F}"
           OWNER="${{ github.repository_owner }}"
           IS_PRIVATE="${{ needs.determine-visibility.outputs.is-private }}"
 
-          echo "Checking visibility for package: ${PACKAGE_NAME}"
+          echo "Image name: ${IMAGE_NAME}"
+          echo "Package name: ${PACKAGE_NAME}"
+          echo "Owner: ${OWNER}"
 
           # Determine if owner is a user or org
-          OWNER_TYPE=$(gh api "/users/${OWNER}" --jq '.type' 2>/dev/null || echo "")
+          OWNER_TYPE=$(gh api "/users/${OWNER}" --jq '.type' 2>/dev/null || echo "User")
           if [[ "$OWNER_TYPE" == "Organization" ]]; then
             API_BASE="/orgs/${OWNER}/packages/container/${PACKAGE_NAME_ENCODED}"
           else
             API_BASE="/users/${OWNER}/packages/container/${PACKAGE_NAME_ENCODED}"
           fi
+
+          echo "API endpoint: https://api.github.com${API_BASE}"
 
           # Query current package visibility
           CURRENT_VISIBILITY=$(gh api \
@@ -900,24 +906,38 @@ jobs:
 
           if [[ "$IS_PRIVATE" == "true" && "$CURRENT_VISIBILITY" == "public" ]]; then
             # Package should be private but is public — enforce private
-            # Requires a classic PAT or fine-grained token with write:packages scope
+            # Requires a classic PAT with write:packages scope authenticated as the package owner.
+            # Fine-grained tokens do NOT support package visibility updates per GitHub docs.
             echo "Package is public but should be private. Updating visibility to private..."
-            if gh api \
-              --method PATCH \
+            HTTP_STATUS=$(curl -s -o /tmp/pkg_response.json -w "%{http_code}" \
+              -X PATCH \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
               -H "Accept: application/vnd.github+json" \
-              "${API_BASE}" \
-              -f visibility=private; then
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -d '{"visibility":"private"}' \
+              "https://api.github.com${API_BASE}")
+
+            if [[ "$HTTP_STATUS" == "200" ]]; then
               echo "✅ Package visibility set to private"
+            elif [[ "$HTTP_STATUS" == "404" ]]; then
+              echo "::warning::Could not set package visibility to private (404 Not Found)."
+              echo "::warning::Ensure PRIVATE_PACKAGE_TOKEN is a classic PAT (not fine-grained) with write:packages scope owned by ${OWNER}."
+              echo "::warning::Fine-grained tokens do not support package visibility updates."
+              echo "::warning::Manual fix: https://github.com/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
+            elif [[ "$HTTP_STATUS" == "403" ]]; then
+              echo "::error::Permission denied (403). Token lacks write:packages scope or is not a classic PAT."
+              cat /tmp/pkg_response.json
+              exit 1
             else
-              echo "::error::Failed to set package visibility to private."
-              echo "::error::The token may lack write:packages scope. Use a classic PAT with write:packages."
+              echo "::error::Failed to set package visibility to private (HTTP ${HTTP_STATUS})."
+              cat /tmp/pkg_response.json
               exit 1
             fi
           elif [[ "$IS_PRIVATE" == "false" && "$CURRENT_VISIBILITY" == "private" ]]; then
             # Package is private but should be public — warn only, do not change automatically
             echo "::warning::Package '${PACKAGE_NAME}' is currently private but is expected to be public."
             echo "::warning::GitHub does not automatically make packages public when linked to a repository."
-            echo "::warning::To make it public, visit: https://github.com/${OWNER_TYPE,,}s/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
+            echo "::warning::Manual fix: https://github.com/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
           else
             echo "✅ Package visibility is correct: ${CURRENT_VISIBILITY}"
           fi
