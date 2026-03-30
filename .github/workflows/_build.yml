@@ -131,7 +131,7 @@ jobs:
     uses: ./.github/workflows/container-mirror.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
-      image_tag_names: ${{ needs.build.outputs.image-tags }}
+      image_tag_names: ${{ needs.build.outputs.image-tag-names }}
       target_registry: docker.io
     secrets:
       target-registry-username: ${{ secrets.DOCKER_USERNAME }}

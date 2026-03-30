@@ -124,6 +124,10 @@ on: # yamllint disable-line rule:truthy
         description: Generated image tags
         value: ${{ jobs.metadata.outputs.image-tags }}
 
+      image-tag-names:
+        description: Bare tag names only (space-separated, e.g. "1.2.3 1.2 1 latest")
+        value: ${{ jobs.metadata.outputs.tag-names }}
+
       image-version:
         description: Calculated version
         value: ${{ jobs.metadata.outputs.version }}

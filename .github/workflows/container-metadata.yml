@@ -31,6 +31,10 @@ on: # yamllint disable-line rule:truthy
         description: Generated OCI annotations (newline-separated)
         value: ${{ jobs.metadata.outputs.annotations }}
 
+      tag-names:
+        description: Bare tag names only (space-separated, e.g. "1.2.3 1.2 1 latest")
+        value: ${{ jobs.metadata.outputs.tag-names }}
+
       version:
         description: Calculated semantic version
         value: ${{ jobs.metadata.outputs.version }}
@@ -58,6 +62,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       is-latest: ${{ steps.determine-latest.outputs.is-latest }}
       full-name: ghcr.io/${{ inputs.image-name }}
+      tag-names: ${{ steps.tags.outputs.tags }}
 
     steps:
       - name: Harden Runner
@@ -193,11 +198,15 @@ jobs:
               ;;
           esac
 
-          # Use multiline output delimiter
+          # Use multiline output delimiter for type=raw,value= expressions
           delimiter="$(openssl rand -hex 8)"
           echo "tags<<${delimiter}" >> $GITHUB_OUTPUT
           printf "%b" "$TAGS" >> $GITHUB_OUTPUT
           echo "${delimiter}" >> $GITHUB_OUTPUT
+
+          # Also output bare tag names space-separated (for use by mirror workflow)
+          TAG_NAMES=$(printf "%b" "$TAGS" | sed 's/type=raw,value=//g' | tr '\n' ' ' | sed 's/ $//')
+          echo "tag-names=$TAG_NAMES" >> $GITHUB_OUTPUT
 
       - name: Determine if latest
         id: determine-latest
