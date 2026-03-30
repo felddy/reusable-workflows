@@ -81,7 +81,7 @@ jobs:
     outputs:
       signature-ref: ${{ steps.sign.outputs.signature-ref }}
       signing-method: ${{ steps.determine-method.outputs.method }}
-      signed: ${{ steps.sign.outputs.signed }}
+      signed: ${{ steps.sign-keyless.outputs.signed || steps.sign-key.outputs.signed }}
 
     permissions:
       contents: read
@@ -251,8 +251,6 @@ jobs:
             echo "signature-ref=" >> $GITHUB_OUTPUT
             echo "Signature reference not available (may not be propagated yet)"
           fi
-
-          echo "signed=true" >> $GITHUB_OUTPUT
 
       - name: Output signing summary
         run: |
