@@ -58,9 +58,9 @@ name: Container Sign Workflow
         required: false
 
     outputs:
-      signature-digest:
-        description: Digest of the signature
-        value: ${{ jobs.sign.outputs.signature-digest }}
+      signature-ref:
+        description: Signature artifact reference (e.g. registry/image:sha256-....sig) as returned by cosign triangulate
+        value: ${{ jobs.sign.outputs.signature-ref }}
 
       signing-method:
         description: Method used for signing (keyless or key-based)
@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
 
     outputs:
-      signature-digest: ${{ steps.sign.outputs.signature-digest }}
+      signature-ref: ${{ steps.sign.outputs.signature-ref }}
       signing-method: ${{ steps.determine-method.outputs.method }}
       signed: ${{ steps.sign.outputs.signed }}
 
@@ -234,19 +234,19 @@ jobs:
 
           echo "::endgroup::"
 
-      - name: Get signature digest
+      - name: Get signature reference
         id: sign
         run: |
-          # Try to get the signature digest
-          # This may not always be available immediately
-          SIGNATURE_DIGEST=$(cosign triangulate "${{ inputs.image-ref }}" 2>/dev/null || echo "")
+          # cosign triangulate returns the signature artifact reference
+          # (e.g. ghcr.io/image:sha256-abc123.sig), not a digest
+          SIGNATURE_REF=$(cosign triangulate "${{ inputs.image-ref }}" 2>/dev/null || echo "")
 
-          if [[ -n "$SIGNATURE_DIGEST" ]]; then
-            echo "signature-digest=$SIGNATURE_DIGEST" >> $GITHUB_OUTPUT
-            echo "Signature digest: $SIGNATURE_DIGEST"
+          if [[ -n "$SIGNATURE_REF" ]]; then
+            echo "signature-ref=$SIGNATURE_REF" >> $GITHUB_OUTPUT
+            echo "Signature reference: $SIGNATURE_REF"
           else
-            echo "signature-digest=" >> $GITHUB_OUTPUT
-            echo "Signature digest not available (may not be propagated yet)"
+            echo "signature-ref=" >> $GITHUB_OUTPUT
+            echo "Signature reference not available (may not be propagated yet)"
           fi
 
           echo "signed=true" >> $GITHUB_OUTPUT
