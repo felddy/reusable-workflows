@@ -1022,6 +1022,10 @@ jobs:
       - metadata
       - manifest
       - attest-manifest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # Required for keyless signing with OIDC
     if: |
       always() &&
       needs.attest-manifest.result == 'success' &&
