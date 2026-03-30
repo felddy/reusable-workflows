@@ -142,7 +142,7 @@ jobs:
       - build
       - config
       - check
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' && !github.event.release.prerelease
     uses: ./.github/workflows/dockerhub-description.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
