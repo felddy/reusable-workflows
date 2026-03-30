@@ -176,12 +176,15 @@ jobs:
 
             # Discover and count artifacts
             echo "Discovering artifacts for: ${target_image}"
-            if ! artifact_output=$(oras discover --format json "${target_image}" 2>&1); then
+            artifact_stderr=$(mktemp)
+            if ! artifact_output=$(oras discover --format json "${target_image}" 2>"${artifact_stderr}"); then
               echo "Error: Artifact discovery failed"
               echo "Image: ${target_image}"
-              echo "Error: ${artifact_output}"
+              echo "Error: $(cat "${artifact_stderr}")"
+              rm -f "${artifact_stderr}"
               exit 1
             fi
+            rm -f "${artifact_stderr}"
 
             # Count artifacts and log for observability
             artifact_count=$(echo "${artifact_output}" | jq '.referrers | length')
