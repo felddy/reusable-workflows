@@ -18,6 +18,9 @@ name: Container Sign Workflow
 #   secrets:
 #     signing-key: ${{ secrets.COSIGN_KEY }}  # Optional, for key-based signing
 
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
+
 "on":
   workflow_call:
     inputs:

@@ -24,6 +24,10 @@ on: # yamllint disable-line rule:truthy
   schedule:
     - cron: 0 2 * * 6
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   diagnostics:
     name: Run diagnostics

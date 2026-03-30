@@ -4,6 +4,9 @@ name: Container Build Workflow
 # This reusable workflow builds OCI-compliant container images with modern
 # supply chain security features.
 
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
+
 # Tool Versions - Update these to bump tool versions across the workflow
 env:
   CRANE_VERSION: v0.21.1

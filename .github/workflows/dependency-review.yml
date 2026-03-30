@@ -7,6 +7,9 @@ on: # yamllint disable-line rule:truthy
       - checks_requested
   pull_request:
 
+permissions:
+  contents: read
+
 # Set a default shell for any run steps. The `-Eueo pipefail` sets errtrace,
 # nounset, errexit, and pipefail. The `-x` will print all commands as they are
 # run. Please see the GitHub Actions documentation for more information:
