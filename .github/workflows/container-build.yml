@@ -861,6 +861,62 @@ jobs:
           echo "docker buildx imagetools inspect $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
+      - name: Verify and enforce package visibility
+        env:
+          GH_TOKEN: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
+        run: |
+          # Extract package name from image name (last component after /)
+          PACKAGE_NAME="${{ inputs.image-name }}"
+          PACKAGE_NAME="${PACKAGE_NAME##*/}"
+          OWNER="${{ github.repository_owner }}"
+          IS_PRIVATE="${{ needs.determine-visibility.outputs.is-private }}"
+
+          echo "Checking visibility for package: ${PACKAGE_NAME}"
+
+          # Query current package visibility via GitHub API
+          RESPONSE=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/users/${OWNER}/packages/container/${PACKAGE_NAME}" \
+            2>&1) || {
+            # Try org endpoint if user endpoint fails
+            RESPONSE=$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/orgs/${OWNER}/packages/container/${PACKAGE_NAME}" \
+              2>&1)
+          }
+
+          CURRENT_VISIBILITY=$(echo "$RESPONSE" | jq -r '.visibility // empty')
+
+          if [[ -z "$CURRENT_VISIBILITY" ]]; then
+            echo "::warning::Could not determine package visibility for ${PACKAGE_NAME}"
+            exit 0
+          fi
+
+          echo "Current visibility: ${CURRENT_VISIBILITY}"
+          echo "Expected private: ${IS_PRIVATE}"
+
+          if [[ "$IS_PRIVATE" == "true" && "$CURRENT_VISIBILITY" == "public" ]]; then
+            # Package should be private but is public — enforce private
+            echo "Package is public but should be private. Updating visibility to private..."
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "/users/${OWNER}/packages/container/${PACKAGE_NAME}" \
+              -f visibility=private 2>/dev/null || \
+            gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "/orgs/${OWNER}/packages/container/${PACKAGE_NAME}" \
+              -f visibility=private
+            echo "✅ Package visibility set to private"
+          elif [[ "$IS_PRIVATE" == "false" && "$CURRENT_VISIBILITY" == "private" ]]; then
+            # Package is private but should be public — warn only, do not change
+            echo "::warning::Package '${PACKAGE_NAME}' is currently private but is expected to be public."
+            echo "::warning::To make it public, go to: https://github.com/users/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
+          else
+            echo "✅ Package visibility is correct: ${CURRENT_VISIBILITY}"
+          fi
+
   # Generate attestations for multi-platform manifest
   attest-manifest:
     name: Attest Manifest
