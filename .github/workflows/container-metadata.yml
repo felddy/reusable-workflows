@@ -248,19 +248,19 @@ jobs:
           images: ghcr.io/${{ inputs.image-name }}
           tags: |
             ${{ steps.tags.outputs.tags }}
-            ${{ steps.determine-latest.outputs.is-latest == 'true' && 'type=raw,value=latest' || '' }}
+            ${{ steps.determine-latest.outputs.is-latest == 'true' && 'type=raw,value=latest' || '# no latest tag' }}
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
-            ${{ inputs.link-repository == false && 'org.opencontainers.image.source=' || '' }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.event.release.created_at || github.event.repository.pushed_at }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
             org.opencontainers.image.authors=${{ github.repository_owner }}
+            ${{ inputs.link-repository == true && format('org.opencontainers.image.source={0}', github.event.repository.html_url) || '' }}
           annotations: |
-            ${{ inputs.link-repository == false && 'org.opencontainers.image.source=' || '' }}
+            ${{ inputs.link-repository == true && format('org.opencontainers.image.source={0}', github.event.repository.html_url) || '' }}
 
       - name: Output metadata summary
         run: |
