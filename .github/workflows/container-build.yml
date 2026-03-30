@@ -427,15 +427,26 @@ jobs:
           sbom: false
           secrets: ${{ steps.secrets.outputs.secrets }}
           target: ${{ inputs.target }}
-        continue-on-error: true
 
       - name: Export digest
         id: digest
         run: |
-          mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
+
+          # Validate digest is non-empty and well-formed before proceeding
+          if [[ -z "$digest" ]]; then
+            echo "::error::Build step produced no digest - build likely failed"
+            exit 1
+          fi
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Invalid digest format: $digest"
+            exit 1
+          fi
+
+          mkdir -p /tmp/digests
           touch "/tmp/digests/${digest#sha256:}"
           echo "digest=$digest" >> $GITHUB_OUTPUT
+          echo "Digest: $digest"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
