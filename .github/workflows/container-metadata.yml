@@ -47,6 +47,10 @@ on: # yamllint disable-line rule:truthy
         description: Full image name with registry
         value: ghcr.io/${{ inputs.image-name }}
 
+      commit-epoch:
+        description: Unix epoch of the commit timestamp (usable as SOURCE_DATE_EPOCH)
+        value: ${{ jobs.metadata.outputs.commit-epoch }}
+
 jobs:
   metadata:
     name: Generate Metadata
@@ -63,6 +67,7 @@ jobs:
       is-latest: ${{ steps.determine-latest.outputs.is-latest }}
       full-name: ghcr.io/${{ inputs.image-name }}
       tag-names: ${{ steps.tags.outputs.tag-names }}
+      commit-epoch: ${{ steps.commit-timestamp.outputs.epoch }}
 
     steps:
       - name: Harden Runner
@@ -75,6 +80,18 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # tag=v4.2.4
         with:
           fetch-depth: 0
+
+      - name: Get commit timestamp
+        id: commit-timestamp
+        run: |
+          # Derive the created timestamp from the commit being built.
+          # This is stable for a given commit regardless of event type,
+          # ensuring reproducibility across push, release, PR, and schedule events.
+          EPOCH=$(git log -1 --format=%ct "${{ github.sha }}")
+          TIMESTAMP=$(date -u -d "@${EPOCH}" '+%Y-%m-%dT%H:%M:%SZ')
+          echo "epoch=$EPOCH" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "Commit timestamp: $TIMESTAMP (epoch: $EPOCH)"
 
       - name: Determine event context
         id: context
@@ -245,18 +262,16 @@ jobs:
           tags: |
             ${{ steps.tags.outputs.tags }}
             type=raw,value=latest,enable=${{ steps.determine-latest.outputs.is-latest }}
-          # Use deterministic, event-specific timestamps for org.opencontainers.image.created
-          # to ensure reproducibility. Rebuilding the same commit must produce the same
-          # image digest, so we cannot use the current wall-clock time. Fallback chain:
-          #   push    -> head_commit.timestamp  (the git commit timestamp)
-          #   release -> release.created_at     (stable once the release is created)
-          #   other   -> repository.pushed_at   (last push time, stable for a given ref)
+          # Use the git commit timestamp for org.opencontainers.image.created to ensure
+          # reproducibility. This is stable for a given commit regardless of event type
+          # (push, release, PR, schedule), unlike repository metadata which can change
+          # independently of the commit being built.
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
             org.opencontainers.image.url=${{ github.event.repository.html_url }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.event.release.created_at || github.event.repository.pushed_at }}
+            org.opencontainers.image.created=${{ steps.commit-timestamp.outputs.timestamp }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
             org.opencontainers.image.authors=${{ github.repository_owner }}
