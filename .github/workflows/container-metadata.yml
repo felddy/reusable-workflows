@@ -227,9 +227,10 @@ jobs:
                 add_tag "$MAJOR.$MINOR"
                 add_tag "$MAJOR"
               fi
-              # Only add the :release tag when this is the latest release
+              # Only add :release and :latest tags when this is the latest release
               if [[ "${{ steps.determine-latest.outputs.is-latest }}" == "true" ]]; then
                 add_tag "release"
+                add_tag "latest"
               fi
               ;;
 
@@ -264,7 +265,6 @@ jobs:
           images: ghcr.io/${{ inputs.image-name }}
           tags: |
             ${{ steps.tags.outputs.tags }}
-            type=raw,value=latest,enable=${{ steps.determine-latest.outputs.is-latest }}
           # Use the git commit timestamp for org.opencontainers.image.created to ensure
           # reproducibility. This is stable for a given commit regardless of event type
           # (push, release, PR, schedule), unlike repository metadata which can change
