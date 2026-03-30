@@ -651,6 +651,7 @@ jobs:
   # Create multi-platform manifest
   manifest:
     name: Create Multi-Platform Manifest
+    if: inputs.push
     needs:
       - generate-id
       - metadata
@@ -849,6 +850,7 @@ jobs:
   # Generate attestations for multi-platform manifest
   attest-manifest:
     name: Attest Manifest
+    if: inputs.push
     needs:
       - generate-id
       - metadata
@@ -1030,6 +1032,7 @@ jobs:
       packages: write
       id-token: write # Required for keyless signing with OIDC
     if: |
+      inputs.push &&
       always() &&
       needs.attest-manifest.result == 'success' &&
       needs.manifest.result == 'success'
