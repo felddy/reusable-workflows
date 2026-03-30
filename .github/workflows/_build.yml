@@ -16,6 +16,10 @@ on: # yamllint disable-line rule:truthy
 
 permissions:
   contents: read
+  packages: write
+  id-token: write
+  attestations: write
+  security-events: write
 
 jobs:
   diagnostics:
