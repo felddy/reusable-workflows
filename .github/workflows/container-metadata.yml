@@ -27,6 +27,10 @@ on: # yamllint disable-line rule:truthy
         description: Generated OCI labels (newline-separated)
         value: ${{ jobs.metadata.outputs.labels }}
 
+      annotations:
+        description: Generated OCI annotations (newline-separated)
+        value: ${{ jobs.metadata.outputs.annotations }}
+
       version:
         description: Calculated semantic version
         value: ${{ jobs.metadata.outputs.version }}
@@ -50,6 +54,7 @@ jobs:
     outputs:
       tags: ${{ steps.meta.outputs.tags }}
       labels: ${{ steps.meta.outputs.labels }}
+      annotations: ${{ steps.meta.outputs.annotations }}
       version: ${{ steps.version.outputs.version }}
       is-latest: ${{ steps.determine-latest.outputs.is-latest }}
       full-name: ghcr.io/${{ inputs.image-name }}
