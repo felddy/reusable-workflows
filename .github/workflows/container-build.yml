@@ -328,6 +328,7 @@ jobs:
             network=host
 
       - name: Log in to container registry
+        if: inputs.push
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ghcr.io
