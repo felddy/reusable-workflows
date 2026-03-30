@@ -49,19 +49,6 @@ on: # yamllint disable-line rule:truthy
         type: string
         default: ""
 
-      # Advanced Build
-      bake-file:
-        description: Path to buildx bake file (HCL/JSON)
-        required: false
-        type: string
-        default: ""
-
-      bake-targets:
-        description: Bake targets to build (comma-separated)
-        required: false
-        type: string
-        default: ""
-
       # Security Configuration
       scan-severity:
         description: Fail on vulnerabilities at or above this severity
