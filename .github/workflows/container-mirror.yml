@@ -140,10 +140,10 @@ jobs:
 
             # Verify source image exists
             echo "Verifying source image: ${source_image}"
-            if ! oras manifest fetch "${source_image}" > /dev/null 2>&1; then
+            if ! source_verify_output=$(oras manifest fetch "${source_image}" 2>&1); then
               echo "Error: Source image verification failed"
               echo "Image: ${source_image}"
-              echo "Error: Image not found or not accessible"
+              echo "Error: ${source_verify_output}"
               exit 1
             fi
             echo "Source image verified successfully"
@@ -167,10 +167,10 @@ jobs:
 
             # Verify target image exists
             echo "Verifying target image: ${target_image}"
-            if ! oras manifest fetch "${target_image}" > /dev/null 2>&1; then
+            if ! target_verify_output=$(oras manifest fetch "${target_image}" 2>&1); then
               echo "Error: Target image verification failed"
               echo "Image: ${target_image}"
-              echo "Error: Image not found in target registry"
+              echo "Error: ${target_verify_output}"
               exit 1
             fi
             echo "Target image verified successfully"
