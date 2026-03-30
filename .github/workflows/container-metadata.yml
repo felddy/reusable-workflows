@@ -144,58 +144,53 @@ jobs:
           MAJOR="${{ steps.version.outputs.major }}"
           MINOR="${{ steps.version.outputs.minor }}"
 
-          TAGS=()
+          # Build newline-separated type=raw,value= expressions for docker/metadata-action
+          TAGS=""
+
+          add_tag() {
+            TAGS="${TAGS}type=raw,value=${1}\n"
+          }
 
           case "$STRATEGY" in
             pr)
-              # Pull request tags
-              TAGS+=("type=raw,value=pr-${{ github.event.pull_request.number }}")
-              TAGS+=("type=raw,value=sha-${GITHUB_SHA:0:7}")
+              add_tag "pr-${{ github.event.pull_request.number }}"
+              add_tag "sha-${GITHUB_SHA:0:7}"
               ;;
 
             branch)
-              # Branch push tags
               BRANCH_NAME="${REF_NAME//\//-}"  # Replace / with -
-              TAGS+=("type=raw,value=${BRANCH_NAME}")
-              TAGS+=("type=raw,value=sha-${GITHUB_SHA:0:7}")
+              add_tag "$BRANCH_NAME"
+              add_tag "sha-${GITHUB_SHA:0:7}"
               ;;
 
             release)
-              # Release tags (full semantic versioning)
-              TAGS+=("type=raw,value=${VERSION}")
+              add_tag "$VERSION"
               if [[ -n "$MAJOR" ]] && [[ -n "$MINOR" ]]; then
-                TAGS+=("type=raw,value=${MAJOR}.${MINOR}")
-                TAGS+=("type=raw,value=${MAJOR}")
+                add_tag "$MAJOR.$MINOR"
+                add_tag "$MAJOR"
               fi
-              TAGS+=("type=raw,value=release")
-              # Add latest for non-prerelease releases
-              if [[ "${{ github.event.release.prerelease }}" != "true" ]]; then
-                TAGS+=("type=raw,value=latest")
-              fi
+              add_tag "release"
               ;;
 
             prerelease)
-              # Pre-release tags
-              TAGS+=("type=raw,value=${VERSION}")
-              TAGS+=("type=raw,value=prerelease")
+              add_tag "$VERSION"
+              add_tag "prerelease"
               ;;
 
             tag)
-              # Generic tag push
-              TAGS+=("type=raw,value=${VERSION}")
+              add_tag "$VERSION"
               ;;
 
             *)
-              # Default
-              TAGS+=("type=raw,value=latest")
+              add_tag "latest"
               ;;
           esac
 
-          {
-            echo "tags<<EOF"
-            printf '%s\n' "${TAGS[@]}"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          # Use multiline output delimiter
+          delimiter="$(openssl rand -hex 8)"
+          echo "tags<<${delimiter}" >> $GITHUB_OUTPUT
+          printf "%b" "$TAGS" >> $GITHUB_OUTPUT
+          echo "${delimiter}" >> $GITHUB_OUTPUT
 
       - name: Determine if latest
         id: determine-latest
@@ -219,6 +214,7 @@ jobs:
           images: ghcr.io/${{ inputs.image-name }}
           tags: |
             ${{ steps.tags.outputs.tags }}
+            ${{ steps.determine-latest.outputs.is-latest == 'true' && 'type=raw,value=latest' || '' }}
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
