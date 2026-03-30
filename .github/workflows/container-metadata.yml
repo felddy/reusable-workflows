@@ -140,6 +140,32 @@ jobs:
             echo "prerelease=" >> $GITHUB_OUTPUT
           fi
 
+      - name: Determine if latest
+        id: determine-latest
+        run: |
+          STRATEGY="${{ steps.context.outputs.strategy }}"
+          IS_LATEST="false"
+
+          # Only consider non-prerelease releases for latest check
+          if [[ "$STRATEGY" == "release" && "${{ github.event.release.prerelease }}" == "false" ]]; then
+            REPO="${GITHUB_REPOSITORY}"
+            API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+
+            # Fetch the tag name of the latest GitHub release
+            LATEST_TAG="$(
+              curl -sSL \
+                -H "Authorization: Bearer ${{ github.token }}" \
+                -H "Accept: application/vnd.github+json" \
+                "${API_URL}" | jq -r '.tag_name // empty'
+            )"
+
+            # Mark as latest only if this release's tag matches the latest release tag
+            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" == "${{ github.event.release.tag_name }}" ]]; then
+              IS_LATEST="true"
+            fi
+          fi
+          echo "is-latest=$IS_LATEST" >> $GITHUB_OUTPUT
+
       - name: Generate tags
         id: tags
         run: |
@@ -181,7 +207,10 @@ jobs:
                 add_tag "$MAJOR.$MINOR"
                 add_tag "$MAJOR"
               fi
-              add_tag "release"
+              # Only add the :release tag when this is the latest release
+              if [[ "${{ steps.determine-latest.outputs.is-latest }}" == "true" ]]; then
+                add_tag "release"
+              fi
               ;;
 
             prerelease)
@@ -207,32 +236,6 @@ jobs:
           # Also output bare tag names space-separated (for use by mirror workflow)
           TAG_NAMES=$(printf "%b" "$TAGS" | sed 's/type=raw,value=//g' | tr '\n' ' ' | sed 's/ $//')
           echo "tag-names=$TAG_NAMES" >> $GITHUB_OUTPUT
-
-      - name: Determine if latest
-        id: determine-latest
-        run: |
-          STRATEGY="${{ steps.context.outputs.strategy }}"
-          IS_LATEST="false"
-
-          # Only consider non-prerelease releases for latest check
-          if [[ "$STRATEGY" == "release" && "${{ github.event.release.prerelease }}" == "false" ]]; then
-            REPO="${GITHUB_REPOSITORY}"
-            API_URL="https://api.github.com/repos/${REPO}/releases/latest"
-
-            # Fetch the tag name of the latest GitHub release
-            LATEST_TAG="$(
-              curl -sSL \
-                -H "Authorization: Bearer ${{ github.token }}" \
-                -H "Accept: application/vnd.github+json" \
-                "${API_URL}" | jq -r '.tag_name // empty'
-            )"
-
-            # Mark as latest only if this release's tag matches the latest release tag
-            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" == "${{ github.event.release.tag_name }}" ]]; then
-              IS_LATEST="true"
-            fi
-          fi
-          echo "is-latest=$IS_LATEST" >> $GITHUB_OUTPUT
 
       - name: Generate Docker metadata
         id: meta
