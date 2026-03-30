@@ -212,6 +212,24 @@ jobs:
             fi
           fi
 
+          # Only consider non-prerelease releases for latest check
+          if [[ "${{ github.event.release.prerelease }}" == "false" ]]; then
+            REPO="${GITHUB_REPOSITORY}"
+            API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+
+            # Fetch the tag name of the latest GitHub release
+            LATEST_TAG="$(
+              curl -sSL \
+                -H "Authorization: Bearer ${{ github.token }}" \
+                -H "Accept: application/vnd.github+json" \
+                "${API_URL}" | jq -r '.tag_name // empty'
+            )"
+
+            # Mark as latest only if this release's tag matches the latest release tag
+            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" == "${{ github.event.release.tag_name }}" ]]; then
+              IS_LATEST="true"
+            fi
+          fi
           echo "is-latest=$IS_LATEST" >> $GITHUB_OUTPUT
 
       - name: Generate Docker metadata
