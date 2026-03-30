@@ -187,14 +187,17 @@ jobs:
           echo "::group::Signing image with key-based method"
 
           # Write key to temporary file with restrictive permissions
+          # Use umask 077 so the file is created with 600 permissions from the start
+          # Use printf instead of echo to avoid appending a newline that could corrupt PEM data
           # Use trap to ensure cleanup even if the process is interrupted
-          trap 'rm -f /tmp/cosign.key' EXIT
-          echo "$COSIGN_KEY" > /tmp/cosign.key
-          chmod 600 /tmp/cosign.key
+          umask 077
+          KEY_FILE=$(mktemp)
+          trap 'rm -f "${KEY_FILE}"' EXIT
+          printf '%s' "$COSIGN_KEY" > "${KEY_FILE}"
 
           # Sign using provided key
           # The --key flag specifies the private key file
-          if cosign sign --yes --key /tmp/cosign.key "${{ inputs.image-ref }}"; then
+          if cosign sign --yes --key "${KEY_FILE}" "${{ inputs.image-ref }}"; then
             echo "✓ Image signed successfully (key-based)"
             echo "signed=true" >> $GITHUB_OUTPUT
           else
