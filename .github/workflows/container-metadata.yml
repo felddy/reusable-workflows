@@ -138,52 +138,59 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           MAJOR="${{ steps.version.outputs.major }}"
           MINOR="${{ steps.version.outputs.minor }}"
-          PRERELEASE="${{ steps.version.outputs.prerelease }}"
 
-          TAGS=""
+          TAGS=()
 
           case "$STRATEGY" in
             pr)
               # Pull request tags
-              TAGS="pr-${{ github.event.pull_request.number }}"
-              TAGS="$TAGS,sha-${GITHUB_SHA:0:7}"
+              TAGS+=("type=raw,value=pr-${{ github.event.pull_request.number }}")
+              TAGS+=("type=raw,value=sha-${GITHUB_SHA:0:7}")
               ;;
 
             branch)
               # Branch push tags
               BRANCH_NAME="${REF_NAME//\//-}"  # Replace / with -
-              TAGS="$BRANCH_NAME"
-              TAGS="$TAGS,sha-${GITHUB_SHA:0:7}"
+              TAGS+=("type=raw,value=${BRANCH_NAME}")
+              TAGS+=("type=raw,value=sha-${GITHUB_SHA:0:7}")
               ;;
 
             release)
               # Release tags (full semantic versioning)
-              TAGS="$VERSION"
+              TAGS+=("type=raw,value=${VERSION}")
               if [[ -n "$MAJOR" ]] && [[ -n "$MINOR" ]]; then
-                TAGS="$TAGS,$MAJOR.$MINOR"
-                TAGS="$TAGS,$MAJOR"
+                TAGS+=("type=raw,value=${MAJOR}.${MINOR}")
+                TAGS+=("type=raw,value=${MAJOR}")
               fi
-              TAGS="$TAGS,release"
+              TAGS+=("type=raw,value=release")
+              # Add latest for non-prerelease releases
+              if [[ "${{ github.event.release.prerelease }}" != "true" ]]; then
+                TAGS+=("type=raw,value=latest")
+              fi
               ;;
 
             prerelease)
               # Pre-release tags
-              TAGS="$VERSION"
-              TAGS="$TAGS,prerelease"
+              TAGS+=("type=raw,value=${VERSION}")
+              TAGS+=("type=raw,value=prerelease")
               ;;
 
             tag)
               # Generic tag push
-              TAGS="$VERSION"
+              TAGS+=("type=raw,value=${VERSION}")
               ;;
 
             *)
               # Default
-              TAGS="latest"
+              TAGS+=("type=raw,value=latest")
               ;;
           esac
 
-          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          {
+            echo "tags<<EOF"
+            printf '%s\n' "${TAGS[@]}"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Determine if latest
         id: determine-latest
@@ -207,7 +214,6 @@ jobs:
           images: ghcr.io/${{ inputs.image-name }}
           tags: |
             ${{ steps.tags.outputs.tags }}
-            ${{ steps.determine-latest.outputs.is-latest == 'true' && 'latest' || '' }}
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
