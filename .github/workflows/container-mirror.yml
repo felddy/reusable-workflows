@@ -206,7 +206,8 @@ jobs:
               echo "Multi-architecture image detected: ${source_image}"
 
               # Extract platform list from source manifest list
-              source_platforms=$(echo "${source_manifest}" | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | sort | join(",")')
+              # Include variant (e.g. v7, v8) when present to distinguish linux/arm/v5 from linux/arm/v7
+              source_platforms=$(echo "${source_manifest}" | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)" + (if .variant then "/\(.variant)" else "" end)] | sort | join(",")')
               platform_count=$(echo "${source_manifest}" | jq '.manifests | length')
               echo "Source platforms (${platform_count}): ${source_platforms}"
 
@@ -223,7 +224,7 @@ jobs:
                 exit 1
               fi
 
-              target_platforms=$(echo "${target_manifest}" | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | sort | join(",")')
+              target_platforms=$(echo "${target_manifest}" | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)" + (if .variant then "/\(.variant)" else "" end)] | sort | join(",")')
               echo "Target platforms: ${target_platforms}"
 
               if [ "${source_platforms}" != "${target_platforms}" ]; then
