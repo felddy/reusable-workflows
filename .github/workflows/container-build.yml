@@ -429,6 +429,7 @@ jobs:
 
       - name: Export digest
         id: digest
+        if: inputs.push
         run: |
           digest="${{ steps.build.outputs.digest }}"
 
@@ -489,7 +490,7 @@ jobs:
           echo "has_build_env=$(has_pred "${{ env.PREDICATE_TYPE_BUILD_ENV }}")" >> "${GITHUB_OUTPUT}"
 
       - name: Upload digest
-        if: always()
+        if: inputs.push
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
           if-no-files-found: error
