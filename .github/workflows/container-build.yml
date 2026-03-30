@@ -881,6 +881,10 @@ jobs:
           echo "Package name: ${PACKAGE_NAME}"
           echo "Owner: ${OWNER}"
 
+          # Verify token identity
+          TOKEN_USER=$(gh api /user --jq '.login' 2>/dev/null || echo "unknown")
+          echo "Token authenticated as: ${TOKEN_USER}"
+
           # Determine if owner is a user or org
           OWNER_TYPE=$(gh api "/users/${OWNER}" --jq '.type' 2>/dev/null || echo "User")
           if [[ "$OWNER_TYPE" == "Organization" ]]; then
@@ -917,15 +921,25 @@ jobs:
               -d '{"visibility":"private"}' \
               "https://api.github.com${API_BASE}")
 
+            echo "PATCH response HTTP status: ${HTTP_STATUS}"
+            echo "PATCH response body:"
+            cat /tmp/pkg_response.json
+
             if [[ "$HTTP_STATUS" == "200" ]]; then
               echo "✅ Package visibility set to private"
             elif [[ "$HTTP_STATUS" == "404" ]]; then
-              echo "::warning::Could not set package visibility to private (404 Not Found)."
-              echo "::warning::Ensure PRIVATE_PACKAGE_TOKEN is a classic PAT (not fine-grained) with write:packages scope owned by ${OWNER}."
-              echo "::warning::Fine-grained tokens do not support package visibility updates."
-              echo "::warning::Manual fix: https://github.com/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
+              # GitHub returns 404 when:
+              # 1. The package inherits permissions from a linked repository (most common case)
+              #    - Visibility follows the repository and cannot be changed via the packages API
+              #    - Must disconnect the package from the repository first, or change repo visibility
+              # 2. The token lacks admin permission on the package
+              echo "::warning::Could not set package visibility to private (HTTP 404)."
+              echo "::warning::This usually means the package inherits permissions from a linked repository."
+              echo "::warning::When a package is linked to a repository, its visibility follows the repository."
+              echo "::warning::To manage visibility independently, disconnect the package from the repository first."
+              echo "::warning::Package settings: https://github.com/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
             elif [[ "$HTTP_STATUS" == "403" ]]; then
-              echo "::error::Permission denied (403). Token lacks write:packages scope or is not a classic PAT."
+              echo "::error::Permission denied (403). Token lacks write:packages scope."
               cat /tmp/pkg_response.json
               exit 1
             else
