@@ -260,7 +260,7 @@ jobs:
 
       - name: Generate Docker metadata
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # tag=v5.7.0
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # tag=v6.0.0
         with:
           images: ghcr.io/${{ inputs.image-name }}
           tags: |
