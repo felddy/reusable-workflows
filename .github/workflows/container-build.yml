@@ -17,6 +17,13 @@ on: # yamllint disable-line rule:truthy
         required: true
         type: string
 
+      # Publishing
+      push:
+        description: Push image to registry (set to false for PR builds to avoid publishing untrusted images)
+        required: false
+        type: boolean
+        default: true
+
       # Image Configuration
       image-name:
         description: Container image name (without registry)
@@ -409,7 +416,7 @@ jobs:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           labels: ${{ needs.metadata.outputs.image-labels }}
-          outputs: type=image,name=ghcr.io/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=ghcr.io/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
           platforms: ${{ matrix.platform }}
           provenance: false
           sbom: false
