@@ -249,6 +249,12 @@ jobs:
           tags: |
             ${{ steps.tags.outputs.tags }}
             ${{ steps.determine-latest.outputs.is-latest == 'true' && 'type=raw,value=latest' || '# no latest tag' }}
+          # Use deterministic, event-specific timestamps for org.opencontainers.image.created
+          # to ensure reproducibility. Rebuilding the same commit must produce the same
+          # image digest, so we cannot use the current wall-clock time. Fallback chain:
+          #   push    -> head_commit.timestamp  (the git commit timestamp)
+          #   release -> release.created_at     (stable once the release is created)
+          #   other   -> repository.pushed_at   (last push time, stable for a given ref)
           labels: |
             org.opencontainers.image.title=${{ github.event.repository.name }}
             org.opencontainers.image.description=${{ github.event.repository.description }}
