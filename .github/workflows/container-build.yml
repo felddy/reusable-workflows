@@ -360,41 +360,47 @@ jobs:
           # Each secret is passed individually for proper GitHub redaction
           # Use umask 077 so files are created with 600 permissions from the start
           # Use printf '%s' to avoid appending a trailing newline that could corrupt secrets
+          # docker/build-push-action expects secrets as newline-separated entries,
+          # one "id=...,src=..." per line — NOT comma-joined into a single string.
           umask 077
-          SECRETS=""
+          delimiter="$(openssl rand -hex 8)"
+          echo "secrets<<${delimiter}" >> $GITHUB_OUTPUT
+          SECRET_COUNT=0
 
           if [[ -n "${{ secrets.build-secret-1 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-1 }}" > /tmp/build-secret-1
-            SECRETS="$SECRETS,id=build-secret-1,src=/tmp/build-secret-1"
+            echo "id=build-secret-1,src=/tmp/build-secret-1" >> $GITHUB_OUTPUT
+            SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-2 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-2 }}" > /tmp/build-secret-2
-            SECRETS="$SECRETS,id=build-secret-2,src=/tmp/build-secret-2"
+            echo "id=build-secret-2,src=/tmp/build-secret-2" >> $GITHUB_OUTPUT
+            SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-3 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-3 }}" > /tmp/build-secret-3
-            SECRETS="$SECRETS,id=build-secret-3,src=/tmp/build-secret-3"
+            echo "id=build-secret-3,src=/tmp/build-secret-3" >> $GITHUB_OUTPUT
+            SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-4 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-4 }}" > /tmp/build-secret-4
-            SECRETS="$SECRETS,id=build-secret-4,src=/tmp/build-secret-4"
+            echo "id=build-secret-4,src=/tmp/build-secret-4" >> $GITHUB_OUTPUT
+            SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-5 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-5 }}" > /tmp/build-secret-5
-            SECRETS="$SECRETS,id=build-secret-5,src=/tmp/build-secret-5"
+            echo "id=build-secret-5,src=/tmp/build-secret-5" >> $GITHUB_OUTPUT
+            SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
-          # Remove leading comma if present
-          SECRETS="${SECRETS#,}"
+          echo "${delimiter}" >> $GITHUB_OUTPUT
 
-          echo "secrets=$SECRETS" >> $GITHUB_OUTPUT
-
-          if [[ -n "$SECRETS" ]]; then
-            echo "Build secrets prepared (count: $(echo $SECRETS | tr ',' '\n' | wc -l))"
+          if [[ $SECRET_COUNT -gt 0 ]]; then
+            echo "Build secrets prepared (count: $SECRET_COUNT)"
           fi
 
       - name: Prepare platform-specific cache scope
