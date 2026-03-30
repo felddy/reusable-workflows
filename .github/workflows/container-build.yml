@@ -258,7 +258,8 @@ jobs:
     needs:
       - generate-id
       - determine-visibility
-    permissions: {}
+    permissions:
+      contents: read
     uses: ./.github/workflows/container-metadata.yml
     with:
       image-name: ${{ inputs.image-name }}
