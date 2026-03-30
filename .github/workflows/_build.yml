@@ -133,8 +133,8 @@ jobs:
       image_tag_names: ${{ needs.build.outputs.image-tags }}
       target_registry: docker.io
     secrets:
-      registry_password: ${{ secrets.DOCKER_PASSWORD }}
-      registry_username: ${{ secrets.DOCKER_USERNAME }}
+      target-registry-username: ${{ secrets.DOCKER_USERNAME }}
+      target-registry-password: ${{ secrets.DOCKER_PASSWORD }}
 
   publish-readme:
     name: Publish docs to DockerHub
