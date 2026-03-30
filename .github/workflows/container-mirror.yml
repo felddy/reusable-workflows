@@ -81,9 +81,7 @@ jobs:
             sum.golang.org:443
 
       - name: Install ORAS
-        uses: oras-project/setup-oras@26cd0f02b6632ebef1324f89450b5811605430e7 # tag=v1.2.0
-        with:
-          version: 1.2.0
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # tag=v1.2.4
 
       - name: Verify ORAS installation
         run: |
