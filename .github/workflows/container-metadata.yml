@@ -214,15 +214,8 @@ jobs:
           STRATEGY="${{ steps.context.outputs.strategy }}"
           IS_LATEST="false"
 
-          if [[ "$STRATEGY" == "release" ]]; then
-            # Check if this is marked as latest release
-            if [[ "${{ github.event.release.prerelease }}" == "false" ]]; then
-              IS_LATEST="true"
-            fi
-          fi
-
           # Only consider non-prerelease releases for latest check
-          if [[ "${{ github.event.release.prerelease }}" == "false" ]]; then
+          if [[ "$STRATEGY" == "release" && "${{ github.event.release.prerelease }}" == "false" ]]; then
             REPO="${GITHUB_REPOSITORY}"
             API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
