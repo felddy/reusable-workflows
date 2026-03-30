@@ -62,7 +62,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       is-latest: ${{ steps.determine-latest.outputs.is-latest }}
       full-name: ghcr.io/${{ inputs.image-name }}
-      tag-names: ${{ steps.tags.outputs.tags }}
+      tag-names: ${{ steps.tags.outputs.tag-names }}
 
     steps:
       - name: Harden Runner
