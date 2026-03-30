@@ -158,8 +158,15 @@ jobs:
               ;;
 
             branch)
-              BRANCH_NAME="${REF_NAME//\//-}"  # Replace / with -
-              add_tag "$BRANCH_NAME"
+              # Normalize branch name to a Docker-safe tag:
+              # - convert to lowercase
+              # - replace any chars not in [a-z0-9_.-] (including /, spaces, @, etc.) with -
+              # - trim leading/trailing dashes
+              BRANCH_TAG="$(printf '%s' "$REF_NAME" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's/[^a-z0-9_.-]+/-/g' \
+                | sed -E 's/^-+|-+$//g')"
+              add_tag "$BRANCH_TAG"
               add_tag "sha-${GITHUB_SHA:0:7}"
               ;;
 
