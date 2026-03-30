@@ -188,6 +188,40 @@ jobs:
             artifact_count=$(echo "${artifact_output}" | jq '.manifests | length')
             echo "Artifacts discovered: ${artifact_count}"
 
+            # Multi-architecture verification
+            # Fetch source manifest to check if it's a manifest list
+            source_manifest=$(oras manifest fetch "${source_image}" 2>&1)
+
+            if echo "${source_manifest}" | jq -e '.manifests' > /dev/null 2>&1; then
+              echo "Multi-architecture image detected: ${source_image}"
+
+              # Extract platform list from source manifest list
+              source_platforms=$(echo "${source_manifest}" | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | sort | join(",")')
+              platform_count=$(echo "${source_manifest}" | jq '.manifests | length')
+              echo "Source platforms (${platform_count}): ${source_platforms}"
+
+              # Fetch target manifest list and compare platforms
+              target_manifest=$(oras manifest fetch "${target_image}" 2>&1)
+              if ! echo "${target_manifest}" | jq -e '.manifests' > /dev/null 2>&1; then
+                echo "Error: Target image is missing manifest list"
+                echo "Image: ${target_image}"
+                exit 1
+              fi
+
+              target_platforms=$(echo "${target_manifest}" | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | sort | join(",")')
+              echo "Target platforms: ${target_platforms}"
+
+              if [ "${source_platforms}" != "${target_platforms}" ]; then
+                echo "Error: Platform mismatch between source and target"
+                echo "Source platforms: ${source_platforms}"
+                echo "Target platforms: ${target_platforms}"
+                exit 1
+              fi
+              echo "Platform verification passed: all ${platform_count} platforms present in target"
+            else
+              echo "Single-architecture image: ${source_image}"
+            fi
+
             # Log success with destination reference
             echo "Successfully mirrored: ${target_image}"
           done
