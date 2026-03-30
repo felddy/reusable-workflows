@@ -248,7 +248,7 @@ jobs:
           images: ghcr.io/${{ inputs.image-name }}
           tags: |
             ${{ steps.tags.outputs.tags }}
-            ${{ steps.determine-latest.outputs.is-latest == 'true' && 'type=raw,value=latest' || '# no latest tag' }}
+            type=raw,value=latest,enable=${{ steps.determine-latest.outputs.is-latest }}
           # Use deterministic, event-specific timestamps for org.opencontainers.image.created
           # to ensure reproducibility. Rebuilding the same commit must produce the same
           # image digest, so we cannot use the current wall-clock time. Fallback chain:
