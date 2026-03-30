@@ -868,30 +868,30 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
         run: |
-          # Extract package name from image name (last component after /)
+          # Package name may contain slashes (e.g. org/image-name) — URL-encode for API
           PACKAGE_NAME="${{ inputs.image-name }}"
           PACKAGE_NAME="${PACKAGE_NAME##*/}"
+          PACKAGE_NAME_ENCODED="${PACKAGE_NAME//\//%2F}"
           OWNER="${{ github.repository_owner }}"
           IS_PRIVATE="${{ needs.determine-visibility.outputs.is-private }}"
 
           echo "Checking visibility for package: ${PACKAGE_NAME}"
 
-          # Query current package visibility via GitHub API
-          RESPONSE=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            "/users/${OWNER}/packages/container/${PACKAGE_NAME}" \
-            2>&1) || {
-            # Try org endpoint if user endpoint fails
-            RESPONSE=$(gh api \
-              -H "Accept: application/vnd.github+json" \
-              "/orgs/${OWNER}/packages/container/${PACKAGE_NAME}" \
-              2>&1)
-          }
+          # Determine if owner is a user or org
+          OWNER_TYPE=$(gh api "/users/${OWNER}" --jq '.type' 2>/dev/null || echo "")
+          if [[ "$OWNER_TYPE" == "Organization" ]]; then
+            API_BASE="/orgs/${OWNER}/packages/container/${PACKAGE_NAME_ENCODED}"
+          else
+            API_BASE="/users/${OWNER}/packages/container/${PACKAGE_NAME_ENCODED}"
+          fi
 
-          CURRENT_VISIBILITY=$(echo "$RESPONSE" | jq -r '.visibility // empty')
+          # Query current package visibility
+          CURRENT_VISIBILITY=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "${API_BASE}" --jq '.visibility' 2>/dev/null || echo "")
 
           if [[ -z "$CURRENT_VISIBILITY" ]]; then
-            echo "::warning::Could not determine package visibility for ${PACKAGE_NAME}"
+            echo "::warning::Could not determine package visibility for ${PACKAGE_NAME} - package may not exist yet or token lacks read:packages scope"
             exit 0
           fi
 
@@ -900,22 +900,24 @@ jobs:
 
           if [[ "$IS_PRIVATE" == "true" && "$CURRENT_VISIBILITY" == "public" ]]; then
             # Package should be private but is public — enforce private
+            # Requires a classic PAT or fine-grained token with write:packages scope
             echo "Package is public but should be private. Updating visibility to private..."
-            gh api \
+            if gh api \
               --method PATCH \
               -H "Accept: application/vnd.github+json" \
-              "/users/${OWNER}/packages/container/${PACKAGE_NAME}" \
-              -f visibility=private 2>/dev/null || \
-            gh api \
-              --method PATCH \
-              -H "Accept: application/vnd.github+json" \
-              "/orgs/${OWNER}/packages/container/${PACKAGE_NAME}" \
-              -f visibility=private
-            echo "✅ Package visibility set to private"
+              "${API_BASE}" \
+              -f visibility=private; then
+              echo "✅ Package visibility set to private"
+            else
+              echo "::error::Failed to set package visibility to private."
+              echo "::error::The token may lack write:packages scope. Use a classic PAT with write:packages."
+              exit 1
+            fi
           elif [[ "$IS_PRIVATE" == "false" && "$CURRENT_VISIBILITY" == "private" ]]; then
-            # Package is private but should be public — warn only, do not change
+            # Package is private but should be public — warn only, do not change automatically
             echo "::warning::Package '${PACKAGE_NAME}' is currently private but is expected to be public."
-            echo "::warning::To make it public, go to: https://github.com/users/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
+            echo "::warning::GitHub does not automatically make packages public when linked to a repository."
+            echo "::warning::To make it public, visit: https://github.com/${OWNER_TYPE,,}s/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
           else
             echo "✅ Package visibility is correct: ${CURRENT_VISIBILITY}"
           fi
