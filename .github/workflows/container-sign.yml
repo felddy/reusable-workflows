@@ -186,8 +186,11 @@ jobs:
         run: |
           echo "::group::Signing image with key-based method"
 
-          # Write key to temporary file
+          # Write key to temporary file with restrictive permissions
+          # Use trap to ensure cleanup even if the process is interrupted
+          trap 'rm -f /tmp/cosign.key' EXIT
           echo "$COSIGN_KEY" > /tmp/cosign.key
+          chmod 600 /tmp/cosign.key
 
           # Sign using provided key
           # The --key flag specifies the private key file
@@ -196,12 +199,8 @@ jobs:
             echo "signed=true" >> $GITHUB_OUTPUT
           else
             echo "::error::Failed to sign image with key-based method"
-            rm -f /tmp/cosign.key
             exit 1
           fi
-
-          # Clean up key file
-          rm -f /tmp/cosign.key
 
           echo "::endgroup::"
 
