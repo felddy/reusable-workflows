@@ -113,7 +113,12 @@ on: # yamllint disable-line rule:truthy
         required: false
 
       private-package-token:
-        description: Token for private package authentication (use instead of GITHUB_TOKEN for private builds)
+        description: >
+          Token for private package authentication (use instead of GITHUB_TOKEN
+          for private builds). Required permissions: packages:write, packages:read.
+          Generate a fine-grained personal access token at
+          https://github.com/settings/personal-access-tokens/new with
+          "Read and Write access to packages" under Repository permissions.
         required: false
 
     outputs:
