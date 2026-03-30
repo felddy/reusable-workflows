@@ -15,12 +15,7 @@ on: # yamllint disable-line rule:truthy
   workflow_dispatch:
 
 permissions:
-  actions: read
   contents: read
-  packages: write
-  id-token: write
-  attestations: write
-  security-events: write
 
 jobs:
   diagnostics:
