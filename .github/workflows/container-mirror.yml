@@ -57,6 +57,7 @@ jobs:
 
     permissions:
       contents: read
+      packages: read
 
     steps:
       - name: Harden Runner
