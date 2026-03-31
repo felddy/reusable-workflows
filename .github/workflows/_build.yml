@@ -14,6 +14,12 @@ on: # yamllint disable-line rule:truthy
     - cron: 0 10 * * * # everyday at 10am
   workflow_dispatch:
 
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   packages: write
@@ -38,8 +44,6 @@ jobs:
     name: Build and Publish Container
     needs:
       - config
-    # Skip on pull requests to save time, only build test platform
-    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/container-build.yml
     with:
       platforms: ${{ needs.config.outputs.platforms }}
@@ -52,8 +56,6 @@ jobs:
     name: Build and Publish Container Private
     needs:
       - config
-    # Skip on pull requests to save time, only build test platform
-    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/container-build.yml
     with:
       platforms: ${{ needs.config.outputs.platforms }}
@@ -64,26 +66,57 @@ jobs:
     secrets:
       private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 
-  build-pr:
-    name: Build Container (PR)
+  test:
+    name: Test Container
     needs:
       - config
-    # Only build test platform for PRs
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/container-build.yml
+      - build
+    uses: ./.github/workflows/container-test.yml
     with:
-      platforms: ${{ needs.config.outputs.test_platform }}
       image-name: ${{ needs.config.outputs.image_name }}
-      context: .
-      dockerfile: ./Dockerfile
-      push: false
-      scan-severity: CRITICAL  # Only fail on critical for PRs
+      platforms: ${{ needs.config.outputs.test_platform }}
+
+  test-private:
+    name: Test Container Private
+    needs:
+      - config
+      - build-private
+    uses: ./.github/workflows/container-test.yml
+    with:
+      image-name: ${{ needs.config.outputs.image_name }}-hid
+      platforms: ${{ needs.config.outputs.test_platform }}
+    secrets:
+      registry-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
+
+  publish-manifest:
+    name: Publish Manifest
+    needs:
+      - config
+      - build
+      - test
+    uses: ./.github/workflows/container-publish-manifest.yml
+    with:
+      image-name: ${{ needs.config.outputs.image_name }}
+
+  publish-manifest-private:
+    name: Publish Manifest Private
+    needs:
+      - config
+      - build-private
+      - test-private
+    uses: ./.github/workflows/container-publish-manifest.yml
+    with:
+      image-name: ${{ needs.config.outputs.image_name }}-hid
+    secrets:
+      private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 
   check:
     name: Check Quality Gates
     needs:
       - lint
       - diagnostics
+      - test
+      - test-private
     runs-on: ubuntu-latest
     if: always()
     permissions:
@@ -95,17 +128,33 @@ jobs:
         run: |
           LINT_RESULT="${{ needs.lint.result }}"
           DIAGNOSTICS_RESULT="${{ needs.diagnostics.result }}"
+          TEST_RESULT="${{ needs.test.result }}"
+          TEST_PRIVATE_RESULT="${{ needs.test-private.result }}"
 
-          if [[ "$LINT_RESULT" != "success" ]] || [[ "$DIAGNOSTICS_RESULT" != "success" ]]; then
+          FAILED=false
+
+          if [[ "$LINT_RESULT" != "success" ]]; then
+            echo "::error::Lint failed with status: $LINT_RESULT"
+            FAILED=true
+          fi
+
+          if [[ "$DIAGNOSTICS_RESULT" != "success" ]]; then
+            echo "::error::Diagnostics failed with status: $DIAGNOSTICS_RESULT"
+            FAILED=true
+          fi
+
+          if [[ "$TEST_RESULT" != "success" && "$TEST_RESULT" != "skipped" ]]; then
+            echo "::error::Test failed with status: $TEST_RESULT"
+            FAILED=true
+          fi
+
+          if [[ "$TEST_PRIVATE_RESULT" != "success" && "$TEST_PRIVATE_RESULT" != "skipped" ]]; then
+            echo "::error::Test (private) failed with status: $TEST_PRIVATE_RESULT"
+            FAILED=true
+          fi
+
+          if [[ "$FAILED" == "true" ]]; then
             echo "::error::Quality gates failed"
-
-            if [[ "$LINT_RESULT" != "success" ]]; then
-              echo "::error::Lint failed with status: $LINT_RESULT"
-            fi
-
-            if [[ "$DIAGNOSTICS_RESULT" != "success" ]]; then
-              echo "::error::Diagnostics failed with status: $DIAGNOSTICS_RESULT"
-            fi
 
             # Cancel the workflow run
             echo "Cancelling workflow run..."
@@ -120,7 +169,7 @@ jobs:
   mirror-to-dockerhub:
     name: Mirror images to DockerHub
     needs:
-      - build
+      - publish-manifest
       - config
       - check
     if: github.event_name == 'release' && !github.event.release.prerelease
@@ -130,7 +179,7 @@ jobs:
     uses: ./.github/workflows/container-mirror.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
-      image_tag_names: ${{ needs.build.outputs.image-tag-names }}
+      image_tag_names: ${{ needs.publish-manifest.outputs.image-tag-names }}
       target_registry: docker.io
     secrets:
       target-registry-username: ${{ secrets.DOCKER_USERNAME }}
@@ -139,7 +188,7 @@ jobs:
   publish-readme:
     name: Publish docs to DockerHub
     needs:
-      - build
+      - publish-manifest
       - config
       - check
     if: github.event_name == 'release' && !github.event.release.prerelease
