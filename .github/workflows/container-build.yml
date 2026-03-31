@@ -327,7 +327,7 @@ jobs:
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ secrets.private-package-token && github.repository_owner || github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Parse build arguments
@@ -472,7 +472,7 @@ jobs:
         run: |
           # Cosign needs explicit authentication to read attestations
           echo "${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}" | \
-            cosign login ghcr.io -u ${{ github.actor }} --password-stdin
+            cosign login ghcr.io -u ${{ secrets.private-package-token && github.repository_owner || github.actor }} --password-stdin
           echo "✅ Cosign authenticated with registry"
 
       - name: Install ORAS

@@ -137,7 +137,7 @@ jobs:
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ${{ inputs.registry }}
-          username: ${{ github.actor }}
+          username: ${{ secrets.registry-token && github.repository_owner || github.actor }}
           password: ${{ secrets.registry-token || secrets.GITHUB_TOKEN }}
 
       # Download digest artifact by exact name per platform.

@@ -146,7 +146,7 @@ jobs:
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ secrets.private-package-token && github.repository_owner || github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Install crane
