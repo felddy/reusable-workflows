@@ -22,7 +22,7 @@ on: # yamllint disable-line rule:truthy
         value: ${{ inputs.platforms }}
       test_platforms:
         description: The platform to use for testing (JSON array string)
-        value: '["linux/amd64"]'
+        value: '["linux/amd64","linux/arm64/v8"]'
 jobs:
   config:
     name: Configuration

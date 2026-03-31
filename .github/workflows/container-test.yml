@@ -5,6 +5,10 @@ name: Test container image
 # the registry using a digest reference resolved from the per-platform digest
 # artifacts uploaded by container-build.yml.  No tar artifact loading is
 # required; the tested image is identical to what will be published.
+#
+# The workflow fans out across all requested platforms using a matrix strategy
+# mirroring the pattern used in container-build.yml.  QEMU emulation is set up
+# per matrix job so non-native platforms can be tested on ubuntu-latest runners.
 
 # Permissions are set at the job level; default to none at workflow level.
 permissions: {}
@@ -20,10 +24,11 @@ on: # yamllint disable-line rule:truthy
 
       platforms:
         description: >
-          JSON array of platforms to test (e.g. '["linux/amd64"]' or
-          '["linux/amd64","linux/arm64"]'). The workflow resolves the
-          registry reference for each platform from the digest artifacts
-          uploaded by container-build.yml.
+          JSON array of platforms to test
+          (e.g. '["linux/amd64"]' or '["linux/amd64","linux/arm64"]').
+          The workflow resolves the registry reference for each platform
+          from the digest artifacts uploaded by container-build.yml and
+          fans out test jobs across all listed platforms in parallel.
         required: true
         type: string
 
@@ -54,24 +59,61 @@ on: # yamllint disable-line rule:truthy
           this repository.
         required: false
 
-    outputs:
-      artifact-name:
-        description: Name of the uploaded test results artifact
-        value: ${{ jobs.test.outputs.artifact-name }}
-
 jobs:
+  # Convert the platforms JSON array into a matrix for the test job.
+  # This mirrors the pattern used in container-build.yml.
+  generate-matrix:
+    name: Generate platform matrix
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: none
+
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            127.0.0.1
+
+      - name: Set matrix
+        id: set-matrix
+        run: |
+          # Map each platform to its native GitHub-hosted runner where available.
+          # Falls back to ubuntu-latest (+ QEMU emulation) for platforms without
+          # a native runner.
+          PLATFORMS_JSON='${{ inputs.platforms }}'
+          MATRIX=$(echo "${PLATFORMS_JSON}" | jq -c '
+            map({
+              platform: .,
+              runner: (
+                if . == "linux/arm64/v8" or . == "linux/arm64" then "ubuntu-24.04-arm"
+                else "ubuntu-latest"
+                end
+              )
+            }) | {include: .}
+          ')
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
+
   test:
     # Pulls the image from the registry by digest and runs pytest.
-    name: Test image
-    runs-on: ubuntu-latest
+    name: Test ${{ matrix.platform }}
+    needs: generate-matrix
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
 
     permissions:
       actions: read
       contents: read
       packages: read
-
-    outputs:
-      artifact-name: ${{ steps.set-artifact-name.outputs.artifact-name }}
 
     steps:
       - name: Harden Runner
@@ -85,6 +127,12 @@ jobs:
             objects.githubusercontent.com:443
             pypi.org:443
 
+      - name: Set up QEMU for multi-arch testing
+        if: matrix.runner == 'ubuntu-latest'
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # tag=v3.3.0
+        with:
+          platforms: all
+
       - name: Log in to registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
@@ -96,46 +144,44 @@ jobs:
       # actions/download-artifact pattern input cannot be scoped tightly enough to
       # avoid matching sibling images with a shared slug prefix; gh run download
       # --name accepts exact names and works correctly in a dynamic loop.
-      - name: Resolve image references and pull
+      - name: Resolve image reference and pull
         id: resolve
         env:
-          PLATFORMS_JSON: ${{ inputs.platforms }}
           IMAGE_NAME: ${{ inputs.image-name }}
           REGISTRY: ${{ inputs.registry }}
+          PLATFORM: ${{ matrix.platform }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          IMAGE_REF=""
           IMAGE_SLUG=$(echo "${IMAGE_NAME}" | tr '/' '-')
+          PLATFORM_SLUG=$(echo "${PLATFORM}" | tr '/' '-')
+          ARTIFACT_NAME="digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
+          ARTIFACT_DIR="/tmp/digests/${ARTIFACT_NAME}"
+
+          echo "Downloading artifact: ${ARTIFACT_NAME}"
           mkdir -p /tmp/digests
-          for platform in $(echo "${PLATFORMS_JSON}" | jq -r '.[]'); do
-            PLATFORM_SLUG=$(echo "${platform}" | tr '/' '-')
-            ARTIFACT_NAME="digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
-            ARTIFACT_DIR="/tmp/digests/${ARTIFACT_NAME}"
+          gh run download "${{ github.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --name "${ARTIFACT_NAME}" \
+            --dir "${ARTIFACT_DIR}"
 
-            echo "Downloading artifact: ${ARTIFACT_NAME}"
-            gh run download "${{ github.run_id }}" \
-              --repo "${{ github.repository }}" \
-              --name "${ARTIFACT_NAME}" \
-              --dir "${ARTIFACT_DIR}"
+          HEX=$(ls "${ARTIFACT_DIR}" | head -1)
+          if [[ -z "${HEX}" ]]; then
+            echo "::error::No digest file found in ${ARTIFACT_DIR}"
+            exit 1
+          fi
 
-            HEX=$(ls "${ARTIFACT_DIR}" | head -1)
-            if [[ -z "${HEX}" ]]; then
-              echo "::error::No digest file found in ${ARTIFACT_DIR}"
-              exit 1
-            fi
+          IMAGE_REF="${REGISTRY}/${IMAGE_NAME}@sha256:${HEX}"
+          echo "Pulling ${IMAGE_REF} (platform: ${PLATFORM})"
 
-            IMAGE_REF="${REGISTRY}/${IMAGE_NAME}@sha256:${HEX}"
-            echo "Pulling ${IMAGE_REF} (platform: ${platform})"
+          if ! docker pull "${IMAGE_REF}"; then
+            echo "::error::Failed to pull ${IMAGE_REF} — check that the image was pushed and registry-token has packages:read"
+            exit 1
+          fi
 
-            if ! docker pull "${IMAGE_REF}"; then
-              echo "::error::Failed to pull ${IMAGE_REF} — check that the image was pushed and registry-token has packages:read"
-              exit 1
-            fi
-          done
-
-          # Export the last resolved IMAGE_REF for subsequent steps
           echo "IMAGE_REF=${IMAGE_REF}" >> $GITHUB_ENV
           echo "image-ref=${IMAGE_REF}" >> $GITHUB_OUTPUT
+          echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
+          echo "platform-slug=${PLATFORM_SLUG}" >> $GITHUB_OUTPUT
           echo "Resolved image reference: ${IMAGE_REF}"
 
       - name: Checkout repository
@@ -172,18 +218,16 @@ jobs:
           set -o pipefail
           pytest --image-tag "${IMAGE_REF}" --tb=short --junit-xml=test-results.xml 2>&1 | tee pytest.log
 
-      - name: Set artifact name output
-        id: set-artifact-name
-        if: always()
-        run: |
-          IMAGE_SLUG=$(echo "${{ inputs.image-name }}" | tr '/' '-')
-          echo "artifact-name=test-results-${IMAGE_SLUG}-${{ github.run_id }}" >> $GITHUB_OUTPUT
-
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: ${{ steps.set-artifact-name.outputs.artifact-name }}
+          name: >-
+            test-results-${{
+              steps.resolve.outputs.image-slug
+            }}-${{
+              steps.resolve.outputs.platform-slug
+            }}-${{ github.run_id }}
           path: |
             test-results.xml
             pytest.log
