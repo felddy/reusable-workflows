@@ -22,12 +22,10 @@ on: # yamllint disable-line rule:truthy
 
       platforms:
         description: >
-          Optional JSON array of platforms to include in the manifest
-          (e.g. '["linux/amd64","linux/arm64"]'). When omitted, all
-          platform digests found for this image are included.
-        required: false
+          JSON array of platforms to include in the manifest
+          (e.g. '["linux/amd64","linux/arm64"]').
+        required: true
         type: string
-        default: ""
 
       push:
         description: Push manifest to registry. Set false for dry-run.
