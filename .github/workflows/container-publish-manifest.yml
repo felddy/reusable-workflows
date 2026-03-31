@@ -103,48 +103,53 @@ jobs:
           echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
           echo "Image slug: ${IMAGE_SLUG}"
 
-      # When platforms is omitted: download all platform digests for this image
-      - name: Download all digest artifacts
-        if: inputs.platforms == ''
+      # Download all platform digests for this image (image slug is unique per run).
+      # Each artifact extracts into a subdir named digests-{image-slug}-{platform-slug}/
+      # containing a single file named by the sha256 hex.
+      - name: Download digest artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # tag=v4.3.0
         with:
           path: /tmp/digests
           pattern: digests-${{ steps.slugs.outputs.image-slug }}-*
-          merge-multiple: true
 
-      # When platforms is provided: download only the requested platform digests
-      - name: Download per-platform digest artifacts
+      # When platforms is provided, remove subdirs for platforms not in the list
+      - name: Filter digests to requested platforms
         if: inputs.platforms != ''
+        env:
+          PLATFORMS_JSON: ${{ inputs.platforms }}
+          IMAGE_SLUG: ${{ steps.slugs.outputs.image-slug }}
         run: |
-          IMAGE_SLUG="${{ steps.slugs.outputs.image-slug }}"
-          mkdir -p /tmp/digests
-
-          for platform in $(echo '${{ inputs.platforms }}' | jq -r '.[]'); do
+          # Build the set of subdir names to keep
+          KEEP=()
+          for platform in $(echo "${PLATFORMS_JSON}" | jq -r '.[]'); do
             PLATFORM_SLUG=$(echo "${platform}" | tr '/' '-')
-            ARTIFACT_NAME="digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
-            echo "Queued for download: ${ARTIFACT_NAME}"
+            KEEP+=("digests-${IMAGE_SLUG}-${PLATFORM_SLUG}")
           done
+          echo "Keeping: ${KEEP[*]}"
 
-          echo "platforms-to-download=$(echo '${{ inputs.platforms }}' | jq -r '[.[] | gsub("/"; "-")] | join(" ")')" >> $GITHUB_ENV
-
-      - name: Download specific platform digest artifacts
-        if: inputs.platforms != ''
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # tag=v4.3.0
-        with:
-          path: /tmp/digests
-          pattern: digests-${{ steps.slugs.outputs.image-slug }}-*
-          merge-multiple: true
+          # Remove any subdirs not in the keep list
+          for subdir in /tmp/digests/*/; do
+            name=$(basename "${subdir}")
+            keep=false
+            for k in "${KEEP[@]}"; do
+              [[ "${name}" == "${k}" ]] && keep=true && break
+            done
+            if [[ "${keep}" == "false" ]]; then
+              echo "Removing: ${name}"
+              rm -rf "${subdir}"
+            fi
+          done
 
       - name: Validate digests
         run: |
-          echo "Digest files found:"
+          echo "Digest artifacts found:"
           ls -la /tmp/digests/
           COUNT=$(ls /tmp/digests/ | wc -l)
           if [[ "$COUNT" -eq 0 ]]; then
-            echo "::error::No digest files found in /tmp/digests — build artifacts may be missing"
+            echo "::error::No digest artifacts found in /tmp/digests — build artifacts may be missing"
             exit 1
           fi
-          echo "Found ${COUNT} digest file(s)"
+          echo "Found ${COUNT} platform digest(s)"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
@@ -175,9 +180,9 @@ jobs:
             TAG_FLAGS="${TAG_FLAGS} --tag ${tag}"
           done <<< "${IMAGE_TAGS}"
 
-          # Build digest references from files in /tmp/digests/
+          # Build digest references from hex files inside per-platform subdirs
           DIGEST_REFS=""
-          for digest_file in /tmp/digests/*; do
+          for digest_file in /tmp/digests/*/*; do
             HEX=$(basename "${digest_file}")
             DIGEST_REFS="${DIGEST_REFS} ghcr.io/${{ inputs.image-name }}@sha256:${HEX}"
           done
