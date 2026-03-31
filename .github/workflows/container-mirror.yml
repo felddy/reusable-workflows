@@ -190,7 +190,7 @@ jobs:
             rm -f "${artifact_stderr}"
 
             # Count artifacts and log for observability
-            artifact_count=$(echo "${artifact_output}" | jq '.referrers | length')
+            artifact_count=$(echo "${artifact_output}" | jq '.referrers // [] | length')
             echo "Artifacts discovered: ${artifact_count}"
 
             # Multi-architecture verification
