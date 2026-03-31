@@ -180,13 +180,14 @@ jobs:
         id: set-artifact-name
         if: always()
         run: |
-          echo "artifact-name=test-results-${{ github.run_id }}" >> $GITHUB_OUTPUT
+          IMAGE_SLUG=$(echo "${{ inputs.image-name }}" | tr '/' '-')
+          echo "artifact-name=test-results-${IMAGE_SLUG}-${{ github.run_id }}" >> $GITHUB_OUTPUT
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: test-results-${{ github.run_id }}
+          name: ${{ steps.set-artifact-name.outputs.artifact-name }}
           path: |
             test-results.xml
             pytest.log
