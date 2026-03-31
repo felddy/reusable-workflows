@@ -82,7 +82,7 @@ jobs:
       packages: read
     with:
       image-name: ${{ needs.config.outputs.image_name }}
-      platforms: ${{ needs.config.outputs.test_platform }}
+      platforms: ${{ needs.config.outputs.test_platforms }}
 
   test-private:
     name: Test Container Private
@@ -96,7 +96,7 @@ jobs:
       packages: read
     with:
       image-name: ${{ needs.config.outputs.image_name }}-hid
-      platforms: ${{ needs.config.outputs.test_platform }}
+      platforms: ${{ needs.config.outputs.test_platforms }}
     secrets:
       registry-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 

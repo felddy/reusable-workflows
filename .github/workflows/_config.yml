@@ -8,8 +8,10 @@ on: # yamllint disable-line rule:truthy
     inputs:
       platforms:
         description: The platforms to build (JSON array string)
-        default: '["linux/386","linux/amd64","linux/arm/v5","linux/arm/v6","linux/arm/v7","linux/arm/v8","linux/arm64/v8","linux/ppc64le","linux/s390x"]'
-        required: false
+        default: >-
+          ["linux/386","linux/amd64","linux/arm/v5","linux/arm/v6",
+          "linux/arm/v7","linux/arm/v8","linux/arm64/v8",
+          "linux/ppc64le","linux/s390x"]
         type: string
     outputs:
       image_name:
@@ -18,7 +20,7 @@ on: # yamllint disable-line rule:truthy
       platforms:
         description: The platforms to build (JSON array string)
         value: ${{ inputs.platforms }}
-      test_platform:
+      test_platforms:
         description: The platform to use for testing (JSON array string)
         value: '["linux/amd64"]'
 jobs:
