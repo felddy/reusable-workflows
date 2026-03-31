@@ -1,0 +1,253 @@
+---
+name: Container Publish Manifest Workflow
+
+# This reusable workflow assembles a multi-arch manifest from per-platform
+# digests uploaded by container-build.yml, then attests and signs the manifest.
+# It owns all manifest assembly, attestation, and signing logic.
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
+
+# Tool Versions - Keep in sync with container-build.yml
+env:
+  CRANE_VERSION: v0.21.1
+
+on: # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      image-name:
+        description: Container image name without registry (e.g. owner/image)
+        required: true
+        type: string
+
+      platforms:
+        description: >
+          Optional JSON array of platforms to include in the manifest
+          (e.g. '["linux/amd64","linux/arm64"]'). When omitted, all
+          platform digests found for this image are included.
+        required: false
+        type: string
+        default: ""
+
+      push:
+        description: Push manifest to registry. Set false for dry-run.
+        required: false
+        type: boolean
+        default: true
+
+    secrets:
+      private-package-token:
+        description: >
+          Token for private image manifest push. Required permissions:
+          packages:write, packages:read. Defaults to GITHUB_TOKEN when absent.
+        required: false
+
+    outputs:
+      image-digest:
+        description: Final multi-arch manifest digest (sha256:...)
+        value: ${{ jobs.publish.outputs.image-digest }}
+
+      image-tags:
+        description: Tags applied to the manifest
+        value: ${{ jobs.metadata.outputs.image-tags }}
+
+      image-tag-names:
+        description: Bare tag names (space-separated)
+        value: ${{ jobs.metadata.outputs.tag-names }}
+
+jobs:
+  # Generate metadata (tags, labels, annotations) for the manifest
+  metadata:
+    name: Generate Metadata
+    permissions:
+      contents: read
+    uses: ./.github/workflows/container-metadata.yml
+    with:
+      image-name: ${{ inputs.image-name }}
+
+  # Assemble multi-arch manifest from per-platform digests, then attest and sign
+  publish:
+    name: Publish Manifest
+    needs: metadata
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    outputs:
+      image-digest: ${{ steps.manifest-digest.outputs.digest }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            fulcio.sigstore.dev:443
+            ghcr.io:443
+            github.com:443
+            objects.githubusercontent.com:443
+            rekor.sigstore.dev:443
+            release-assets.githubusercontent.com:443
+            tuf-repo-cdn.sigstore.dev:443
+
+      - name: Derive image slug
+        id: slugs
+        run: |
+          IMAGE_SLUG=$(echo "${{ inputs.image-name }}" | tr '/' '-')
+          echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
+          echo "Image slug: ${IMAGE_SLUG}"
+
+      # When platforms is omitted: download all platform digests for this image
+      - name: Download all digest artifacts
+        if: inputs.platforms == ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # tag=v4.3.0
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ steps.slugs.outputs.image-slug }}-*
+          merge-multiple: true
+
+      # When platforms is provided: download only the requested platform digests
+      - name: Download per-platform digest artifacts
+        if: inputs.platforms != ''
+        run: |
+          IMAGE_SLUG="${{ steps.slugs.outputs.image-slug }}"
+          mkdir -p /tmp/digests
+
+          for platform in $(echo '${{ inputs.platforms }}' | jq -r '.[]'); do
+            PLATFORM_SLUG=$(echo "${platform}" | tr '/' '-')
+            ARTIFACT_NAME="digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
+            echo "Queued for download: ${ARTIFACT_NAME}"
+          done
+
+          echo "platforms-to-download=$(echo '${{ inputs.platforms }}' | jq -r '[.[] | gsub("/"; "-")] | join(" ")')" >> $GITHUB_ENV
+
+      - name: Download specific platform digest artifacts
+        if: inputs.platforms != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # tag=v4.3.0
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ steps.slugs.outputs.image-slug }}-*
+          merge-multiple: true
+
+      - name: Validate digests
+        run: |
+          echo "Digest files found:"
+          ls -la /tmp/digests/
+          COUNT=$(ls /tmp/digests/ | wc -l)
+          if [[ "$COUNT" -eq 0 ]]; then
+            echo "::error::No digest files found in /tmp/digests — build artifacts may be missing"
+            exit 1
+          fi
+          echo "Found ${COUNT} digest file(s)"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
+
+      - name: Log in to container registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
+
+      - name: Install crane
+        run: |
+          CRANE_VERSION="${{ env.CRANE_VERSION }}"
+          curl -sSL "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+            | tar -xz -C /usr/local/bin crane
+          crane version
+
+      - name: Create and push multi-arch manifest
+        id: create-manifest
+        run: |
+          IMAGE_TAGS="${{ needs.metadata.outputs.image-tags }}"
+
+          # Build --tag flags from newline-separated image-tags
+          TAG_FLAGS=""
+          while IFS= read -r tag; do
+            [[ -z "$tag" ]] && continue
+            TAG_FLAGS="${TAG_FLAGS} --tag ${tag}"
+          done <<< "${IMAGE_TAGS}"
+
+          # Build digest references from files in /tmp/digests/
+          DIGEST_REFS=""
+          for digest_file in /tmp/digests/*; do
+            HEX=$(basename "${digest_file}")
+            DIGEST_REFS="${DIGEST_REFS} ghcr.io/${{ inputs.image-name }}@sha256:${HEX}"
+          done
+
+          echo "Creating manifest with tags:"
+          echo "${IMAGE_TAGS}"
+          echo ""
+          echo "From digests:"
+          echo "${DIGEST_REFS}"
+
+          # shellcheck disable=SC2086
+          docker buildx imagetools create ${TAG_FLAGS} ${DIGEST_REFS}
+
+      - name: Extract manifest digest
+        id: manifest-digest
+        run: |
+          # Use the first tag to extract the manifest digest
+          FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
+          echo "Extracting digest from: ${FIRST_TAG}"
+
+          DIGEST=$(crane digest "${FIRST_TAG}")
+          if [[ -z "$DIGEST" ]]; then
+            echo "::error::Failed to extract manifest digest from ${FIRST_TAG}"
+            exit 1
+          fi
+
+          echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+          echo "Manifest digest: ${DIGEST}"
+
+      - name: Attest manifest (SLSA provenance)
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # tag=v2.4.0
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ steps.manifest-digest.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest manifest (build environment)
+        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ steps.manifest-digest.outputs.digest }}
+          predicate-type: https://github.com/felddy/reusable-workflows/build-environment/v1
+          predicate: |
+            {
+              "runner": "${{ runner.os }}",
+              "workflow": "${{ github.workflow }}",
+              "sha": "${{ github.sha }}",
+              "ref": "${{ github.ref }}"
+            }
+          push-to-registry: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
+
+      - name: Sign manifest (keyless)
+        run: |
+          IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ steps.manifest-digest.outputs.digest }}"
+          echo "Signing manifest: ${IMAGE_REF}"
+          cosign sign --yes "${IMAGE_REF}"
+          echo "✅ Manifest signed successfully"
+
+      - name: Output manifest summary
+        if: always()
+        run: |
+          echo "## Manifest Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.manifest-digest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Tags" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ needs.metadata.outputs.image-tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
