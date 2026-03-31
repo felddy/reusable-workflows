@@ -169,7 +169,10 @@ jobs:
       - publish-manifest
       - publish-manifest-private
       - config
-    if: github.event_name == 'release' && !github.event.release.prerelease
+    if: |
+      github.event_name == 'release' &&
+      !github.event.release.prerelease &&
+      needs.publish-manifest.outputs.is-latest == 'true'
     uses: ./.github/workflows/dockerhub-description.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}

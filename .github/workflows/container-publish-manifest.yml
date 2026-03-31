@@ -53,6 +53,10 @@ on: # yamllint disable-line rule:truthy
         description: Bare tag names (space-separated)
         value: ${{ jobs.metadata.outputs.tag-names }}
 
+      is-latest:
+        description: Whether this is the latest release
+        value: ${{ jobs.metadata.outputs.is-latest }}
+
 jobs:
   # Generate metadata (tags, labels, annotations) for the manifest
   metadata:
