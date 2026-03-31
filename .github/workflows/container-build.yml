@@ -81,10 +81,6 @@ on: # yamllint disable-line rule:truthy
         default: false
 
     secrets:
-      signing-key:
-        description: Cosign signing key
-        required: false
-
       # Build secrets - pass individually for proper redaction
       # CRITICAL: Do NOT use JSON/XML/YAML blobs as secret values
       # GitHub cannot properly redact structured data
