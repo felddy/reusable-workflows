@@ -44,6 +44,8 @@ jobs:
     name: Build and Publish Container
     needs:
       - config
+      - lint
+      - diagnostics
     uses: ./.github/workflows/container-build.yml
     with:
       platforms: ${{ needs.config.outputs.platforms }}
@@ -56,6 +58,8 @@ jobs:
     name: Build and Publish Container Private
     needs:
       - config
+      - lint
+      - diagnostics
     uses: ./.github/workflows/container-build.yml
     with:
       platforms: ${{ needs.config.outputs.platforms }}
@@ -132,68 +136,12 @@ jobs:
     secrets:
       private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 
-  check:
-    name: Check Quality Gates
-    needs:
-      - lint
-      - diagnostics
-      - test
-      - test-private
-    runs-on: ubuntu-latest
-    if: always()
-    permissions:
-      actions: write  # Required to cancel workflow runs
-    steps:
-      - name: Verify quality gates passed
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          LINT_RESULT="${{ needs.lint.result }}"
-          DIAGNOSTICS_RESULT="${{ needs.diagnostics.result }}"
-          TEST_RESULT="${{ needs.test.result }}"
-          TEST_PRIVATE_RESULT="${{ needs.test-private.result }}"
-
-          FAILED=false
-
-          if [[ "$LINT_RESULT" != "success" ]]; then
-            echo "::error::Lint failed with status: $LINT_RESULT"
-            FAILED=true
-          fi
-
-          if [[ "$DIAGNOSTICS_RESULT" != "success" ]]; then
-            echo "::error::Diagnostics failed with status: $DIAGNOSTICS_RESULT"
-            FAILED=true
-          fi
-
-          if [[ "$TEST_RESULT" != "success" && "$TEST_RESULT" != "skipped" ]]; then
-            echo "::error::Test failed with status: $TEST_RESULT"
-            FAILED=true
-          fi
-
-          if [[ "$TEST_PRIVATE_RESULT" != "success" && "$TEST_PRIVATE_RESULT" != "skipped" ]]; then
-            echo "::error::Test (private) failed with status: $TEST_PRIVATE_RESULT"
-            FAILED=true
-          fi
-
-          if [[ "$FAILED" == "true" ]]; then
-            echo "::error::Quality gates failed"
-
-            # Cancel the workflow run
-            echo "Cancelling workflow run..."
-            gh run cancel ${{ github.run_id }}
-            gh run watch ${{ github.run_id }}
-
-            exit 1
-          fi
-
-          echo "✅ All quality gates passed"
-
   mirror-to-dockerhub:
     name: Mirror images to DockerHub
     needs:
       - publish-manifest
+      - publish-manifest-private
       - config
-      - check
     if: github.event_name == 'release' && !github.event.release.prerelease
     permissions:
       contents: read
@@ -211,8 +159,8 @@ jobs:
     name: Publish docs to DockerHub
     needs:
       - publish-manifest
+      - publish-manifest-private
       - config
-      - check
     if: github.event_name == 'release' && !github.event.release.prerelease
     uses: ./.github/workflows/dockerhub-description.yml
     with:
