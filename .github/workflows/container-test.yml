@@ -1,10 +1,10 @@
 ---
 name: Test container image
 
-# This reusable workflow tests a container image using pytest.  The image is
-# loaded from the artifacts of a previous workflow.  If image decryption keys
-# are presented, the image is decrypted before loading.  If data encryption keys
-# are presented, the test results are encrypted before uploading as an artifact.
+# This reusable workflow tests a container image by pulling it directly from
+# the registry using a digest reference resolved from the per-platform digest
+# artifacts uploaded by container-build.yml.  No tar artifact loading is
+# required; the tested image is identical to what will be published.
 
 # Permissions are set at the job level; default to none at workflow level.
 permissions: {}
@@ -13,109 +13,150 @@ on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       # Required inputs
-      image_artifact_name:
-        description: The artifact name used to load the image archive
+      image-name:
+        description: Container image name without registry (e.g. owner/image)
         required: true
         type: string
-      data_artifact_name:
-        description: The artifact name used to store the data archive
+
+      platforms:
+        description: >
+          JSON array of platforms to test (e.g. '["linux/amd64"]' or
+          '["linux/amd64","linux/arm64"]'). The workflow resolves the
+          registry reference for each platform from the digest artifacts
+          uploaded by container-build.yml.
         required: true
         type: string
+
       # Optional inputs
-      data_artifact_path:
-        description: The artifact path used to create the data archive
-        default: data
+      registry:
+        description: Container registry hostname
         required: false
         type: string
-      data_artifact_retention_days:
-        default: 1
-        description: Number of days to retain the test data artifact
+        default: ghcr.io
+
+      retention-days:
+        description: Days to retain the test results artifact
         required: false
         type: number
-      image_archive_name:
-        default: image.tar
-        description: The name of the image archive to load (name will be cleaned)
+        default: 7
+
+      python-version:
+        description: Python version for running pytest
         required: false
         type: string
-      pip_cache_dir:
-        description: The pip cache directory
-        default: ~/.cache/pip
-        required: false
-        type: string
-      python_version:
-        description: The Python version to use
         default: "3.14"
-        required: false
-        type: string
+
     secrets:
-      data_archive_key:
-        description: Enables encryption of the data archive if specified
-        required: false
-      image_archive_key:
-        description: Enables decryption of the image archive if specified
+      registry-token:
+        description: >
+          Token for pulling from the registry. Defaults to GITHUB_TOKEN.
+          Use a PAT with packages:read for private images not linked to
+          this repository.
         required: false
 
-env:
-  PIP_CACHE_DIR: ${{ inputs.pip_cache_dir }}
-  ARTIFACT_WORK_DIR: /tmp/artifact-work
-  TEST_IMAGE_TAG: test-image:latest
+    outputs:
+      artifact-name:
+        description: Name of the uploaded test results artifact
+        value: ${{ jobs.test.outputs.artifact-name }}
 
 jobs:
   test:
-    # Executes tests on the single-platform image created in the "build" job.
+    # Pulls the image from the registry by digest and runs pytest.
     name: Test image
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: read
+
+    outputs:
+      artifact-name: ${{ steps.set-artifact-name.outputs.artifact-name }}
+
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
         with:
           egress-policy: block
           allowed-endpoints: >
-            auth.docker.io:443
-            docker.io:443
             files.pythonhosted.org:443
+            ghcr.io:443
             github.com:443
-            production.cloudflare.docker.com:443
             pypi.org:443
-            registry-1.docker.io:443
 
-      - name: Clean variables
-        id: clean
+      - name: Log in to registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.registry-token || secrets.GITHUB_TOKEN }}
+
+      - name: Derive image slug
+        id: slugs
         run: |
-          # Replace illegal characters in image archive name
-          echo image_archive_name=$(echo "${{ inputs.image_archive_name }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
+          IMAGE_SLUG=$(echo "${{ inputs.image-name }}" | tr '/' '-')
+          echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
+          echo "Image slug: ${IMAGE_SLUG}"
 
-      - name: Check if data artifact key is available
-        id: check_data_archive_key
+      - name: Download digest artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # tag=v4.3.0
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ steps.slugs.outputs.image-slug }}-*
+
+      - name: Resolve image references and pull
+        id: resolve
+        env:
+          PLATFORMS_JSON: ${{ inputs.platforms }}
+          IMAGE_SLUG: ${{ steps.slugs.outputs.image-slug }}
+          REGISTRY: ${{ inputs.registry }}
+          IMAGE_NAME: ${{ inputs.image-name }}
         run: |
-          if [ -n "${{ secrets.data_archive_key }}" ]; then
-            echo "do_encryption=true" >> $GITHUB_OUTPUT
-          else
-            echo "do_encryption=false" >> $GITHUB_OUTPUT
-          fi
+          IMAGE_REF=""
+          for platform in $(echo "${PLATFORMS_JSON}" | jq -r '.[]'); do
+            PLATFORM_SLUG=$(echo "${platform}" | tr '/' '-')
+            ARTIFACT_DIR="/tmp/digests/digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
 
-      - name: Check if image artifact key is available
-        id: check_image_archive_key
-        run: |
-          if [ -n "${{ secrets.image_archive_key }}" ]; then
-            echo "do_decryption=true" >> $GITHUB_OUTPUT
-          else
-            echo "do_decryption=false" >> $GITHUB_OUTPUT
-          fi
+            if [[ ! -d "${ARTIFACT_DIR}" ]]; then
+              echo "::error::Digest artifact directory not found: ${ARTIFACT_DIR}"
+              exit 1
+            fi
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
-      - id: setup-python
+            HEX=$(ls "${ARTIFACT_DIR}" | head -1)
+            if [[ -z "${HEX}" ]]; then
+              echo "::error::No digest file found in ${ARTIFACT_DIR}"
+              exit 1
+            fi
+
+            IMAGE_REF="${REGISTRY}/${IMAGE_NAME}@sha256:${HEX}"
+            echo "Pulling ${IMAGE_REF} (platform: ${platform})"
+
+            if ! docker pull "${IMAGE_REF}"; then
+              echo "::error::Failed to pull ${IMAGE_REF} — check that the image was pushed and registry-token has packages:read"
+              exit 1
+            fi
+          done
+
+          # Export the last resolved IMAGE_REF for subsequent steps
+          echo "IMAGE_REF=${IMAGE_REF}" >> $GITHUB_ENV
+          echo "image-ref=${IMAGE_REF}" >> $GITHUB_OUTPUT
+          echo "Resolved image reference: ${IMAGE_REF}"
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Set up Python
+        id: setup-python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # tag=v6.2.0
         with:
-          python-version: ${{ inputs.python_version }}
+          python-version: ${{ inputs.python-version }}
 
-      - name: Cache testing environments
+      - name: Cache pip
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # tag=v5.0.3
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ steps.setup-python.outputs.python-version }}-"
         with:
-          path: ${{ env.PIP_CACHE_DIR }}
+          path: ~/.cache/pip
           key: "${{ env.BASE_CACHE_KEY }}\
             ${{ hashFiles('**/requirements-test.txt') }}-\
             ${{ hashFiles('**/requirements.txt') }}"
@@ -127,66 +168,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade --requirement requirements-test.txt
 
-      - name: Download container image artifact
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # tag=v7.0.0
-        with:
-          name: ${{ inputs.image_artifact_name }}
-          path: ${{ env.ARTIFACT_WORK_DIR }}
-
-      - name: Load image
-        run: |
-          archive="${{ env.ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name }}"
-          # If the filename ends in 7z, then decrypt it first
-          if [[ "${archive}" == *".7z" ]]; then
-              load_output=$(7za x -p${{ secrets.image_archive_key }} -so "${archive}" | docker load)
-          else
-              load_output=$(docker load -i "${archive}")
-          fi
-          echo "Docker load output: ${load_output}"
-
-          # Get the id of the image that was just loaded
-          image_id=$(echo "${load_output}" | awk '{print $NF}')
-          echo "Extracted image id: ${image_id}"
-
-          # Tag the image with the a test tag
-          docker tag "${image_id}" "${{ env.TEST_IMAGE_TAG }}"
-
-      - name: Ensure data directory exists
-        run: |
-          mkdir -p ${{ inputs.data_artifact_path }}
-          chmod a+rwx ${{ inputs.data_artifact_path }}
-
-      - name: Run tests
+      - name: Run pytest
         env:
           PYTHONUNBUFFERED: 1
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -o pipefail
-          pytest --image-tag ${{ env.TEST_IMAGE_TAG }} | tee ${{ inputs.data_artifact_path }}/pytest.log
+          pytest --image-tag "${IMAGE_REF}" --tb=short --junit-xml=test-results.xml 2>&1 | tee pytest.log
 
-      - name: Compress data directory unencrypted
-        if: ( success() || failure() ) && steps.check_data_archive_key.outputs.do_encryption == 'false'
+      - name: Set artifact name output
+        id: set-artifact-name
+        if: always()
         run: |
-          tar cf data.tar.gz ${{ inputs.data_artifact_path }}
+          echo "artifact-name=test-results-${{ github.run_id }}" >> $GITHUB_OUTPUT
 
-      - name: Compress and encrypt data directory
-        if: ( success() || failure() ) && steps.check_data_archive_key.outputs.do_encryption == 'true'
-        run: |
-          tar cf - ${{ inputs.data_artifact_path }} | \
-          7za a -p${{ secrets.data_archive_key }} -si data.tar.7z
-
-      - name: Upload unencrypted data artifacts
-        if: ( success() || failure() ) && steps.check_data_archive_key.outputs.do_encryption == 'false'
+      - name: Upload test results
+        if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: ${{ inputs.data_artifact_name }}
-          path: data.tar.gz
-          retention-days: ${{ inputs.data_artifact_retention_days }}
-
-      - name: Upload encrypted data artifacts
-        if: ( success() || failure() ) && steps.check_data_archive_key.outputs.do_encryption == 'true'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
-        with:
-          name: ${{ inputs.data_artifact_name }}
-          path: data.tar.7z
-          retention-days: ${{ inputs.data_artifact_retention_days }}
+          name: test-results-${{ github.run_id }}
+          path: |
+            test-results.xml
+            pytest.log
+          retention-days: ${{ inputs.retention-days }}
+          if-no-files-found: ignore
