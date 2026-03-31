@@ -121,6 +121,7 @@ jobs:
             ARTIFACT_NAME="digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
             echo "Downloading artifact: ${ARTIFACT_NAME}"
             gh run download "${{ github.run_id }}" \
+              --repo "${{ github.repository }}" \
               --name "${ARTIFACT_NAME}" \
               --dir "/tmp/digests/${ARTIFACT_NAME}"
           done
