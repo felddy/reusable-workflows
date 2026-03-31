@@ -119,9 +119,9 @@ on: # yamllint disable-line rule:truthy
         required: false
 
     outputs:
-      image-digest:
-        description: Image digest (sha256:...)
-        value: ${{ jobs.manifest.outputs.digest }}
+      image-name:
+        description: The image name used in this build
+        value: ${{ inputs.image-name }}
 
       image-tags:
         description: Generated image tags
@@ -135,45 +135,10 @@ on: # yamllint disable-line rule:truthy
         description: Calculated version
         value: ${{ jobs.metadata.outputs.version }}
 
-      full-image-name:
-        description: Full image name with registry
-        value: ghcr.io/${{ inputs.image-name }}
-
 jobs:
-  # Generate unique workflow call ID for artifact deconfliction
-  generate-id:
-    name: Generate Workflow Call ID
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: none
-
-    outputs:
-      workflow-call-id: ${{ steps.generate.outputs.id }}
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
-        with:
-          disable-sudo: true
-          egress-policy: block
-          allowed-endpoints: >
-            127.0.0.1
-
-      - name: Generate unique ID
-        id: generate
-        run: |
-          # Create a unique ID based on image name and run info
-          # This ensures each workflow call has unique artifacts
-          UNIQUE_ID=$(echo "${{ inputs.image-name }}-${{ github.run_id }}-${{ github.run_attempt }}" | sha256sum | cut -c1-8)
-          echo "id=$UNIQUE_ID" >> $GITHUB_OUTPUT
-          echo "Workflow call ID: $UNIQUE_ID (use this for all artifacts)"
-
   # Calculate SOURCE_DATE_EPOCH for reproducible builds
   calculate-source-date-epoch:
     name: Calculate SOURCE_DATE_EPOCH
-    needs:
-      - generate-id
     runs-on: ubuntu-latest
 
     permissions:
@@ -222,8 +187,6 @@ jobs:
   determine-visibility:
     name: Determine Visibility
     runs-on: ubuntu-latest
-    needs:
-      - generate-id
 
     permissions:
       contents: none
@@ -260,7 +223,6 @@ jobs:
   metadata:
     name: Generate Metadata
     needs:
-      - generate-id
       - determine-visibility
     permissions:
       contents: read
@@ -273,7 +235,6 @@ jobs:
   build:
     name: Build ${{ matrix.platform }}
     needs:
-      - generate-id
       - calculate-source-date-epoch
       - metadata
     runs-on: ubuntu-latest
@@ -464,6 +425,13 @@ jobs:
           echo "digest=$digest" >> $GITHUB_OUTPUT
           echo "Digest: $digest"
 
+          # Derive slugs for artifact naming
+          IMAGE_SLUG=$(echo "${{ inputs.image-name }}" | tr '/' '-')
+          PLATFORM_SLUG=$(echo "${{ matrix.platform }}" | tr '/' '-')
+          echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
+          echo "platform-slug=${PLATFORM_SLUG}" >> $GITHUB_OUTPUT
+          echo "Artifact name: digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
+
       - name: Install cosign
         if: inputs.push
         uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
@@ -510,7 +478,12 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
           if-no-files-found: error
-          name: digests-${{ needs.generate-id.outputs.workflow-call-id }}-${{ strategy.job-index }}
+          name: >-
+            digests-${{
+              steps.digest.outputs.image-slug
+            }}-${{
+              steps.digest.outputs.platform-slug
+            }}
           path: /tmp/digests/*
           retention-days: 1
 
@@ -569,7 +542,12 @@ jobs:
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: security-scan-results-${{ needs.generate-id.outputs.workflow-call-id }}-${{ strategy.job-index }}
+          name: >-
+            security-scan-results-${{
+              steps.digest.outputs.image-slug
+            }}-${{
+              steps.digest.outputs.platform-slug
+            }}
           path: |
             trivy-results-${{ strategy.job-index }}.sarif
             trivy-results-${{ strategy.job-index }}.json
@@ -625,7 +603,12 @@ jobs:
         if: steps.generate-sbom.outcome == 'success'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: sbom-${{ needs.generate-id.outputs.workflow-call-id }}-${{ strategy.job-index }}
+          name: >-
+            sbom-${{
+              steps.digest.outputs.image-slug
+            }}-${{
+              steps.digest.outputs.platform-slug
+            }}
           path: sbom-${{ strategy.job-index }}.spdx.json
           retention-days: 90
 
@@ -664,454 +647,3 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "This build uses deterministic timestamps for reproducibility." >> $GITHUB_STEP_SUMMARY
           echo "Rebuilding the same commit with the same inputs should produce the same digest." >> $GITHUB_STEP_SUMMARY
-
-  # Create multi-platform manifest
-  manifest:
-    name: Create Multi-Platform Manifest
-    if: inputs.push
-    needs:
-      - generate-id
-      - metadata
-      - build
-      - determine-visibility
-    runs-on: ubuntu-latest
-
-    outputs:
-      digest: ${{ steps.manifest.outputs.digest }}
-
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
-        with:
-          disable-sudo: true
-          egress-policy: audit
-
-      - name: Download all digests
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # tag=v4.1.8
-        with:
-          merge-multiple: true
-          path: /tmp/digests
-          pattern: digests-${{ needs.generate-id.outputs.workflow-call-id }}-*
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
-
-      - name: Log in to container registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
-        with:
-          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
-          registry: ghcr.io
-          username: ${{ github.actor }}
-
-      - name: Install crane
-        run: |
-          # Install crane for manifest digest extraction
-          curl -sL "https://github.com/google/go-containerregistry/releases/download/${{ env.CRANE_VERSION }}/go-containerregistry_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin crane
-          crane version
-
-      - name: Create manifest list and push
-        id: manifest
-        working-directory: /tmp/digests
-        run: |
-          # Collect all platform digests
-          DIGESTS=""
-          DIGEST_COUNT=0
-          for digest_file in *; do
-            if [[ -f "$digest_file" ]]; then
-              DIGESTS="$DIGESTS ghcr.io/${{ inputs.image-name }}@sha256:${digest_file}"
-              DIGEST_COUNT=$((DIGEST_COUNT + 1))
-            fi
-          done
-
-          if [[ $DIGEST_COUNT -eq 0 ]]; then
-            echo "::error::No platform digests found"
-            echo "::error::This usually means all platform builds failed"
-            exit 1
-          fi
-
-          echo "Found $DIGEST_COUNT platform digest(s)"
-
-          # Create manifest for each tag
-          TAGS="${{ needs.metadata.outputs.image-tags }}"
-
-          # Convert newline-separated tags to array
-          IFS=$'\n' read -rd '' -a TAG_ARRAY <<< "$TAGS" || true
-
-          MANIFEST_DIGEST=""
-          TAG_COUNT=0
-          for tag in "${TAG_ARRAY[@]}"; do
-            if [[ -n "$tag" ]]; then
-              TAG_COUNT=$((TAG_COUNT + 1))
-              echo "::group::Creating manifest for $tag"
-
-              if docker buildx imagetools create \
-                --tag "$tag" \
-                $DIGESTS; then
-                echo "✓ Manifest created for $tag"
-              else
-                echo "::error::Failed to create manifest for $tag"
-                echo "::endgroup::"
-                exit 1
-              fi
-
-              echo "::endgroup::"
-
-              # Get the digest of the manifest (same for all tags)
-              if [[ -z "$MANIFEST_DIGEST" ]]; then
-                MANIFEST_DIGEST=$(crane digest "$tag")
-                echo "Manifest digest: $MANIFEST_DIGEST"
-              fi
-            fi
-          done
-
-          if [[ -z "$MANIFEST_DIGEST" ]]; then
-            echo "::error::Failed to get manifest digest"
-            exit 1
-          fi
-
-          # Validate digest format (should be sha256:...)
-          if [[ ! "$MANIFEST_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            echo "::error::Invalid manifest digest format: $MANIFEST_DIGEST"
-            echo "::error::Expected format: sha256:<64 hex characters>"
-            exit 1
-          fi
-
-          echo "digest=$MANIFEST_DIGEST" >> $GITHUB_OUTPUT
-          echo "✅ Multi-platform manifest created: $MANIFEST_DIGEST"
-          echo "Created $TAG_COUNT tag(s) for $DIGEST_COUNT platform(s)"
-
-      - name: Inspect manifest
-        run: |
-          FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
-          echo "::group::Manifest Details"
-          docker buildx imagetools inspect "$FIRST_TAG" || true
-          echo "::endgroup::"
-
-      - name: Validate reproducibility best practices
-        run: |
-          echo "::group::Reproducibility Validation"
-
-          # Check if Dockerfile uses pinned base images
-          if [ -f "${{ inputs.dockerfile }}" ]; then
-            echo "Checking Dockerfile for reproducibility best practices..."
-
-            # Look for FROM statements without digests
-            UNPINNED=$(grep -E '^FROM\s+[^@]+$' "${{ inputs.dockerfile }}" || true)
-
-            if [ -n "$UNPINNED" ]; then
-              echo "::warning::Base images without pinned digests detected in ${{ inputs.dockerfile }}"
-              echo "::warning::For reproducible builds, pin base images to digests:"
-              echo "$UNPINNED" | while read -r line; do
-                echo "::warning::  $line"
-              done
-            else
-              echo "✅ All base images appear to use digests (good for reproducibility)"
-            fi
-          fi
-
-          echo "::endgroup::"
-
-      - name: Output manifest summary
-        run: |
-          echo "## Multi-Platform Manifest Created" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Manifest Digest:** \`${{ steps.manifest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Platforms:** \`${{ inputs.platforms }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Add reproducibility note
-          echo "### 🔄 Reproducibility" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "This build uses SOURCE_DATE_EPOCH for deterministic timestamps." >> $GITHUB_STEP_SUMMARY
-          echo "For fully reproducible builds, ensure:" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Base images are pinned to digests (not just tags)" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ All dependencies use exact versions" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Build process is deterministic" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [[ "${{ needs.determine-visibility.outputs.link-repository }}" == "false" ]]; then
-            echo "### 🔒 Private Package" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "This image is private because it is NOT linked to the repository." >> $GITHUB_STEP_SUMMARY
-            echo "The \`org.opencontainers.image.source\` label was omitted, so the package:" >> $GITHUB_STEP_SUMMARY
-            echo "- Is scoped to the user/org account (not the repository)" >> $GITHUB_STEP_SUMMARY
-            echo "- Is private by default" >> $GITHUB_STEP_SUMMARY
-            echo "- Will NOT appear on the repository packages page" >> $GITHUB_STEP_SUMMARY
-            echo "- Access is controlled via package permissions" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**To pull this private image:**" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-            echo "echo \$PAT | docker login ghcr.io -u USERNAME --password-stdin" >> $GITHUB_STEP_SUMMARY
-            FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
-            echo "docker pull $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "### Pull Command" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
-          echo "docker pull $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Verify Multi-Arch" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "docker buildx imagetools inspect $FIRST_TAG" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
-      - name: Verify package visibility
-        env:
-          GH_TOKEN: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
-        run: |
-          # Package name for the GitHub Packages API is the image name without the owner prefix
-          IMAGE_NAME="${{ inputs.image-name }}"
-          PACKAGE_NAME="${IMAGE_NAME##*/}"
-          PACKAGE_NAME_ENCODED="${PACKAGE_NAME//\//%2F}"
-          OWNER="${{ github.repository_owner }}"
-          IS_PRIVATE="${{ needs.determine-visibility.outputs.is-private }}"
-
-          echo "Image name: ${IMAGE_NAME}"
-          echo "Package name: ${PACKAGE_NAME}"
-          echo "Owner: ${OWNER}"
-
-          # Determine if owner is a user or org
-          OWNER_TYPE=$(gh api "/users/${OWNER}" --jq '.type' 2>/dev/null || echo "User")
-          if [[ "$OWNER_TYPE" == "Organization" ]]; then
-            API_BASE="/orgs/${OWNER}/packages/container/${PACKAGE_NAME_ENCODED}"
-          else
-            API_BASE="/users/${OWNER}/packages/container/${PACKAGE_NAME_ENCODED}"
-          fi
-
-          echo "API endpoint: https://api.github.com${API_BASE}"
-
-          # Query current package visibility
-          CURRENT_VISIBILITY=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            "${API_BASE}" --jq '.visibility' 2>/dev/null || echo "")
-
-          if [[ -z "$CURRENT_VISIBILITY" ]]; then
-            echo "::warning::Could not determine package visibility for ${PACKAGE_NAME}"
-            exit 0
-          fi
-
-          echo "Current visibility: ${CURRENT_VISIBILITY}"
-          echo "Expected private: ${IS_PRIVATE}"
-
-          if [[ "$IS_PRIVATE" == "true" && "$CURRENT_VISIBILITY" == "public" ]]; then
-            # NOTE: The GitHub Packages REST API does not provide an endpoint to update
-            # package visibility. This can only be done via the web UI.
-            echo "::error::Package '${PACKAGE_NAME}' is PUBLIC but should be PRIVATE."
-            echo "::error::The GitHub Packages API does not support changing visibility programmatically."
-            echo "::error::Fix manually: https://github.com/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
-            exit 1
-          elif [[ "$IS_PRIVATE" == "false" && "$CURRENT_VISIBILITY" == "private" ]]; then
-            # Package is private but should be public — warn only, do not change automatically
-            echo "::warning::Package '${PACKAGE_NAME}' is currently private but is expected to be public."
-            echo "::warning::Fix manually: https://github.com/${OWNER}/packages/container/${PACKAGE_NAME}/settings"
-          else
-            echo "✅ Package visibility is correct: ${CURRENT_VISIBILITY}"
-          fi
-
-  # Generate attestations for multi-platform manifest
-  attest-manifest:
-    name: Attest Manifest
-    if: inputs.push
-    needs:
-      - generate-id
-      - metadata
-      - manifest
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-
-    env:
-      PREDICATE_TYPE_PROVENANCE: https://slsa.dev/provenance/v1
-      PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
-        with:
-          disable-sudo: true
-          egress-policy: audit
-
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
-
-      - name: Set SOURCE_DATE_EPOCH for reproducible builds
-        id: source-date-epoch
-        run: |
-          if [ -d .git ]; then
-            COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
-            echo "SOURCE_DATE_EPOCH=$COMMIT_TIMESTAMP" >> $GITHUB_ENV
-            echo "source-date-epoch=$COMMIT_TIMESTAMP" >> $GITHUB_OUTPUT
-            COMMIT_DATE=$(date -u -d "@$COMMIT_TIMESTAMP" '+%Y-%m-%d %H:%M:%S UTC')
-            echo "Reproducible build timestamp: $COMMIT_DATE (epoch: $COMMIT_TIMESTAMP)"
-          else
-            FALLBACK_TIMESTAMP=0
-            echo "SOURCE_DATE_EPOCH=$FALLBACK_TIMESTAMP" >> $GITHUB_ENV
-            echo "source-date-epoch=$FALLBACK_TIMESTAMP" >> $GITHUB_OUTPUT
-            echo "::warning::Not in a git repository, using Unix epoch (0) for SOURCE_DATE_EPOCH"
-          fi
-
-      - name: Log in to container registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
-
-      - name: Authenticate cosign with registry
-        run: |
-          # Cosign needs explicit authentication to read attestations
-          echo "${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}" | \
-            cosign login ghcr.io -u ${{ github.actor }} --password-stdin
-          echo "✅ Cosign authenticated with registry"
-
-      - name: Install ORAS
-        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # tag=v1.2.4
-
-      - name: Check attestation existence
-        id: check-attestations
-        timeout-minutes: 3
-        run: |
-          IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}"
-
-          echo "Checking for existing attestations on manifest..."
-          echo "Image reference: $IMAGE_REF"
-
-          json="$(oras discover --format json "${IMAGE_REF}")"
-
-          # Returns "true" or "false" (as text)
-          has_pred() {
-            local predicate="$1"
-            jq -r --arg p "${predicate}" '
-              any(.referrers[]?; .annotations["dev.sigstore.bundle.predicateType"] == $p)
-            ' <<<"${json}"
-          }
-
-          echo "has_provenance=$(has_pred "${{ env.PREDICATE_TYPE_PROVENANCE }}")" >> "${GITHUB_OUTPUT}"
-          echo "has_build_env=$(has_pred "${{ env.PREDICATE_TYPE_BUILD_ENV }}")" >> "${GITHUB_OUTPUT}"
-
-      - name: Generate SLSA provenance
-        id: provenance
-        if: steps.check-attestations.outputs.has_provenance != 'true'
-        uses: actions/attest-build-provenance@1c608d11d69870c2092266b3f9a6f3abbf17002c # tag=v1.4.3
-        with:
-          subject-name: ghcr.io/${{ inputs.image-name }}
-          subject-digest: ${{ needs.manifest.outputs.digest }}
-          push-to-registry: true
-
-      - name: Capture build environment metadata
-        id: build-env
-        run: |
-          cat > build-environment.json <<EOF
-          {
-            "buildEnvironment": {
-              "sourceRepository": "${{ github.repository }}",
-              "sourceCommit": "${{ github.sha }}",
-              "sourceRef": "${{ github.ref }}",
-              "sourceDateEpoch": "${SOURCE_DATE_EPOCH:-}",
-              "buildTimestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-              "builder": {
-                "id": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-                "platform": "GitHub Actions",
-                "runnerOS": "${{ runner.os }}",
-                "runnerArch": "${{ runner.arch }}"
-              },
-              "tools": {
-                "docker": "$(docker --version | cut -d' ' -f3 | tr -d ',')",
-                "buildx": "$(docker buildx version | cut -d' ' -f2)",
-                "git": "$(git --version | cut -d' ' -f3)"
-              }
-            }
-          }
-          EOF
-          echo "Build environment metadata captured"
-
-      - name: Attach build environment as custom attestation
-        id: attest-build-env
-        if: steps.check-attestations.outputs.has_build_env != 'true'
-        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
-        with:
-          subject-name: ghcr.io/${{ inputs.image-name }}
-          subject-digest: ${{ needs.manifest.outputs.digest }}
-          predicate-type: ${{ env.PREDICATE_TYPE_BUILD_ENV }}
-          predicate-path: build-environment.json
-          push-to-registry: true
-        continue-on-error: true
-
-      - name: Upload attestation artifacts
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
-        with:
-          name: attestations-${{ needs.generate-id.outputs.workflow-call-id }}
-          path: |
-            build-environment.json
-            ${{ steps.provenance.outputs.bundle-path }}
-          retention-days: 90
-          if-no-files-found: ignore
-
-      - name: Generate attestation summary
-        if: always()
-        run: |
-          echo "## Attestation Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Manifest Digest:** \`${{ needs.manifest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Attestations" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ steps.provenance.outcome }}" = "success" ]; then
-            echo "✅ SLSA Provenance (manifest)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⏭️  SLSA Provenance (skipped - already exists)" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "✅ SBOM (per-platform, generated during build)" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Vulnerability Scan (per-platform, generated during build)" >> $GITHUB_STEP_SUMMARY
-
-          if [ "${{ steps.attest-build-env.outcome }}" = "success" ]; then
-            echo "✅ Build Environment (manifest)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⏭️  Build Environment (skipped)" >> $GITHUB_STEP_SUMMARY
-          fi
-
-  # Sign container image (always enabled)
-  sign:
-    name: Sign Container Image
-    needs:
-      - metadata
-      - manifest
-      - attest-manifest
-    permissions:
-      contents: read
-      packages: write
-      id-token: write # Required for keyless signing with OIDC
-    if: |
-      inputs.push &&
-      always() &&
-      needs.attest-manifest.result == 'success' &&
-      needs.manifest.result == 'success'
-    uses: ./.github/workflows/container-sign.yml
-    with:
-      image-ref: ghcr.io/${{ inputs.image-name }}@${{ needs.manifest.outputs.digest }}
-      image-name: ${{ inputs.image-name }}
-      registry: ghcr.io
-      use-keyless: true
-    secrets:
-      signing-key: ${{ secrets.signing-key }}
-      private-package-token: ${{ secrets.private-package-token }}
