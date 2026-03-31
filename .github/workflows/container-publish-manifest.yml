@@ -72,6 +72,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
+      actions: read
       contents: read
       packages: write
       id-token: write
@@ -103,41 +104,25 @@ jobs:
           echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
           echo "Image slug: ${IMAGE_SLUG}"
 
-      # Download all platform digests for this image (image slug is unique per run).
-      # Each artifact extracts into a subdir named digests-{image-slug}-{platform-slug}/
-      # containing a single file named by the sha256 hex.
+      # Download all platform digests for this image by exact artifact name.
+      # actions/download-artifact only supports exact-name downloads for a single
+      # static artifact; its pattern input cannot be scoped tightly enough to avoid
+      # matching sibling images with a shared slug prefix (e.g. "owner-image" vs
+      # "owner-image-hid"). gh run download --name loops over exact names instead.
       - name: Download digest artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # tag=v4.3.0
-        with:
-          path: /tmp/digests
-          pattern: digests-${{ steps.slugs.outputs.image-slug }}-*
-
-      # When platforms is provided, remove subdirs for platforms not in the list
-      - name: Filter digests to requested platforms
-        if: inputs.platforms != ''
         env:
           PLATFORMS_JSON: ${{ inputs.platforms }}
           IMAGE_SLUG: ${{ steps.slugs.outputs.image-slug }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Build the set of subdir names to keep
-          KEEP=()
+          mkdir -p /tmp/digests
           for platform in $(echo "${PLATFORMS_JSON}" | jq -r '.[]'); do
             PLATFORM_SLUG=$(echo "${platform}" | tr '/' '-')
-            KEEP+=("digests-${IMAGE_SLUG}-${PLATFORM_SLUG}")
-          done
-          echo "Keeping: ${KEEP[*]}"
-
-          # Remove any subdirs not in the keep list
-          for subdir in /tmp/digests/*/; do
-            name=$(basename "${subdir}")
-            keep=false
-            for k in "${KEEP[@]}"; do
-              [[ "${name}" == "${k}" ]] && keep=true && break
-            done
-            if [[ "${keep}" == "false" ]]; then
-              echo "Removing: ${name}"
-              rm -rf "${subdir}"
-            fi
+            ARTIFACT_NAME="digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
+            echo "Downloading artifact: ${ARTIFACT_NAME}"
+            gh run download "${{ github.run_id }}" \
+              --name "${ARTIFACT_NAME}" \
+              --dir "/tmp/digests/${ARTIFACT_NAME}"
           done
 
       - name: Validate digests

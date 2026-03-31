@@ -97,6 +97,7 @@ jobs:
     uses: ./.github/workflows/container-publish-manifest.yml
     with:
       image-name: ${{ needs.config.outputs.image_name }}
+      platforms: ${{ needs.config.outputs.platforms }}
 
   publish-manifest-private:
     name: Publish Manifest Private
@@ -107,6 +108,7 @@ jobs:
     uses: ./.github/workflows/container-publish-manifest.yml
     with:
       image-name: ${{ needs.config.outputs.image_name }}-hid
+      platforms: ${{ needs.config.outputs.platforms }}
     secrets:
       private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 

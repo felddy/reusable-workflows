@@ -66,6 +66,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
+      actions: read
       contents: read
       packages: read
 
@@ -91,36 +92,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.registry-token || secrets.GITHUB_TOKEN }}
 
-      - name: Derive image slug
-        id: slugs
-        run: |
-          IMAGE_SLUG=$(echo "${{ inputs.image-name }}" | tr '/' '-')
-          echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
-          echo "Image slug: ${IMAGE_SLUG}"
-
-      - name: Download digest artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # tag=v4.3.0
-        with:
-          path: /tmp/digests
-          pattern: digests-${{ steps.slugs.outputs.image-slug }}-*
-
+      # Download digest artifact by exact name per platform.
+      # actions/download-artifact pattern input cannot be scoped tightly enough to
+      # avoid matching sibling images with a shared slug prefix; gh run download
+      # --name accepts exact names and works correctly in a dynamic loop.
       - name: Resolve image references and pull
         id: resolve
         env:
           PLATFORMS_JSON: ${{ inputs.platforms }}
-          IMAGE_SLUG: ${{ steps.slugs.outputs.image-slug }}
-          REGISTRY: ${{ inputs.registry }}
           IMAGE_NAME: ${{ inputs.image-name }}
+          REGISTRY: ${{ inputs.registry }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           IMAGE_REF=""
+          IMAGE_SLUG=$(echo "${IMAGE_NAME}" | tr '/' '-')
+          mkdir -p /tmp/digests
           for platform in $(echo "${PLATFORMS_JSON}" | jq -r '.[]'); do
             PLATFORM_SLUG=$(echo "${platform}" | tr '/' '-')
-            ARTIFACT_DIR="/tmp/digests/digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
+            ARTIFACT_NAME="digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
+            ARTIFACT_DIR="/tmp/digests/${ARTIFACT_NAME}"
 
-            if [[ ! -d "${ARTIFACT_DIR}" ]]; then
-              echo "::error::Digest artifact directory not found: ${ARTIFACT_DIR}"
-              exit 1
-            fi
+            echo "Downloading artifact: ${ARTIFACT_NAME}"
+            gh run download "${{ github.run_id }}" \
+              --name "${ARTIFACT_NAME}" \
+              --dir "${ARTIFACT_DIR}"
 
             HEX=$(ls "${ARTIFACT_DIR}" | head -1)
             if [[ -z "${HEX}" ]]; then
