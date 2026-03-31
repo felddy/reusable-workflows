@@ -178,10 +178,13 @@ jobs:
           echo "${DIGEST_REFS}"
 
           # shellcheck disable=SC2086
-          docker buildx imagetools create ${TAG_FLAGS} ${DIGEST_REFS}
+          docker buildx imagetools create \
+            ${{ inputs.push == false && '--dry-run' || '' }} \
+            ${TAG_FLAGS} ${DIGEST_REFS}
 
       - name: Extract manifest digest
         id: manifest-digest
+        if: inputs.push
         run: |
           # Use the first tag to extract the manifest digest
           FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
@@ -197,6 +200,7 @@ jobs:
           echo "Manifest digest: ${DIGEST}"
 
       - name: Attest manifest (SLSA provenance)
+        if: inputs.push
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # tag=v2.4.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
@@ -204,6 +208,7 @@ jobs:
           push-to-registry: true
 
       - name: Attest manifest (build environment)
+        if: inputs.push
         uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
@@ -219,9 +224,11 @@ jobs:
           push-to-registry: true
 
       - name: Install cosign
+        if: inputs.push
         uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
 
       - name: Sign manifest (keyless)
+        if: inputs.push
         run: |
           IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ steps.manifest-digest.outputs.digest }}"
           echo "Signing manifest: ${IMAGE_REF}"
