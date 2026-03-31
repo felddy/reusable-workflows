@@ -231,20 +231,55 @@ jobs:
       image-name: ${{ inputs.image-name }}
       link-repository: ${{ needs.determine-visibility.outputs.link-repository == 'true' }}
 
+  # Map platforms to native GitHub-hosted runners where available.
+  # Falls back to ubuntu-latest (+ QEMU) for platforms without a native runner.
+  generate-matrix:
+    name: Generate platform matrix
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: none
+
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            127.0.0.1
+
+      - name: Set matrix
+        id: set-matrix
+        run: |
+          PLATFORMS_JSON='${{ inputs.platforms }}'
+          MATRIX=$(echo "${PLATFORMS_JSON}" | jq -c '
+            map({
+              platform: .,
+              runner: (
+                if . == "linux/arm64/v8" or . == "linux/arm64" then "ubuntu-24.04-arm"
+                else "ubuntu-latest"
+                end
+              )
+            }) | {include: .}
+          ')
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
+
   # Build container image (multi-architecture support)
   build:
     name: Build ${{ matrix.platform }}
     needs:
       - calculate-source-date-epoch
       - metadata
-    runs-on: ubuntu-latest
+      - generate-matrix
+    runs-on: ${{ matrix.runner }}
 
     strategy:
       fail-fast: false
-      matrix:
-        # Use platforms directly from input (already JSON array string)
-        # This enables per-platform caching and parallel execution
-        platform: ${{ fromJSON(inputs.platforms) }}
+      matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
 
     outputs:
       digest: ${{ steps.build.outputs.digest }}
