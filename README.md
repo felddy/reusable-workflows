@@ -32,8 +32,12 @@ graph TD
     A --> C[config]
     A --> D[lint]
 
-    C --> E["build<br/>(all platforms, push digests)"]
-    C --> F["build-private<br/>(all platforms, push digests)"]
+    B --> E["build<br/>(all platforms, push digests)"]
+    C --> E
+    D --> E
+    B --> F["build-private<br/>(all platforms, push digests)"]
+    C --> F
+    D --> F
 
     E --> G["test<br/>(pull by digest)"]
     F --> H["test-private<br/>(pull by digest)"]
@@ -44,16 +48,9 @@ graph TD
     H --> J["publish-manifest-private<br/>(assemble + sign)"]
     F --> J
 
-    D --> K[check]
-    B --> K
-    G --> K
-    H --> K
-
-    I --> L[mirror-to-dockerhub]
-    J --> L
-    K --> L
-    I --> M[publish-readme]
-    K --> M
+    I --> K[mirror-to-dockerhub]
+    J --> K
+    I --> L[publish-readme]
 ```
 
 ### Three-Stage Design ###
@@ -95,6 +92,16 @@ event workflow, the push run is cancelled and the PR run proceeds. For
 `schedule` and `workflow_dispatch` events on `main`, the group key resolves to
 `main` so concurrent scheduled runs cancel each other. This eliminates
 redundant duplicate runs without any per-job conditionals.
+
+### Fork Pull Requests ###
+
+Registry-pushing jobs (`build`, `build-private`, and their downstream jobs)
+are skipped for pull requests opened from forks. GitHub does not provide write
+secrets or a writable `GITHUB_TOKEN` to fork PR workflows, so push attempts
+would fail with authentication errors. Lint and diagnostics still run, giving
+fork contributors CI feedback on code quality. Maintainers can check out the
+fork branch locally and run the full pipeline manually if a complete build
+validation is needed before merging.
 
 ## Contributing ##
 

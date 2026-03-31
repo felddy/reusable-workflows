@@ -46,6 +46,11 @@ jobs:
       - config
       - lint
       - diagnostics
+    # Skip registry-pushing jobs on fork PRs — secrets are unavailable and
+    # GITHUB_TOKEN is read-only, so pushes would fail with auth errors.
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/container-build.yml
     with:
       platforms: ${{ needs.config.outputs.platforms }}
@@ -60,6 +65,9 @@ jobs:
       - config
       - lint
       - diagnostics
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/container-build.yml
     with:
       platforms: ${{ needs.config.outputs.platforms }}
