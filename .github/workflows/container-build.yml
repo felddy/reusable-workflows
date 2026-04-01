@@ -80,6 +80,38 @@ on: # yamllint disable-line rule:truthy
         type: boolean
         default: false
 
+      # Build secret IDs — controls the --secret id= name used in Dockerfile RUN mounts.
+      # Defaults to build-secret-N if not specified.
+      build-secret-1-name:
+        description: Secret ID for build-secret-1 (used as --secret id=NAME in Dockerfile)
+        required: false
+        type: string
+        default: build-secret-1
+
+      build-secret-2-name:
+        description: Secret ID for build-secret-2 (used as --secret id=NAME in Dockerfile)
+        required: false
+        type: string
+        default: build-secret-2
+
+      build-secret-3-name:
+        description: Secret ID for build-secret-3 (used as --secret id=NAME in Dockerfile)
+        required: false
+        type: string
+        default: build-secret-3
+
+      build-secret-4-name:
+        description: Secret ID for build-secret-4 (used as --secret id=NAME in Dockerfile)
+        required: false
+        type: string
+        default: build-secret-4
+
+      build-secret-5-name:
+        description: Secret ID for build-secret-5 (used as --secret id=NAME in Dockerfile)
+        required: false
+        type: string
+        default: build-secret-5
+
     secrets:
       # Build secrets - pass individually for proper redaction
       # CRITICAL: Do NOT use JSON/XML/YAML blobs as secret values
@@ -372,31 +404,31 @@ jobs:
 
           if [[ -n "${{ secrets.build-secret-1 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-1 }}" > /tmp/build-secret-1
-            echo "id=build-secret-1,src=/tmp/build-secret-1" >> $GITHUB_OUTPUT
+            echo "id=${{ inputs.build-secret-1-name }},src=/tmp/build-secret-1" >> $GITHUB_OUTPUT
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-2 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-2 }}" > /tmp/build-secret-2
-            echo "id=build-secret-2,src=/tmp/build-secret-2" >> $GITHUB_OUTPUT
+            echo "id=${{ inputs.build-secret-2-name }},src=/tmp/build-secret-2" >> $GITHUB_OUTPUT
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-3 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-3 }}" > /tmp/build-secret-3
-            echo "id=build-secret-3,src=/tmp/build-secret-3" >> $GITHUB_OUTPUT
+            echo "id=${{ inputs.build-secret-3-name }},src=/tmp/build-secret-3" >> $GITHUB_OUTPUT
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-4 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-4 }}" > /tmp/build-secret-4
-            echo "id=build-secret-4,src=/tmp/build-secret-4" >> $GITHUB_OUTPUT
+            echo "id=${{ inputs.build-secret-4-name }},src=/tmp/build-secret-4" >> $GITHUB_OUTPUT
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-5 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-5 }}" > /tmp/build-secret-5
-            echo "id=build-secret-5,src=/tmp/build-secret-5" >> $GITHUB_OUTPUT
+            echo "id=${{ inputs.build-secret-5-name }},src=/tmp/build-secret-5" >> $GITHUB_OUTPUT
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
