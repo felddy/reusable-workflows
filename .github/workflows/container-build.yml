@@ -61,10 +61,21 @@ on: # yamllint disable-line rule:truthy
 
       # Security Configuration
       scan-severity:
-        description: Fail on vulnerabilities at or above this severity
+        description: >
+          Fail on vulnerabilities at or above this severity (e.g. CRITICAL,HIGH).
+          Set to empty string to disable the vulnerability gate entirely.
         required: false
         type: string
         default: CRITICAL,HIGH
+
+      upload-scan-results:
+        description: >
+          Upload vulnerability scan results (SARIF) to GitHub Security tab.
+          Set to false when vulnerabilities are in third-party code unrelated
+          to this repository (e.g. pre-installed application binaries).
+        required: false
+        type: boolean
+        default: true
 
       # Caching
       cache-scope:
@@ -634,7 +645,7 @@ jobs:
           retention-days: 30
 
       - name: Upload SARIF to GitHub Security
-        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
+        if: inputs.push && inputs.upload-scan-results && steps.check-attestations.outputs.has_vuln != 'true'
         uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6 # tag=codeql-bundle-v4.32.3
         with:
           category: container-scan-${{ matrix.platform }}
