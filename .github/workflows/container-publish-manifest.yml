@@ -40,6 +40,13 @@ on: # yamllint disable-line rule:truthy
           packages:write, packages:read. Defaults to GITHUB_TOKEN when absent.
         required: false
 
+      private-package-username:
+        description: >
+          Username for private-package-token authentication. Required when the
+          PAT owner differs from github.repository_owner (e.g. org repos using
+          a service account PAT). Defaults to github.repository_owner when absent.
+        required: false
+
     outputs:
       image-digest:
         description: Final multi-arch manifest digest (sha256:...)
@@ -146,7 +153,7 @@ jobs:
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ghcr.io
-          username: ${{ secrets.private-package-token && github.repository_owner || github.actor }}
+          username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Install crane
