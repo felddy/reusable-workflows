@@ -51,12 +51,64 @@ on: # yamllint disable-line rule:truthy
         type: string
         default: "3.14"
 
+      # Test secret names — controls the environment variable name exposed to pytest.
+      # Pair each with the corresponding test-secret-N secret value.
+      test-secret-1-name:
+        description: Environment variable name for test-secret-1
+        required: false
+        type: string
+        default: ""
+
+      test-secret-2-name:
+        description: Environment variable name for test-secret-2
+        required: false
+        type: string
+        default: ""
+
+      test-secret-3-name:
+        description: Environment variable name for test-secret-3
+        required: false
+        type: string
+        default: ""
+
+      test-secret-4-name:
+        description: Environment variable name for test-secret-4
+        required: false
+        type: string
+        default: ""
+
+      test-secret-5-name:
+        description: Environment variable name for test-secret-5
+        required: false
+        type: string
+        default: ""
+
     secrets:
       registry-token:
         description: >
           Token for pulling from the registry. Defaults to GITHUB_TOKEN.
           Use a PAT with packages:read for private images not linked to
           this repository.
+        required: false
+
+      test-secret-1:
+        description: Secret value exposed to pytest as the env var named by test-secret-1-name
+        required: false
+
+      test-secret-2:
+        description: Secret value exposed to pytest as the env var named by test-secret-2-name
+        required: false
+
+      test-secret-3:
+        description: Secret value exposed to pytest as the env var named by test-secret-3-name
+        required: false
+
+      test-secret-4:
+        description: Secret value exposed to pytest as the env var named by test-secret-4-name
+        required: false
+
+      test-secret-5:
+        description: Secret value exposed to pytest as the env var named by test-secret-5-name
         required: false
 
 jobs:
@@ -214,6 +266,28 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install --upgrade --requirement requirements-test.txt
+
+      - name: Prepare test secrets
+        id: test-secrets
+        run: |
+          # Export each named secret as an environment variable for pytest.
+          # Uses GITHUB_ENV so the values are available to subsequent steps
+          # and properly masked in logs by GitHub's secret redaction.
+          if [[ -n "${{ inputs.test-secret-1-name }}" && -n "${{ secrets.test-secret-1 }}" ]]; then
+            echo "${{ inputs.test-secret-1-name }}=${{ secrets.test-secret-1 }}" >> $GITHUB_ENV
+          fi
+          if [[ -n "${{ inputs.test-secret-2-name }}" && -n "${{ secrets.test-secret-2 }}" ]]; then
+            echo "${{ inputs.test-secret-2-name }}=${{ secrets.test-secret-2 }}" >> $GITHUB_ENV
+          fi
+          if [[ -n "${{ inputs.test-secret-3-name }}" && -n "${{ secrets.test-secret-3 }}" ]]; then
+            echo "${{ inputs.test-secret-3-name }}=${{ secrets.test-secret-3 }}" >> $GITHUB_ENV
+          fi
+          if [[ -n "${{ inputs.test-secret-4-name }}" && -n "${{ secrets.test-secret-4 }}" ]]; then
+            echo "${{ inputs.test-secret-4-name }}=${{ secrets.test-secret-4 }}" >> $GITHUB_ENV
+          fi
+          if [[ -n "${{ inputs.test-secret-5-name }}" && -n "${{ secrets.test-secret-5 }}" ]]; then
+            echo "${{ inputs.test-secret-5-name }}=${{ secrets.test-secret-5 }}" >> $GITHUB_ENV
+          fi
 
       - name: Run pytest
         env:
