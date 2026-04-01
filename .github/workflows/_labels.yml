@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d # tag=v2.16.1
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -31,4 +31,4 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
 
       - name: Run Labeler
-        uses: crazy-max/ghaction-github-labeler@24d110aa46a59976b8a7f35518cb7f14f434c916 # tag=v5.3.0
+        uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # tag=v6.0.0

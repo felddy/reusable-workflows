@@ -90,7 +90,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d # tag=v2.16.1
         with:
           disable-sudo: true
           egress-policy: audit
@@ -147,7 +147,7 @@ jobs:
           echo "method=$METHOD" >> $GITHUB_OUTPUT
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # tag=v4.0.0
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # tag=v4.1.1
 
       - name: Verify cosign installation
         run: |
@@ -156,7 +156,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Log in to container registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # tag=v4.0.0
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.private-package-token && github.repository_owner || github.actor }}

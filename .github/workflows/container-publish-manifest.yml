@@ -92,7 +92,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        uses: step-security/harden-runner@fe104658747b27e96e4f7e80cd0a94068e53901d # tag=v2.16.1
         with:
           disable-sudo: true
           egress-policy: audit
@@ -147,10 +147,10 @@ jobs:
           echo "Found ${COUNT} platform digest(s)"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # tag=v4.0.0
 
       - name: Log in to container registry
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # tag=v4.0.0
         with:
           registry: ghcr.io
           username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
@@ -221,7 +221,7 @@ jobs:
 
       - name: Attest manifest (SLSA provenance)
         if: inputs.push
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # tag=v2.4.0
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # tag=v4.1.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.manifest-digest.outputs.digest }}
@@ -229,7 +229,7 @@ jobs:
 
       - name: Attest manifest (build environment)
         if: inputs.push
-        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
+        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # tag=v4.1.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.manifest-digest.outputs.digest }}
@@ -245,7 +245,7 @@ jobs:
 
       - name: Install cosign
         if: inputs.push
-        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # tag=v4.1.1
 
       - name: Sign manifest (keyless)
         if: inputs.push
