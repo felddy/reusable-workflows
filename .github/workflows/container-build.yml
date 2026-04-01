@@ -392,48 +392,50 @@ jobs:
         id: secrets
         run: |
           # Prepare secrets for BuildKit secret mounts.
-          # Write each secret value to a temp file and record the spec in a
-          # secrets-spec file. We use secret-files (a path to a spec file) rather
-          # than the secrets input because multiline ${{ steps.*.outputs.* }}
-          # expressions in `with:` blocks have newlines stripped by GitHub Actions,
-          # which corrupts the newline-separated id=...,src=... format that
-          # docker/build-push-action expects.
+          # secret-files input expects newline-separated "id=path" entries.
+          # We write each secret to a temp file and output the id=path pairs.
+          # Using secret-files (file paths) rather than secrets (inline values)
+          # avoids the multiline expression stripping issue in GitHub Actions
+          # `with:` blocks where ${{ steps.*.outputs.* }} newlines are removed.
           umask 077
-          SECRETS_SPEC_FILE="/tmp/build-secrets-spec"
-          > "${SECRETS_SPEC_FILE}"
+          SECRET_FILES=""
           SECRET_COUNT=0
 
           if [[ -n "${{ secrets.build-secret-1 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-1 }}" > /tmp/build-secret-1
-            echo "id=${{ inputs.build-secret-1-name }},src=/tmp/build-secret-1" >> "${SECRETS_SPEC_FILE}"
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-1-name }}=/tmp/build-secret-1"$'\n'
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-2 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-2 }}" > /tmp/build-secret-2
-            echo "id=${{ inputs.build-secret-2-name }},src=/tmp/build-secret-2" >> "${SECRETS_SPEC_FILE}"
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-2-name }}=/tmp/build-secret-2"$'\n'
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-3 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-3 }}" > /tmp/build-secret-3
-            echo "id=${{ inputs.build-secret-3-name }},src=/tmp/build-secret-3" >> "${SECRETS_SPEC_FILE}"
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-3-name }}=/tmp/build-secret-3"$'\n'
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-4 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-4 }}" > /tmp/build-secret-4
-            echo "id=${{ inputs.build-secret-4-name }},src=/tmp/build-secret-4" >> "${SECRETS_SPEC_FILE}"
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-4-name }}=/tmp/build-secret-4"$'\n'
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
           if [[ -n "${{ secrets.build-secret-5 }}" ]]; then
             printf '%s' "${{ secrets.build-secret-5 }}" > /tmp/build-secret-5
-            echo "id=${{ inputs.build-secret-5-name }},src=/tmp/build-secret-5" >> "${SECRETS_SPEC_FILE}"
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-5-name }}=/tmp/build-secret-5"$'\n'
             SECRET_COUNT=$((SECRET_COUNT + 1))
           fi
 
-          echo "secrets-spec-file=${SECRETS_SPEC_FILE}" >> $GITHUB_OUTPUT
+          # Write multiline output using heredoc delimiter
+          delimiter="$(openssl rand -hex 8)"
+          echo "secret-files<<${delimiter}" >> $GITHUB_OUTPUT
+          printf '%s' "${SECRET_FILES}" >> $GITHUB_OUTPUT
+          echo "${delimiter}" >> $GITHUB_OUTPUT
 
           if [[ $SECRET_COUNT -gt 0 ]]; then
             echo "Build secrets prepared (count: $SECRET_COUNT)"
@@ -477,7 +479,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           provenance: false
           sbom: false
-          secret-files: ${{ steps.secrets.outputs.secrets-spec-file }}
+          secret-files: ${{ steps.secrets.outputs.secret-files }}
           target: ${{ inputs.target }}
 
       - name: Export digest
@@ -693,7 +695,7 @@ jobs:
       - name: Clean up secret files
         if: always()
         run: |
-          rm -f /tmp/build-secret-* /tmp/build-secrets-spec
+          rm -f /tmp/build-secret-*
 
       - name: Output platform build summary
         if: always()
