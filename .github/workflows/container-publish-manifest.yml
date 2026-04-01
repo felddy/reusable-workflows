@@ -168,10 +168,19 @@ jobs:
             TAG_FLAGS="${TAG_FLAGS} --tag ${tag}"
           done <<< "${IMAGE_TAGS}"
 
-          # Build digest references from hex files inside per-platform subdirs
+          # Build digest references from hex files inside per-platform subdirs.
+          # Validate each filename matches ^[a-f0-9]{64}$ to catch corrupt artifacts.
           DIGEST_REFS=""
-          for digest_file in /tmp/digests/*/*; do
-            HEX=$(basename "${digest_file}")
+          for subdir in /tmp/digests/*/; do
+            HEX=$(ls "${subdir}" | grep -E '^[a-f0-9]{64}$' || true)
+            if [[ -z "${HEX}" ]]; then
+              echo "::error::No valid sha256 digest file found in ${subdir}"
+              exit 1
+            fi
+            if [[ $(echo "${HEX}" | wc -l) -gt 1 ]]; then
+              echo "::error::Multiple digest files found in ${subdir}: ${HEX}"
+              exit 1
+            fi
             DIGEST_REFS="${DIGEST_REFS} ghcr.io/${{ inputs.image-name }}@sha256:${HEX}"
           done
 

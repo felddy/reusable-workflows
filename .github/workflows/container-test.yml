@@ -164,9 +164,13 @@ jobs:
             --name "${ARTIFACT_NAME}" \
             --dir "${ARTIFACT_DIR}"
 
-          HEX=$(ls "${ARTIFACT_DIR}" | head -1)
+          HEX=$(ls "${ARTIFACT_DIR}" | grep -E '^[a-f0-9]{64}$' || true)
           if [[ -z "${HEX}" ]]; then
-            echo "::error::No digest file found in ${ARTIFACT_DIR}"
+            echo "::error::No valid sha256 digest file found in ${ARTIFACT_DIR}"
+            exit 1
+          fi
+          if [[ $(echo "${HEX}" | wc -l) -gt 1 ]]; then
+            echo "::error::Multiple digest files found in ${ARTIFACT_DIR}: ${HEX}"
             exit 1
           fi
 
