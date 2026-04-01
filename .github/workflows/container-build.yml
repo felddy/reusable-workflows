@@ -457,8 +457,13 @@ jobs:
         env:
           # Only upload build records in debug mode to reduce artifact storage
           DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.debug == true || env.ACTIONS_STEP_DEBUG == 'true' }}
-          # SOURCE_DATE_EPOCH for reproducible builds (from calculate-source-date-epoch job)
-          SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') && needs.calculate-source-date-epoch.outputs.source-date-epoch || '0' }}
+          # SOURCE_DATE_EPOCH controls layer timestamps for reproducible builds.
+          # On release tags: use the commit timestamp so published images have
+          # meaningful, stable timestamps that match the release commit.
+          # On branches/PRs: intentionally use 0 (Unix epoch) so BuildKit can
+          # reuse cached layers regardless of when the commit was made. Using the
+          # real timestamp on dev builds would bust the cache on every commit.
+          SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') && needs.calculate-source-date-epoch.outputs.source-date-epoch != '' && needs.calculate-source-date-epoch.outputs.source-date-epoch || '0' }}
         with:
           annotations: ${{ needs.metadata.outputs.annotations }}
           build-args: ${{ steps.parse-args.outputs.args }}
