@@ -1,95 +1,314 @@
 ---
-name: Calculate container metadata
+name: Container Metadata Generation
 
-# This reusable workflow calculates the labels and tags for a container image.
-# These tags will vary depending on the event that triggered the workflow.
+# This reusable workflow generates OCI-compliant metadata for container images
+# including tags, labels, and version information based on the GitHub event context.
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
 
 on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
-      # Required inputs
-      image_name:
-        description: The container image name
+      image-name:
+        description: Container image name (without registry)
         required: true
         type: string
+
+      link-repository:
+        description: Link package to repository (adds org.opencontainers.image.source label)
+        required: false
+        type: boolean
+        default: true
+
     outputs:
-      image_labels:
-        description: The calculated image labels
-        value: ${{ jobs.metadata.outputs.image_labels }}
-      image_tag_names:
-        description: The calculated image tag names (1.2.3, latest, etc)
-        value: ${{ jobs.metadata.outputs.image_tag_names }}
-      image_tags:
-        description: The calculated image tags (full image references with tags)
-        value: ${{ jobs.metadata.outputs.image_tags }}
-      latest:
-        description: True if the image is the latest version
-        value: ${{ jobs.metadata.outputs.latest }}
-      source_version:
-        description: The version declared in the source code
-        value: ${{ jobs.metadata.outputs.source_version }}
+      image-tags:
+        description: Generated image tags (newline-separated)
+        value: ${{ jobs.metadata.outputs.tags }}
+
+      image-labels:
+        description: Generated OCI labels (newline-separated)
+        value: ${{ jobs.metadata.outputs.labels }}
+
+      annotations:
+        description: Generated OCI annotations (newline-separated)
+        value: ${{ jobs.metadata.outputs.annotations }}
+
+      tag-names:
+        description: Bare tag names only (space-separated, e.g. "1.2.3 1.2 1 latest")
+        value: ${{ jobs.metadata.outputs.tag-names }}
+
+      version:
+        description: Calculated semantic version
+        value: ${{ jobs.metadata.outputs.version }}
+
+      is-latest:
+        description: Whether this is the latest release
+        value: ${{ jobs.metadata.outputs.is-latest }}
+
+      full-image-name:
+        description: Full image name with registry
+        value: ghcr.io/${{ inputs.image-name }}
+
+      commit-epoch:
+        description: Unix epoch of the commit timestamp (usable as SOURCE_DATE_EPOCH)
+        value: ${{ jobs.metadata.outputs.commit-epoch }}
 
 jobs:
   metadata:
-    name: Calculate variables
+    name: Generate Metadata
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
     outputs:
-      image_labels: ${{ steps.container_meta.outputs.labels }}
-      image_tag_names: ${{ steps.container_meta.outputs.tag-names }}
-      image_tags: ${{ steps.container_meta.outputs.tags }}
-      latest: ${{ steps.is_latest.outputs.latest }}
-      source_version: ${{ steps.source_values.outputs.source_version }}
-      tags: ${{ steps.prep.outputs.tags }}
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
+      annotations: ${{ steps.meta.outputs.annotations }}
+      version: ${{ steps.version.outputs.version }}
+      is-latest: ${{ steps.determine-latest.outputs.is-latest }}
+      full-name: ghcr.io/${{ inputs.image-name }}
+      tag-names: ${{ steps.tags.outputs.tag-names }}
+      commit-epoch: ${{ steps.commit-timestamp.outputs.epoch }}
+
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
         with:
-          egress-policy: block
-          allowed-endpoints: >
-            api.github.com:443
-            github.com:443
+          disable-sudo: true
+          egress-policy: audit
 
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+      - name: Checkout repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # tag=v4.2.4
+        with:
+          fetch-depth: 0
 
-      - name: Calculate values from source
-        id: source_values
+      - name: Get commit timestamp
+        id: commit-timestamp
         run: |
-          echo "source_version=$(./bump_version.sh show)" >> $GITHUB_OUTPUT
+          # Derive the created timestamp from the commit being built.
+          # This is stable for a given commit regardless of event type,
+          # ensuring reproducibility across push, release, PR, and schedule events.
+          EPOCH=$(git log -1 --format=%ct "${{ github.sha }}")
+          TIMESTAMP=$(date -u -d "@${EPOCH}" '+%Y-%m-%dT%H:%M:%SZ')
+          echo "epoch=$EPOCH" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "Commit timestamp: $TIMESTAMP (epoch: $EPOCH)"
 
-      - name: Determine if release is marked as latest
-        id: is_latest
+      - name: Determine event context
+        id: context
         run: |
-          if [ "${{ github.event_name }}" = "release" ] && [ "${{ github.event.release.prerelease }}" = "false" ]; then
-            # Check to see if this release was designated as the latest release
-            latest_release_id=$(curl -s -H "Accept: application/vnd.github+json" \
-                https://api.github.com/repos/${{ github.repository }}/releases/latest | jq .id)
-            if [ "$latest_release_id" = "${{ github.event.release.id }}" ]; then
-              echo "latest=true" >> $GITHUB_OUTPUT
-              exit 0
+          EVENT_NAME="${{ github.event_name }}"
+          echo "event-name=$EVENT_NAME" >> $GITHUB_OUTPUT
+
+          # Determine tag strategy based on event
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "strategy=pr" >> $GITHUB_OUTPUT
+            echo "ref-name=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          elif [[ "$EVENT_NAME" == "release" ]]; then
+            if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+              echo "strategy=prerelease" >> $GITHUB_OUTPUT
+            else
+              echo "strategy=release" >> $GITHUB_OUTPUT
+            fi
+            echo "ref-name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+              echo "strategy=tag" >> $GITHUB_OUTPUT
+              echo "ref-name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            else
+              echo "strategy=branch" >> $GITHUB_OUTPUT
+              echo "ref-name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "strategy=default" >> $GITHUB_OUTPUT
+            echo "ref-name=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          REF_NAME="${{ steps.context.outputs.ref-name }}"
+          STRATEGY="${{ steps.context.outputs.strategy }}"
+
+          # Extract semantic version from tag
+          if [[ "$STRATEGY" == "release" ]] || [[ "$STRATEGY" == "prerelease" ]] || [[ "$STRATEGY" == "tag" ]]; then
+            # Remove 'v' prefix if present
+            VERSION="${REF_NAME#v}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+            # Extract major, minor, patch
+            if [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-.*)?$ ]]; then
+              echo "major=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+              echo "minor=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+              echo "patch=${BASH_REMATCH[3]}" >> $GITHUB_OUTPUT
+              echo "prerelease=${BASH_REMATCH[4]}" >> $GITHUB_OUTPUT
+            else
+              echo "version=$VERSION" >> $GITHUB_OUTPUT
+              echo "major=" >> $GITHUB_OUTPUT
+              echo "minor=" >> $GITHUB_OUTPUT
+              echo "patch=" >> $GITHUB_OUTPUT
+              echo "prerelease=" >> $GITHUB_OUTPUT
+            fi
+          else
+            # For non-release builds, use commit SHA
+            echo "version=sha-${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+            echo "major=" >> $GITHUB_OUTPUT
+            echo "minor=" >> $GITHUB_OUTPUT
+            echo "patch=" >> $GITHUB_OUTPUT
+            echo "prerelease=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine if latest
+        id: determine-latest
+        run: |
+          STRATEGY="${{ steps.context.outputs.strategy }}"
+          IS_LATEST="false"
+
+          # Only consider non-prerelease releases for latest check
+          if [[ "$STRATEGY" == "release" && "${{ github.event.release.prerelease }}" == "false" ]]; then
+            REPO="${GITHUB_REPOSITORY}"
+            API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+
+            # Fetch the tag name of the latest GitHub release
+            LATEST_TAG="$(
+              curl -sSL \
+                -H "Authorization: Bearer ${{ github.token }}" \
+                -H "Accept: application/vnd.github+json" \
+                "${API_URL}" | jq -r '.tag_name // empty'
+            )"
+
+            # Mark as latest only if this release's tag matches the latest release tag
+            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" == "${{ github.event.release.tag_name }}" ]]; then
+              IS_LATEST="true"
             fi
           fi
-          echo "latest=false" >> $GITHUB_OUTPUT
+          echo "is-latest=$IS_LATEST" >> $GITHUB_OUTPUT
 
-      - name: Calculate container metadata
-        id: container_meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # tag=v5.10.0
+      - name: Generate tags
+        id: tags
+        run: |
+          STRATEGY="${{ steps.context.outputs.strategy }}"
+          REF_NAME="${{ steps.context.outputs.ref-name }}"
+          VERSION="${{ steps.version.outputs.version }}"
+          MAJOR="${{ steps.version.outputs.major }}"
+          MINOR="${{ steps.version.outputs.minor }}"
+
+          # Build newline-separated type=raw,value= expressions for docker/metadata-action
+          TAGS=""
+
+          add_tag() {
+            TAGS="${TAGS}type=raw,value=${1}\n"
+          }
+
+          case "$STRATEGY" in
+            pr)
+              add_tag "pr-${{ github.event.pull_request.number }}"
+              add_tag "sha-${GITHUB_SHA:0:7}"
+              ;;
+
+            branch)
+              # Normalize branch name to a Docker-safe tag:
+              # - convert to lowercase
+              # - replace any chars not in [a-z0-9_.-] (including /, spaces, @, etc.) with -
+              # - trim leading/trailing dashes
+              BRANCH_TAG="$(printf '%s' "$REF_NAME" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's/[^a-z0-9_.-]+/-/g' \
+                | sed -E 's/^-+|-+$//g')"
+              add_tag "$BRANCH_TAG"
+              add_tag "sha-${GITHUB_SHA:0:7}"
+              ;;
+
+            release)
+              add_tag "$VERSION"
+              if [[ -n "$MAJOR" ]] && [[ -n "$MINOR" ]]; then
+                add_tag "$MAJOR.$MINOR"
+                add_tag "$MAJOR"
+              fi
+              # Only add :release and :latest tags when this is the latest release
+              if [[ "${{ steps.determine-latest.outputs.is-latest }}" == "true" ]]; then
+                add_tag "release"
+                add_tag "latest"
+              fi
+              ;;
+
+            prerelease)
+              add_tag "$VERSION"
+              add_tag "prerelease"
+              ;;
+
+            tag)
+              add_tag "$VERSION"
+              ;;
+
+            *)
+              add_tag "latest"
+              ;;
+          esac
+
+          # Use multiline output delimiter for type=raw,value= expressions
+          delimiter="$(openssl rand -hex 8)"
+          echo "tags<<${delimiter}" >> $GITHUB_OUTPUT
+          printf "%b" "$TAGS" >> $GITHUB_OUTPUT
+          echo "${delimiter}" >> $GITHUB_OUTPUT
+
+          # Also output bare tag names space-separated (for use by mirror workflow)
+          TAG_NAMES=$(printf "%b" "$TAGS" | sed 's/type=raw,value=//g' | tr '\n' ' ' | sed 's/ $//')
+          echo "tag-names=$TAG_NAMES" >> $GITHUB_OUTPUT
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # tag=v6.0.0
         with:
-          flavor: |
-            latest=false
-          images: |
-            ghcr.io/${{ inputs.image_name }}
-          labels: |
-            org.opencontainers.image.version=${{ steps.source_values.outputs.source_version }}
+          images: ghcr.io/${{ inputs.image-name }}
           tags: |
-            type=edge
-            type=raw,value=latest,enable=${{ steps.is_latest.outputs.latest == 'true' }}
-            type=raw,value=prerelease,enable=${{ github.event_name == 'release' && github.event.release.prerelease }}
-            type=raw,value=release,enable=${{ steps.is_latest.outputs.latest == 'true' }}
-            type=raw,event=workflow_dispatch,value=${{ github.event.inputs.dispatch-tag }}
-            type=ref,event=branch
-            type=ref,event=pr
-            type=schedule,pattern=nightly
-            type=semver,pattern={{major}},enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' && !github.event.release.prerelease }}
-            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
-            type=sha
+            ${{ steps.tags.outputs.tags }}
+          # Use the git commit timestamp for org.opencontainers.image.created to ensure
+          # reproducibility. This is stable for a given commit regardless of event type
+          # (push, release, PR, schedule), unlike repository metadata which can change
+          # independently of the commit being built.
+          labels: |
+            org.opencontainers.image.title=${{ github.event.repository.name }}
+            org.opencontainers.image.description=${{ github.event.repository.description }}
+            org.opencontainers.image.url=${{ github.event.repository.html_url }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ steps.commit-timestamp.outputs.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
+            org.opencontainers.image.authors=${{ github.repository_owner }}
+            ${{ inputs.link-repository == true && format('org.opencontainers.image.source={0}', github.event.repository.html_url) || '' }}
+          annotations: |
+            ${{ inputs.link-repository == true && format('org.opencontainers.image.source={0}', github.event.repository.html_url) || '' }}
+
+      - name: Output metadata summary
+        run: |
+          echo "## Container Metadata Generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Strategy:** \`${{ steps.context.outputs.strategy }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Is Latest:** \`${{ steps.determine-latest.outputs.is-latest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Linked to Repository:** \`${{ inputs.link-repository }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ inputs.link-repository }}" == "false" ]]; then
+            echo "### ⚠️ Private Package (Not Linked)" >> $GITHUB_STEP_SUMMARY
+            echo "This package is NOT linked to the repository (no org.opencontainers.image.source label)." >> $GITHUB_STEP_SUMMARY
+            echo "- Package is scoped to user/org account" >> $GITHUB_STEP_SUMMARY
+            echo "- Private by default" >> $GITHUB_STEP_SUMMARY
+            echo "- Will NOT appear on repository packages page" >> $GITHUB_STEP_SUMMARY
+            echo "- Access controlled via package permissions" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### Tags" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Labels" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.labels }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

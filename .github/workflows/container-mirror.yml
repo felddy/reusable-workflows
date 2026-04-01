@@ -1,33 +1,63 @@
 ---
-name: Mirror images to a registry
+name: Container Mirror Workflow
+
+# This reusable workflow mirrors container images from a source registry to a
+# target registry while preserving all security artifacts (attestations and
+# signatures) using ORAS recursive copy.
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
 
 on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
+      # Required
       image_name:
-        description: The image base name, e.g. felddy/foundryvtt-container
+        description: The image base name (e.g., felddy/foundryvtt-container)
         required: true
         type: string
+
       image_tag_names:
-        description: Space-delimited list of tags to mirror, e.g. "13 13.351 latest"
+        description: Space-delimited list of tags to mirror (e.g., "13 13.351 latest")
         required: true
         type: string
+
       target_registry:
-        description: The target registry hostname, e.g. docker.io
+        description: Target registry hostname (e.g., docker.io)
         required: true
         type: string
+
+      # Optional
+      source_registry:
+        description: Source registry hostname (e.g., ghcr.io, docker.io)
+        required: false
+        type: string
+        default: ghcr.io
+
     secrets:
-      registry_password:
-        description: The password for the target registry account
+      # Source Registry Authentication (optional)
+      source-registry-username:
+        description: Username for source registry authentication
+        required: false
+
+      source-registry-password:
+        description: Password/token for source registry authentication
+        required: false
+
+      # Target Registry Authentication (required)
+      target-registry-username:
+        description: Username for target registry authentication
         required: true
-      registry_username:
-        description: The username for the target registry account
+
+      target-registry-password:
+        description: Password/token for target registry authentication
         required: true
 
 jobs:
   mirror:
-    name: Mirror images
+    name: Mirror Container Images
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       packages: read
@@ -36,61 +66,182 @@ jobs:
       - name: Harden Runner
         uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
         with:
+          disable-sudo: true
+          egress-policy: audit
           allowed-endpoints: >
             auth.docker.io:443
-            docker-images-prod.*.r2.cloudflarestorage.com
             docker.io:443
+            gcr.io:443
             ghcr.io:443
             github.com:443
-            *.githubusercontent.com:443
             index.docker.io:443
             production.cloudflare.docker.com:443
+            proxy.golang.org:443
+            quay.io:443
             registry-1.docker.io:443
+            registry.hub.docker.com:443
+            registry.k8s.io:443
+            sum.golang.org:443
 
-      - name: Set up buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
+      - name: Install ORAS
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # tag=v1.2.4
 
-      - name: Log in to source registry (GHCR)
-        # Assumes source is GHCR and images are public or readable by GITHUB_TOKEN
+      - name: Verify ORAS installation
+        run: |
+          echo "ORAS installed successfully"
+          oras version
+
+      - name: Determine source authentication method
+        id: source-auth
+        run: |
+          # Determine if we should authenticate to source registry
+          # Logic:
+          # 1. If source credentials provided -> use them
+          # 2. If ghcr.io and no source credentials -> use GITHUB_TOKEN
+          # 3. Otherwise -> skip (public registry)
+
+          if [ -n "${{ secrets.source-registry-username }}" ] && [ -n "${{ secrets.source-registry-password }}" ]; then
+            echo "authenticate=true" >> $GITHUB_OUTPUT
+            echo "use-github-token=false" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.source_registry }}" = "ghcr.io" ]; then
+            echo "authenticate=true" >> $GITHUB_OUTPUT
+            echo "use-github-token=true" >> $GITHUB_OUTPUT
+          else
+            echo "authenticate=false" >> $GITHUB_OUTPUT
+            echo "use-github-token=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Log in to source registry
+        if: steps.source-auth.outputs.authenticate == 'true'
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: ${{ inputs.source_registry }}
+          username: ${{ steps.source-auth.outputs.use-github-token == 'true' && github.actor || secrets.source-registry-username }}
+          password: ${{ steps.source-auth.outputs.use-github-token == 'true' && secrets.GITHUB_TOKEN || secrets.source-registry-password }}
 
       - name: Log in to target registry
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ${{ inputs.target_registry }}
-          username: ${{ secrets.registry_username }}
-          password: ${{ secrets.registry_password }}
+          username: ${{ secrets.target-registry-username }}
+          password: ${{ secrets.target-registry-password }}
 
-      - name: Mirror images
-        env:
-          SOURCE_REGISTRY: ghcr.io
-          TARGET_REGISTRY: ${{ inputs.target_registry }}
-          IMAGE_NAME: ${{ inputs.image_name }}
-          TAG_NAMES: ${{ inputs.image_tag_names }}
+      - name: Mirror images with ORAS
         run: |
           set -euo pipefail
 
-          for tag in ${TAG_NAMES}; do
-            src="${SOURCE_REGISTRY}/${IMAGE_NAME}:${tag}"
-            dst="${TARGET_REGISTRY}/${IMAGE_NAME}:${tag}"
+          # Parse space-delimited tags into array for sequential processing
+          IFS=' ' read -ra TAGS <<< "${{ inputs.image_tag_names }}"
 
-            echo "Mirroring ${src} -> ${dst}"
-            docker buildx imagetools create \
-              --tag "${dst}" \
-              "${src}"
+          # Process each tag sequentially
+          for tag in "${TAGS[@]}"; do
+            echo "Processing tag: ${tag}"
+
+            # Construct source image reference
+            source_image="${SOURCE_REGISTRY}/${IMAGE_NAME}:${tag}"
+
+            # Verify source image exists
+            echo "Verifying source image: ${source_image}"
+            if ! source_verify_output=$(oras manifest fetch "${source_image}" 2>&1); then
+              echo "Error: Source image verification failed"
+              echo "Image: ${source_image}"
+              echo "Error: ${source_verify_output}"
+              exit 1
+            fi
+            echo "Source image verified successfully"
+
+            # Construct target image reference
+            target_image="${TARGET_REGISTRY}/${IMAGE_NAME}:${tag}"
+
+            # Log mirroring operation start
+            echo "Starting mirror operation"
+            echo "Source: ${source_image}"
+            echo "Target: ${target_image}"
+
+            # Execute recursive copy with ORAS
+            if ! oras cp --recursive "${source_image}" "${target_image}"; then
+              echo "Error: Image and artifact copy failed"
+              echo "Source: ${source_image}"
+              echo "Target: ${target_image}"
+              exit 1
+            fi
+            echo "Image and artifacts copied successfully"
+
+            # Verify target image exists
+            echo "Verifying target image: ${target_image}"
+            if ! target_verify_output=$(oras manifest fetch "${target_image}" 2>&1); then
+              echo "Error: Target image verification failed"
+              echo "Image: ${target_image}"
+              echo "Error: ${target_verify_output}"
+              exit 1
+            fi
+            echo "Target image verified successfully"
+
+            # Discover and count artifacts
+            echo "Discovering artifacts for: ${target_image}"
+            artifact_stderr=$(mktemp)
+            if ! artifact_output=$(oras discover --format json "${target_image}" 2>"${artifact_stderr}"); then
+              echo "Error: Artifact discovery failed"
+              echo "Image: ${target_image}"
+              echo "Error: $(cat "${artifact_stderr}")"
+              rm -f "${artifact_stderr}"
+              exit 1
+            fi
+            rm -f "${artifact_stderr}"
+
+            # Count artifacts and log for observability
+            artifact_count=$(echo "${artifact_output}" | jq '.referrers // [] | length')
+            echo "Artifacts discovered: ${artifact_count}"
+
+            # Multi-architecture verification
+            # Fetch source manifest to check if it's a manifest list
+            if ! source_manifest=$(oras manifest fetch "${source_image}" 2>&1); then
+              echo "Error: Failed to fetch source manifest for platform verification"
+              echo "Image: ${source_image}"
+              echo "Error: ${source_manifest}"
+              exit 1
+            fi
+
+            if echo "${source_manifest}" | jq -e '.manifests' > /dev/null 2>&1; then
+              echo "Multi-architecture image detected: ${source_image}"
+
+              # Extract platform list from source manifest list
+              # Include variant (e.g. v7, v8) when present to distinguish linux/arm/v5 from linux/arm/v7
+              source_platforms=$(echo "${source_manifest}" | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)" + (if .variant then "/\(.variant)" else "" end)] | sort | join(",")')
+              platform_count=$(echo "${source_manifest}" | jq '.manifests | length')
+              echo "Source platforms (${platform_count}): ${source_platforms}"
+
+              # Fetch target manifest list and compare platforms
+              if ! target_manifest=$(oras manifest fetch "${target_image}" 2>&1); then
+                echo "Error: Failed to fetch target manifest for platform verification"
+                echo "Image: ${target_image}"
+                echo "Error: ${target_manifest}"
+                exit 1
+              fi
+              if ! echo "${target_manifest}" | jq -e '.manifests' > /dev/null 2>&1; then
+                echo "Error: Target image is missing manifest list"
+                echo "Image: ${target_image}"
+                exit 1
+              fi
+
+              target_platforms=$(echo "${target_manifest}" | jq -r '[.manifests[].platform | "\(.os)/\(.architecture)" + (if .variant then "/\(.variant)" else "" end)] | sort | join(",")')
+              echo "Target platforms: ${target_platforms}"
+
+              if [ "${source_platforms}" != "${target_platforms}" ]; then
+                echo "Error: Platform mismatch between source and target"
+                echo "Source platforms: ${source_platforms}"
+                echo "Target platforms: ${target_platforms}"
+                exit 1
+              fi
+              echo "Platform verification passed: all ${platform_count} platforms present in target"
+            else
+              echo "Single-architecture image: ${source_image}"
+            fi
+
+            # Log success with destination reference
+            echo "Successfully mirrored: ${target_image}"
           done
-
-      - name: Inspect mirrored image
         env:
+          SOURCE_REGISTRY: ${{ inputs.source_registry }}
           TARGET_REGISTRY: ${{ inputs.target_registry }}
           IMAGE_NAME: ${{ inputs.image_name }}
-          IMAGE_TAG_NAMES: ${{ inputs.image_tag_names }}
-        run: |
-          set -euo pipefail
-
-          first_tag=$(printf '%s\n' "$IMAGE_TAG_NAMES" | head -n1 | cut -d' ' -f1)
-          docker buildx imagetools inspect "$TARGET_REGISTRY/$IMAGE_NAME:$first_tag"

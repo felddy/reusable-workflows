@@ -1,210 +1,348 @@
 ---
-name: Build container image
+name: Container Build Workflow
 
-# This reusable workflow builds container images.  It allows images to be pushed
-# to GitHub Container Registry, or uploaded as an artifact for later use by
-# other workflows.
-#
-# Additional workflow features include:
-# - Caching of container layers to Github Actions cache
-# - Optional encryption of container images stored as artifacts
-# - Ability to suffix tags with additional information. For example, adding the
-#   platform identifier so the image can be later included in a multi-platform
-#   manifest.
+# This reusable workflow builds OCI-compliant container images with modern
+# supply chain security features.
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
+
+# Tool Versions - Update these to bump tool versions across the workflow
+env:
+  CRANE_VERSION: v0.21.1
 
 on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
-      # Required inputs
+      # Required
       platforms:
-        description: The platform(s) to build (CSV)
+        description: Platforms to build (JSON array string, e.g. '["linux/amd64","linux/arm64"]')
         required: true
         type: string
-      # Optional inputs
-      artifact_name:
-        default: ""
-        description: Upload the image archive as an artifact if specified (name will be cleaned)
-        required: false
-        type: string
-      artifact_retention_days:
-        default: 1
-        description: Number of days to retain the artifact
-        required: false
-        type: number
-      cache_from_scopes:
-        default: buildkit
-        description: The GitHub Action Cache scopes to read from (name will be cleaned, CSV)
-        required: false
-        type: string
-      cache_to_scope:
-        default: buildkit
-        description: The GitHub Action Cache scope to write to (name will be cleaned)
-        required: false
-        type: string
-      docker_file:
-        default: ./Dockerfile
-        description: The Dockerfile to use
-        required: false
-        type: string
-      image_labels:
-        description: Image labels to apply to the image
-        required: false
-        type: string
-      image_tags:
-        default: ""
-        description: The tags to apply to the image
-        required: false
-        type: string
-      image_archive_name_stem:
-        default: image
-        description: The stem of the image archive name (will be cleaned)
-        required: false
-        type: string
+
+      # Publishing
       push:
-        default: false
-        description: Push the image to the registries (disables artifact upload)
+        description: Push image to registry (set to false for PR builds to avoid publishing untrusted images)
         required: false
         type: boolean
-      tag_suffix:
+        default: true
+
+      # Image Configuration
+      image-name:
+        description: Container image name (without registry)
+        required: false
+        type: string
+        default: ${{ github.repository }}
+
+      # Build Configuration
+      context:
+        description: Build context path
+        required: false
+        type: string
+        default: .
+
+      dockerfile:
+        description: Path to Dockerfile
+        required: false
+        type: string
+        default: ./Dockerfile
+
+      build-args:
+        description: Build arguments (multiline string, KEY=VALUE per line)
+        required: false
+        type: string
         default: ""
-        description: Suffix to append to the image tags (name will be cleaned)
+
+      target:
+        description: Build target for multi-stage builds
         required: false
         type: string
-      build_arg_1_name:
-        description: The name of the first build arg
+        default: ""
+
+      # Security Configuration
+      scan-severity:
+        description: >
+          Fail on vulnerabilities at or above this severity (e.g. CRITICAL,HIGH).
+          Set to empty string to disable the vulnerability gate entirely.
         required: false
         type: string
-      build_arg_2_name:
-        description: The name of the second build arg
+        default: CRITICAL,HIGH
+
+      upload-scan-results:
+        description: >
+          Upload vulnerability scan results (SARIF) to GitHub Security tab.
+          Set to false when vulnerabilities are in third-party code unrelated
+          to this repository (e.g. pre-installed application binaries).
+        required: false
+        type: boolean
+        default: true
+
+      # Caching
+      cache-scope:
+        description: Cache scope for this build
         required: false
         type: string
-      build_arg_3_name:
-        description: The name of the third build arg
+        default: ""
+
+      # Debug
+      debug:
+        description: Enable debug mode (verbose logging)
+        required: false
+        type: boolean
+        default: false
+
+      # Build secret IDs — controls the --secret id= name used in Dockerfile RUN mounts.
+      # Defaults to build-secret-N if not specified.
+      build-secret-1-name:
+        description: Secret ID for build-secret-1 (used as --secret id=NAME in Dockerfile)
         required: false
         type: string
-      build_arg_4_name:
-        description: The name of the fourth build arg
+        default: build-secret-1
+
+      build-secret-2-name:
+        description: Secret ID for build-secret-2 (used as --secret id=NAME in Dockerfile)
         required: false
         type: string
-      build_arg_5_name:
-        description: The name of the fifth build arg
+        default: build-secret-2
+
+      build-secret-3-name:
+        description: Secret ID for build-secret-3 (used as --secret id=NAME in Dockerfile)
         required: false
         type: string
-      build_arg_6_name:
-        description: The name of the sixth build arg
+        default: build-secret-3
+
+      build-secret-4-name:
+        description: Secret ID for build-secret-4 (used as --secret id=NAME in Dockerfile)
         required: false
         type: string
-      build_arg_7_name:
-        description: The name of the seventh build arg
+        default: build-secret-4
+
+      build-secret-5-name:
+        description: Secret ID for build-secret-5 (used as --secret id=NAME in Dockerfile)
         required: false
         type: string
-      build_arg_8_name:
-        description: The name of the eighth build arg
+        default: build-secret-5
+
+    secrets:
+      # Build secrets - pass individually for proper redaction
+      # CRITICAL: Do NOT use JSON/XML/YAML blobs as secret values
+      # GitHub cannot properly redact structured data
+      # See: https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions
+      build-secret-1:
+        description: Build secret 1 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_1_name:
-        description: The name of the first build secret
+
+      build-secret-2:
+        description: Build secret 2 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_2_name:
-        description: The name of the second build secret
+
+      build-secret-3:
+        description: Build secret 3 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_3_name:
-        description: The name of the third build secret
+
+      build-secret-4:
+        description: Build secret 4 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_4_name:
-        description: The name of the fourth build secret
+
+      build-secret-5:
+        description: Build secret 5 (individual secret for proper redaction)
         required: false
-        type: string
-      build_secret_5_name:
-        description: The name of the fifth build secret
+
+      private-package-token:
+        description: >
+          Token for private package authentication (use instead of GITHUB_TOKEN
+          for private builds). Required permissions: packages:write, packages:read.
+          Generate a fine-grained personal access token at
+          https://github.com/settings/personal-access-tokens/new with
+          "Read and Write access to packages" under Repository permissions.
         required: false
-        type: string
-      build_secret_6_name:
-        description: The name of the sixth build secret
+
+      private-package-username:
+        description: >
+          Username for private-package-token authentication. Required when the
+          PAT owner differs from github.repository_owner (e.g. org repos using
+          a service account PAT). Defaults to github.repository_owner when absent.
         required: false
-        type: string
-      build_secret_7_name:
-        description: The name of the seventh build secret
-        required: false
-        type: string
-      build_secret_8_name:
-        description: The name of the eighth build secret
-        required: false
-        type: string
 
     outputs:
-      artifact_name:
-        description: The cleaned name of the artifact (if any)
-        value: ${{ jobs.build-image.outputs.artifact_name }}
-      image_archive_name:
-        description: The name of the image archive
-        value: ${{ jobs.build-image.outputs.image_archive_name }}
-    secrets:
-      image_archive_key:
-        description: Enables encryption of the image archive if specified
-        required: false
-      build_arg_1_value:
-        description: The value of the first build arg
-        required: false
-      build_arg_2_value:
-        description: The value of the second build arg
-        required: false
-      build_arg_3_value:
-        description: The value of the third build arg
-        required: false
-      build_arg_4_value:
-        description: The value of the fourth build arg
-        required: false
-      build_arg_5_value:
-        description: The value of the fifth build arg
-        required: false
-      build_arg_6_value:
-        description: The value of the sixth build arg
-        required: false
-      build_arg_7_value:
-        description: The value of the seventh build arg
-        required: false
-      build_arg_8_value:
-        description: The value of the eighth build arg
-        required: false
-      build_secret_1_value:
-        description: The value of the first build secret
-        required: false
-      build_secret_2_value:
-        description: The value of the second build secret
-        required: false
-      build_secret_3_value:
-        description: The value of the third build secret
-        required: false
-      build_secret_4_value:
-        description: The value of the fourth build secret
-        required: false
-      build_secret_5_value:
-        description: The value of the fifth build secret
-        required: false
-      build_secret_6_value:
-        description: The value of the sixth build secret
-        required: false
-      build_secret_7_value:
-        description: The value of the seventh build secret
-        required: false
-      build_secret_8_value:
-        description: The value of the eighth build secret
-        required: false
+      image-name:
+        description: The image name used in this build
+        value: ${{ inputs.image-name }}
 
-env:
-  OUTPUT_ARTIFACT_WORK_DIR: /tmp/output-artifact-work
+      image-tags:
+        description: Generated image tags
+        value: ${{ jobs.metadata.outputs.image-tags }}
+
+      image-tag-names:
+        description: Bare tag names only (space-separated, e.g. "1.2.3 1.2 1 latest")
+        value: ${{ jobs.metadata.outputs.tag-names }}
+
+      image-version:
+        description: Calculated version
+        value: ${{ jobs.metadata.outputs.version }}
 
 jobs:
-  build-image:
-    name: Build image
+  # Calculate SOURCE_DATE_EPOCH for reproducible builds
+  calculate-source-date-epoch:
+    name: Calculate SOURCE_DATE_EPOCH
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
     outputs:
-      artifact_name: ${{ steps.clean.outputs.artifact_name }}
-      image_archive_name: ${{ steps.check_image_archive_key.outputs.file_name }}
+      source-date-epoch: ${{ steps.calculate.outputs.source-date-epoch }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            objects.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      - name: Calculate SOURCE_DATE_EPOCH
+        id: calculate
+        run: |
+          # Calculate commit timestamp for SOURCE_DATE_EPOCH
+          # This value is used conditionally in the build step:
+          # - Release builds (refs/tags/*): Use commit timestamp for release tracking
+          # - Development builds (branches, PRs): Use 0 for maximum cache reuse
+          # The build step automatically selects the appropriate value based on github.ref
+          if [ -d .git ]; then
+            # Get the commit timestamp from git
+            COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
+            echo "source-date-epoch=$COMMIT_TIMESTAMP" >> $GITHUB_OUTPUT
+            COMMIT_DATE=$(date -u -d "@$COMMIT_TIMESTAMP" '+%Y-%m-%d %H:%M:%S UTC')
+            echo "Reproducible build timestamp: $COMMIT_DATE (epoch: $COMMIT_TIMESTAMP)"
+          else
+            # Fallback to Unix epoch (0) for reproducibility
+            FALLBACK_TIMESTAMP=0
+            echo "source-date-epoch=$FALLBACK_TIMESTAMP" >> $GITHUB_OUTPUT
+            echo "::warning::Not in a git repository, using Unix epoch (0) for SOURCE_DATE_EPOCH"
+          fi
+
+  # Determine visibility based on presence of private-package-token
+  determine-visibility:
+    name: Determine Visibility
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: none
+
+    outputs:
+      link-repository: ${{ steps.check.outputs.link-repository }}
+      is-private: ${{ steps.check.outputs.is-private }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            127.0.0.1
+
+      - name: Check for private package token
+        id: check
+        run: |
+          # If private-package-token is provided, package is private (unlinked)
+          # Otherwise, package is public (linked to repository)
+          if [[ -n "${{ secrets.private-package-token }}" ]]; then
+            echo "link-repository=false" >> $GITHUB_OUTPUT
+            echo "is-private=true" >> $GITHUB_OUTPUT
+            echo "Private package mode: will NOT link to repository"
+          else
+            echo "link-repository=true" >> $GITHUB_OUTPUT
+            echo "is-private=false" >> $GITHUB_OUTPUT
+            echo "Public package mode: will link to repository"
+          fi
+
+  # Generate metadata (tags, labels, version)
+  metadata:
+    name: Generate Metadata
+    needs:
+      - determine-visibility
+    permissions:
+      contents: read
+    uses: ./.github/workflows/container-metadata.yml
+    with:
+      image-name: ${{ inputs.image-name }}
+      link-repository: ${{ needs.determine-visibility.outputs.link-repository == 'true' }}
+
+  # Map platforms to native GitHub-hosted runners where available.
+  # Falls back to ubuntu-latest (+ QEMU) for platforms without a native runner.
+  generate-matrix:
+    name: Generate platform matrix
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: none
+
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            127.0.0.1
+
+      - name: Set matrix
+        id: set-matrix
+        run: |
+          PLATFORMS_JSON='${{ inputs.platforms }}'
+          MATRIX=$(echo "${PLATFORMS_JSON}" | jq -c '
+            map({
+              platform: .,
+              runner: (
+                if . == "linux/arm64/v8" or . == "linux/arm64" then "ubuntu-24.04-arm"
+                else "ubuntu-latest"
+                end
+              )
+            }) | {include: .}
+          ')
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
+
+  # Build container image (multi-architecture support)
+  build:
+    name: Build ${{ matrix.platform }}
+    needs:
+      - calculate-source-date-epoch
+      - metadata
+      - generate-matrix
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+
+    env:
+      PREDICATE_TYPE_PROVENANCE: https://slsa.dev/provenance/v1
+      PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
+      PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
+      PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
+
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # tag=v2.14.2
@@ -212,191 +350,391 @@ jobs:
           disable-sudo: true
           egress-policy: audit
 
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # tag=v3.7.0
+      - name: Enable debug mode
+        if: inputs.debug == true
+        run: |
+          echo "BUILDKIT_PROGRESS=plain" >> $GITHUB_ENV
+          echo "ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
+          echo "Debug mode enabled - verbose logging active"
 
-      - name: Set up buildx
+      - name: Set up QEMU for multi-arch builds
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # tag=v3.3.0
+        with:
+          platforms: all
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # tag=v3.12.0
+        with:
+          driver-opts: |
+            image=moby/buildkit:v0.28.1
+            network=host
 
-      - name: Login to GitHub Container Registry
-        if: inputs.push == true
+      - name: Log in to container registry
+        if: inputs.push
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # tag=v3.7.0
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
+          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
-      - name: Create directories for artifact work
+      - name: Parse build arguments
+        id: parse-args
         run: |
-          mkdir -p ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}
+          # Parse multiline build-args into format for docker build
+          BUILD_ARGS="${{ inputs.build-args }}"
 
-      - name: Clean variables
-        id: clean
-        run: |
-          # Replace illegal characters in artifact name
-          echo artifact_name=$(echo "${{ inputs.artifact_name }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
-          # Replace illegal characters in cache from scope list
-          echo cache_from_scopes=$(echo "${{ inputs.cache_from_scopes }}" | sed -e 's/[^a-zA-Z0-9.,_-]/_/g') >> $GITHUB_OUTPUT
-          # Replace illegal characters in cache to scope
-          echo cache_to_scope=$(echo "${{ inputs.cache_to_scope }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
-          # Replace illegal characters in image archive name
-          echo image_archive_name_stem=$(echo "${{ inputs.image_archive_name_stem }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
-          # Replace illegal characters in tag suffix
-          echo suffix=$(echo "${{ inputs.tag_suffix }}" | sed -e 's/[^a-zA-Z0-9._-]/_/g') >> $GITHUB_OUTPUT
+          if [[ -n "$BUILD_ARGS" ]]; then
+            # Use a delimiter for multiline output
+            delimiter="$(openssl rand -hex 8)"
+            echo "args<<${delimiter}" >> $GITHUB_OUTPUT
+            echo "$BUILD_ARGS" >> $GITHUB_OUTPUT
+            echo "${delimiter}" >> $GITHUB_OUTPUT
 
-      - name: Add suffix to image tags
-        id: tag_suffix
-        run: |
-          delimiter="$(openssl rand -hex 8)"
-          echo "tags<<${delimiter}" >> $GITHUB_OUTPUT
-          # if tag_suffix is set, append it to each tag
-          if [[ -n "${{ inputs.tag_suffix }}" ]]; then
-            echo "${{ inputs.image_tags }}" | sed -e "s/$/-${{ steps.clean.outputs.suffix }}/" >> $GITHUB_OUTPUT
+            echo "Build arguments parsed successfully"
           else
-            echo "${{ inputs.image_tags }}" >> $GITHUB_OUTPUT
+            echo "args=" >> $GITHUB_OUTPUT
+            echo "No build arguments provided"
           fi
-          echo "${delimiter}" >> $GITHUB_OUTPUT
-
-      - name: Prepare build args
-        id: prepare-build-args
-        env:
-          ARG_1_NAME: ${{ inputs.build_arg_1_name }}
-          ARG_1_VALUE: ${{ secrets.build_arg_1_value }}
-          ARG_2_NAME: ${{ inputs.build_arg_2_name }}
-          ARG_2_VALUE: ${{ secrets.build_arg_2_value }}
-          ARG_3_NAME: ${{ inputs.build_arg_3_name }}
-          ARG_3_VALUE: ${{ secrets.build_arg_3_value }}
-          ARG_4_NAME: ${{ inputs.build_arg_4_name }}
-          ARG_4_VALUE: ${{ secrets.build_arg_4_value }}
-          ARG_5_NAME: ${{ inputs.build_arg_5_name }}
-          ARG_5_VALUE: ${{ secrets.build_arg_5_value }}
-          ARG_6_NAME: ${{ inputs.build_arg_6_name }}
-          ARG_6_VALUE: ${{ secrets.build_arg_6_value }}
-          ARG_7_NAME: ${{ inputs.build_arg_7_name }}
-          ARG_7_VALUE: ${{ secrets.build_arg_7_value }}
-          ARG_8_NAME: ${{ inputs.build_arg_8_name }}
-          ARG_8_VALUE: ${{ secrets.build_arg_8_value }}
-        run: |
-          delimiter="$(openssl rand -hex 8)"
-          echo "build_args<<${delimiter}" >> $GITHUB_OUTPUT
-          for i in {1..8}; do
-            arg_name_var="ARG_${i}_NAME"
-            arg_value_var="ARG_${i}_VALUE"
-            arg_name=${!arg_name_var}
-            arg_value=${!arg_value_var}
-            if [[ -n "$arg_name" && -n "$arg_value" ]]; then
-              echo "${arg_name}=${arg_value}" >> $GITHUB_OUTPUT
-            fi
-          done
-          echo "${delimiter}" >> $GITHUB_OUTPUT
 
       - name: Prepare build secrets
-        id: prepare-build-secrets
+        id: secrets
+        run: |
+          # Prepare secrets for BuildKit secret mounts.
+          # secret-files input expects newline-separated "id=path" entries.
+          # We write each secret to a temp file and output the id=path pairs.
+          # Using secret-files (file paths) rather than secrets (inline values)
+          # avoids the multiline expression stripping issue in GitHub Actions
+          # `with:` blocks where ${{ steps.*.outputs.* }} newlines are removed.
+          umask 077
+          SECRET_FILES=""
+          SECRET_COUNT=0
+
+          if [[ -n "${{ secrets.build-secret-1 }}" ]]; then
+            printf '%s' "${{ secrets.build-secret-1 }}" > /tmp/build-secret-1
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-1-name }}=/tmp/build-secret-1"$'\n'
+            SECRET_COUNT=$((SECRET_COUNT + 1))
+          fi
+
+          if [[ -n "${{ secrets.build-secret-2 }}" ]]; then
+            printf '%s' "${{ secrets.build-secret-2 }}" > /tmp/build-secret-2
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-2-name }}=/tmp/build-secret-2"$'\n'
+            SECRET_COUNT=$((SECRET_COUNT + 1))
+          fi
+
+          if [[ -n "${{ secrets.build-secret-3 }}" ]]; then
+            printf '%s' "${{ secrets.build-secret-3 }}" > /tmp/build-secret-3
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-3-name }}=/tmp/build-secret-3"$'\n'
+            SECRET_COUNT=$((SECRET_COUNT + 1))
+          fi
+
+          if [[ -n "${{ secrets.build-secret-4 }}" ]]; then
+            printf '%s' "${{ secrets.build-secret-4 }}" > /tmp/build-secret-4
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-4-name }}=/tmp/build-secret-4"$'\n'
+            SECRET_COUNT=$((SECRET_COUNT + 1))
+          fi
+
+          if [[ -n "${{ secrets.build-secret-5 }}" ]]; then
+            printf '%s' "${{ secrets.build-secret-5 }}" > /tmp/build-secret-5
+            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-5-name }}=/tmp/build-secret-5"$'\n'
+            SECRET_COUNT=$((SECRET_COUNT + 1))
+          fi
+
+          # Write multiline output using heredoc delimiter
+          delimiter="$(openssl rand -hex 8)"
+          echo "secret-files<<${delimiter}" >> $GITHUB_OUTPUT
+          printf '%s' "${SECRET_FILES}" >> $GITHUB_OUTPUT
+          echo "${delimiter}" >> $GITHUB_OUTPUT
+
+          if [[ $SECRET_COUNT -gt 0 ]]; then
+            echo "Build secrets prepared (count: $SECRET_COUNT)"
+          fi
+
+      - name: Prepare platform-specific cache scope
+        id: cache-scope
+        run: |
+          # Create platform-specific cache scope for better cache hits
+          PLATFORM="${{ matrix.platform }}"
+          PLATFORM_SLUG="${PLATFORM//\//-}"  # Replace / with -
+
+          BASE_SCOPE="${{ inputs.cache-scope || 'build' }}"
+          PLATFORM_SCOPE="${BASE_SCOPE}-${PLATFORM_SLUG}"
+
+          echo "scope=$PLATFORM_SCOPE" >> $GITHUB_OUTPUT
+          echo "Cache scope: $PLATFORM_SCOPE"
+
+      - name: Build and push container image
+        id: build
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # tag=v6.10.0
         env:
-          SECRET_1_NAME: ${{ inputs.build_secret_1_name }}
-          SECRET_1_VALUE: ${{ secrets.build_secret_1_value }}
-          SECRET_2_NAME: ${{ inputs.build_secret_2_name }}
-          SECRET_2_VALUE: ${{ secrets.build_secret_2_value }}
-          SECRET_3_NAME: ${{ inputs.build_secret_3_name }}
-          SECRET_3_VALUE: ${{ secrets.build_secret_3_value }}
-          SECRET_4_NAME: ${{ inputs.build_secret_4_name }}
-          SECRET_4_VALUE: ${{ secrets.build_secret_4_value }}
-          SECRET_5_NAME: ${{ inputs.build_secret_5_name }}
-          SECRET_5_VALUE: ${{ secrets.build_secret_5_value }}
-          SECRET_6_NAME: ${{ inputs.build_secret_6_name }}
-          SECRET_6_VALUE: ${{ secrets.build_secret_6_value }}
-          SECRET_7_NAME: ${{ inputs.build_secret_7_name }}
-          SECRET_7_VALUE: ${{ secrets.build_secret_7_value }}
-          SECRET_8_NAME: ${{ inputs.build_secret_8_name }}
-          SECRET_8_VALUE: ${{ secrets.build_secret_8_value }}
-        run: |
-          delimiter="$(openssl rand -hex 8)"
-          echo "build_secrets<<${delimiter}" >> $GITHUB_OUTPUT
-          for i in {1..3}; do
-            secret_name_var="SECRET_${i}_NAME"
-            secret_value_var="SECRET_${i}_VALUE"
-            secret_name=${!secret_name_var}
-            secret_value=${!secret_value_var}
-            if [[ -n "$secret_name" && -n "$secret_value" ]]; then
-              echo "\"${secret_name}=${secret_value}\"" >> $GITHUB_OUTPUT
-            fi
-          done
-          echo "${delimiter}" >> $GITHUB_OUTPUT
+          # Only upload build records in debug mode to reduce artifact storage
+          DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.debug == true || env.ACTIONS_STEP_DEBUG == 'true' }}
+          # SOURCE_DATE_EPOCH controls layer timestamps for reproducible builds.
+          # On release tags: use the commit timestamp so published images have
+          # meaningful, stable timestamps that match the release commit.
+          # On branches/PRs: intentionally use 0 (Unix epoch) so BuildKit can
+          # reuse cached layers regardless of when the commit was made. Using the
+          # real timestamp on dev builds would bust the cache on every commit.
+          SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') && needs.calculate-source-date-epoch.outputs.source-date-epoch != '' && needs.calculate-source-date-epoch.outputs.source-date-epoch || '0' }}
+        with:
+          annotations: ${{ needs.metadata.outputs.annotations }}
+          build-args: ${{ steps.parse-args.outputs.args }}
+          cache-from: type=gha,scope=${{ steps.cache-scope.outputs.scope }}
+          cache-to: type=gha,mode=max,scope=${{ steps.cache-scope.outputs.scope }}
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          labels: ${{ needs.metadata.outputs.image-labels }}
+          outputs: type=image,name=ghcr.io/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          sbom: false
+          secret-files: ${{ steps.secrets.outputs.secret-files }}
+          target: ${{ inputs.target }}
 
-      - name: Calculate GitHub Actions cache scopes
-        id: cache_scopes
+      - name: Export digest
+        id: digest
+        if: inputs.push
         run: |
-          # Create a list of cache object lines from the cleaned cache scope CSV
-          delimiter="$(openssl rand -hex 8)"
-          echo "from<<${delimiter}" >> $GITHUB_OUTPUT
-          for scope in $(echo ${{ steps.clean.outputs.cache_from_scopes }} | tr "," " "); do
-            echo "type=gha,scope=${scope}" >> $GITHUB_OUTPUT
-          done
-          echo "${delimiter}" >> $GITHUB_OUTPUT
-          # Create a cache object line if cache_to_scope is set
-          if [[ -n "${{ steps.clean.outputs.cache_to_scope }}" ]]; then
-            echo "to=type=gha,mode=max,scope=${{ steps.clean.outputs.cache_to_scope }}" >> $GITHUB_OUTPUT
-          else
-            echo "to=" >> $GITHUB_OUTPUT
+          digest="${{ steps.build.outputs.digest }}"
+
+          # Validate digest is non-empty and well-formed before proceeding
+          if [[ -z "$digest" ]]; then
+            echo "::error::Build step produced no digest - build likely failed"
+            exit 1
+          fi
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Invalid digest format: $digest"
+            exit 1
           fi
 
-      - name: Build image for push
-        if: inputs.push == true
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # tag=v6.19.2
-        with:
-          build-args: ${{ steps.prepare-build-args.outputs.build_args }}
-          cache-from: ${{ steps.cache_scopes.outputs.from }}
-          cache-to: ${{ steps.cache_scopes.outputs.to }}
-          context: .
-          file: ${{ inputs.docker_file}}
-          labels: ${{ inputs.image_labels }}
-          platforms: ${{ inputs.platforms }}
-          push: true
-          secrets: ${{ steps.prepare-build-secrets.outputs.build_secrets }}
-          tags: ${{ steps.tag_suffix.outputs.tags }}
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${digest#sha256:}"
+          echo "digest=$digest" >> $GITHUB_OUTPUT
+          echo "Digest: $digest"
 
-      - name: Build image for archive
-        if: inputs.push == false
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # tag=v6.19.2
-        with:
-          build-args: ${{ steps.prepare-build-args.outputs.build_args }}
-          cache-from: ${{ steps.cache_scopes.outputs.from }}
-          cache-to: ${{ steps.cache_scopes.outputs.to }}
-          context: .
-          file: ${{ inputs.docker_file}}
-          labels: ${{ inputs.image_labels }}
-          outputs: type=docker,dest=${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar
-          platforms: ${{ inputs.platforms }}
-          push: false
-          secrets: ${{ steps.prepare-build-secrets.outputs.build_secrets }}
-          tags: ${{ steps.tag_suffix.outputs.tags }}
+          # Derive slugs for artifact naming
+          IMAGE_SLUG=$(echo "${{ inputs.image-name }}" | tr '/' '-')
+          PLATFORM_SLUG=$(echo "${{ matrix.platform }}" | tr '/' '-')
+          echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
+          echo "platform-slug=${PLATFORM_SLUG}" >> $GITHUB_OUTPUT
+          echo "Artifact name: digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
 
-      - name: Check if archive key is available
-        id: check_image_archive_key
-        if: inputs.push == false
+      - name: Install cosign
+        if: inputs.push
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # tag=v3.7.0
+
+      - name: Authenticate cosign with registry
+        if: inputs.push
         run: |
-          if [ -n "${{ secrets.image_archive_key }}" ]; then
-            echo "do_encryption=true" >> $GITHUB_OUTPUT
-            echo "file_name=${{ steps.clean.outputs.image_archive_name_stem }}.tar.7z" >> $GITHUB_OUTPUT
-          else
-            echo "do_encryption=false" >> $GITHUB_OUTPUT
-            echo "file_name=${{ steps.clean.outputs.image_archive_name_stem }}".tar >> $GITHUB_OUTPUT
-          fi
+          # Cosign needs explicit authentication to read attestations
+          # Prefer an explicit username for private-package-token if provided, otherwise
+          # fall back to repository_owner (when using the PAT) or github.actor.
+          echo "${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}" | \
+            cosign login ghcr.io -u ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }} --password-stdin
+          echo "✅ Cosign authenticated with registry"
 
-      - name: Encrypt image archive
-        if: ${{ (inputs.push == false) && (steps.check_image_archive_key.outputs.do_encryption == 'true') }}
+      - name: Install ORAS
+        if: inputs.push
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # tag=v1.2.4
+
+      - name: Check attestation existence
+        id: check-attestations
+        if: inputs.push
+        timeout-minutes: 3
         run: |
-          7za a -p${{ secrets.image_archive_key }} \
-          ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar.7z \
-          ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.clean.outputs.image_archive_name_stem }}.tar
+          IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}"
 
-      - name: Upload artifacts
-        if: ${{ (inputs.push == false) && (steps.clean.outputs.artifact_name != '') }}
+          echo "Checking for existing attestations on platform image..."
+          echo "Image reference: $IMAGE_REF"
+
+          json="$(oras discover --format json "${IMAGE_REF}")"
+
+          # Returns "true" or "false" (as text)
+          has_pred() {
+            local predicate="$1"
+            jq -r --arg p "${predicate}" '
+              any(.referrers[]?; .annotations["dev.sigstore.bundle.predicateType"] == $p)
+            ' <<<"${json}"
+          }
+
+          echo "has_provenance=$(has_pred "${{ env.PREDICATE_TYPE_PROVENANCE }}")" >> "${GITHUB_OUTPUT}"
+          echo "has_sbom=$(has_pred "${{ env.PREDICATE_TYPE_SBOM }}")" >> "${GITHUB_OUTPUT}"
+          echo "has_vuln=$(has_pred "${{ env.PREDICATE_TYPE_VULN }}")" >> "${GITHUB_OUTPUT}"
+          echo "has_build_env=$(has_pred "${{ env.PREDICATE_TYPE_BUILD_ENV }}")" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload digest
+        if: inputs.push
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
-          name: ${{ steps.clean.outputs.artifact_name }}
-          path: ${{ env.OUTPUT_ARTIFACT_WORK_DIR }}/${{ steps.check_image_archive_key.outputs.file_name }}
-          retention-days: ${{ inputs.artifact_retention_days }}
+          if-no-files-found: error
+          name: >-
+            digests-${{
+              steps.digest.outputs.image-slug
+            }}-${{
+              steps.digest.outputs.platform-slug
+            }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+      # Scan platform image
+      - name: Run Trivy vulnerability scanner (SARIF)
+        id: trivy-sarif
+        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # tag=v0.35.0
+        with:
+          exit-code: ${{ inputs.scan-severity != '' && '1' || '0' }}
+          format: sarif
+          ignore-unfixed: true
+          image-ref: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
+          output: trivy-results-${{ strategy.job-index }}.sarif
+          severity: ${{ inputs.scan-severity }}
+          vuln-type: os,library
+        continue-on-error: true
+
+      - name: Run Trivy vulnerability scanner (JSON)
+        id: trivy-json
+        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # tag=v0.35.0
+        with:
+          exit-code: 0
+          format: json
+          ignore-unfixed: true
+          image-ref: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
+          output: trivy-results-${{ strategy.job-index }}.json
+          severity: ${{ inputs.scan-severity }}
+          vuln-type: os,library
+
+      - name: Parse scan results
+        id: scan-result
+        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
+        run: |
+          # Parse JSON results to count vulnerabilities by severity
+          if [ -f trivy-results-${{ strategy.job-index }}.json ]; then
+            CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
+            HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
+            MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
+            LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
+
+            echo "Platform ${{ matrix.platform }} vulnerabilities: CRITICAL=$CRITICAL, HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW"
+          fi
+
+          # Set scan passed status
+          if [ "${{ steps.trivy-sarif.outcome }}" = "success" ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Scan passed for ${{ matrix.platform }}"
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Scan failed for ${{ matrix.platform }}"
+          fi
+
+      - name: Upload scan results
+        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
+        with:
+          name: >-
+            security-scan-results-${{
+              steps.digest.outputs.image-slug
+            }}-${{
+              steps.digest.outputs.platform-slug
+            }}
+          path: |
+            trivy-results-${{ strategy.job-index }}.sarif
+            trivy-results-${{ strategy.job-index }}.json
+          retention-days: 30
+
+      - name: Upload SARIF to GitHub Security
+        if: inputs.push && inputs.upload-scan-results && steps.check-attestations.outputs.has_vuln != 'true'
+        uses: github/codeql-action/upload-sarif@9e907b5e64f6b83e7804b09294d44122997950d6 # tag=codeql-bundle-v4.32.3
+        with:
+          category: container-scan-${{ matrix.platform }}
+          sarif_file: trivy-results-${{ strategy.job-index }}.sarif
+
+      - name: Fail if vulnerabilities found
+        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true' && steps.trivy-sarif.outcome == 'failure'
+        run: |
+          echo "::error::Security scan failed for ${{ matrix.platform }} - vulnerabilities found above threshold: ${{ inputs.scan-severity }}"
+          exit 1
+
+      - name: Attest vulnerability scan results
+        id: attest-vuln-scan
+        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
+        uses: actions/attest@e59cbc1ad1ac2d59339667419eb8cdde6eb61e3d # tag=v3.2.0
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          predicate-type: ${{ env.PREDICATE_TYPE_VULN }}
+          predicate-path: trivy-results-${{ strategy.job-index }}.json
+          push-to-registry: true
+        continue-on-error: true
+
+      # Generate attestations for platform
+      - name: Generate SBOM with Syft
+        id: generate-sbom
+        if: inputs.push && steps.check-attestations.outputs.has_sbom != 'true'
+        uses: anchore/sbom-action@17ae1740179002c89186b61233e0f892c3118b11 # tag=v0.23.0
+        with:
+          image: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ strategy.job-index }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Attest SBOM
+        if: inputs.push && steps.check-attestations.outputs.has_sbom != 'true'
+        uses: actions/attest-sbom@4651f806c01d8637787e274ac3bdf724ef169f34 # tag=v3.0.0
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom-${{ strategy.job-index }}.spdx.json
+          push-to-registry: true
+
+      - name: Upload SBOM artifact
+        if: steps.generate-sbom.outcome == 'success'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
+        with:
+          name: >-
+            sbom-${{
+              steps.digest.outputs.image-slug
+            }}-${{
+              steps.digest.outputs.platform-slug
+            }}
+          path: sbom-${{ strategy.job-index }}.spdx.json
+          retention-days: 90
+
+      - name: Clean up secret files
+        if: always()
+        run: |
+          rm -f /tmp/build-secret-*
+
+      - name: Output platform build summary
+        if: always()
+        run: |
+          echo "## Platform Build Complete: ${{ matrix.platform }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Cache Scope:** \`${{ steps.cache-scope.outputs.scope }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.check-attestations.outputs.has_sbom }}" = "true" ] || [ "${{ steps.check-attestations.outputs.has_vuln }}" = "true" ]; then
+            echo "### ⏭️  Attestations Already Exist" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Skipped work for existing attestations:" >> $GITHUB_STEP_SUMMARY
+
+            if [ "${{ steps.check-attestations.outputs.has_vuln }}" = "true" ]; then
+              echo "- ✓ Vulnerability scanning (attestation exists)" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            if [ "${{ steps.check-attestations.outputs.has_sbom }}" = "true" ]; then
+              echo "- ✓ SBOM generation (attestation exists)" >> $GITHUB_STEP_SUMMARY
+            fi
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### Reproducibility Information" >> $GITHUB_STEP_SUMMARY
+          echo "**SOURCE_DATE_EPOCH:** \`${{ needs.calculate-source-date-epoch.outputs.source-date-epoch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This build uses deterministic timestamps for reproducibility." >> $GITHUB_STEP_SUMMARY
+          echo "Rebuilding the same commit with the same inputs should produce the same digest." >> $GITHUB_STEP_SUMMARY

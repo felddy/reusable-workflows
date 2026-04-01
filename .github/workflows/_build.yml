@@ -14,9 +14,18 @@ on: # yamllint disable-line rule:truthy
     - cron: 0 10 * * * # everyday at 10am
   workflow_dispatch:
 
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
-  actions: read
   contents: read
+  packages: write
+  id-token: write
+  attestations: write
+  security-events: write
 
 jobs:
   diagnostics:
@@ -27,101 +36,120 @@ jobs:
     name: Config
     uses: ./.github/workflows/_config.yml
 
-  metadata:
-    name: Metadata
-    needs:
-      - config
-    uses: ./.github/workflows/container-metadata.yml
-    with:
-      image_name: ${{ needs.config.outputs.image_name }}
-
   lint:
     name: Lint
     uses: ./.github/workflows/common-lint.yml
 
-  build-container-for-testing:
-    name: Build container for testing
+  build:
+    name: Build and Publish Container
     needs:
       - config
       - lint
-      - metadata
+      - diagnostics
+    # Skip registry-pushing jobs on fork PRs — secrets are unavailable and
+    # GITHUB_TOKEN is read-only, so pushes would fail with auth errors.
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/container-build.yml
     with:
-      artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ needs.config.outputs.test_platform }}
-      cache_from_scopes: ${{ needs.config.outputs.test_platform }}
-      cache_to_scope: ${{ needs.config.outputs.test_platform }}
-      image_archive_name_stem: ${{ needs.config.outputs.test_platform }}
-      image_labels: ${{ needs.metadata.outputs.image_labels }}
-      platforms: ${{ needs.config.outputs.test_platform }}
+      platforms: ${{ needs.config.outputs.platforms }}
+      image-name: ${{ needs.config.outputs.image_name }}
+      context: .
+      dockerfile: ./Dockerfile
+      scan-severity: CRITICAL,HIGH
 
-  test-container:
-    name: Test container
+  build-private:
+    name: Build and Publish Container Private
     needs:
-      - build-container-for-testing
       - config
+      - lint
+      - diagnostics
+    if: |
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    uses: ./.github/workflows/container-build.yml
+    with:
+      platforms: ${{ needs.config.outputs.platforms }}
+      image-name: ${{ needs.config.outputs.image_name }}-hid
+      context: .
+      dockerfile: ./Dockerfile
+      scan-severity: CRITICAL,HIGH
+    secrets:
+      private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
+
+  test:
+    name: Test Container
+    needs:
+      - config
+      - build
     uses: ./.github/workflows/container-test.yml
-    with:
-      data_artifact_name: ${{ needs.config.outputs.data_artifact_name }}
-      image_artifact_name: ${{ needs.build-container-for-testing.outputs.artifact_name }}
-      image_archive_name: ${{ needs.build-container-for-testing.outputs.image_archive_name }}
-
-  build-each-platform:
-    name: Build container
-    needs:
-      - config
-      - lint
-      - metadata
-      - test-container
-    if: github.event_name != 'pull_request'
-    strategy:
-      matrix:
-        platform: ${{ fromJson(needs.config.outputs.platforms_json) }}
-        exclude:
-          - platform: ${{ needs.config.outputs.test_platform }}
-    uses: ./.github/workflows/container-build.yml
-    with:
-      artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
-      cache_from_scopes: ${{ matrix.platform }}
-      cache_to_scope: ${{ matrix.platform }}
-      image_labels: ${{ needs.metadata.outputs.image_labels }}
-      image_archive_name_stem: ${{ matrix.platform }}
-      platforms: ${{ matrix.platform }}
-
-  generate-sboms:
-    name: Bill of Materials
-    needs:
-      - build-each-platform
-      - config
     permissions:
-      contents: write
-    strategy:
-      matrix:
-        platform: ${{ fromJson(needs.config.outputs.platforms_json) }}
-    uses: ./.github/workflows/container-sbom.yml
+      actions: read
+      contents: read
+      packages: read
     with:
-      image_artifact_name: ${{ needs.config.outputs.image_artifact_name_stem }}-${{ matrix.platform }}
-      sbom_artifact_name: ${{ needs.config.outputs.sbom_artifact_name_stem }}-${{ matrix.platform }}
+      image-name: ${{ needs.config.outputs.image_name }}
+      platforms: ${{ needs.config.outputs.test_platforms }}
 
-  build-multi-arch-image:
-    name: Publish container
+  test-private:
+    name: Test Container Private
     needs:
-      - build-each-platform
       - config
-      - metadata
-    if: github.event_name != 'pull_request'
+      - build-private
+    uses: ./.github/workflows/container-test.yml
     permissions:
+      actions: read
+      contents: read
+      packages: read
+    with:
+      image-name: ${{ needs.config.outputs.image_name }}-hid
+      platforms: ${{ needs.config.outputs.test_platforms }}
+    secrets:
+      registry-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
+
+  publish-manifest:
+    name: Publish Manifest
+    needs:
+      - config
+      - build
+      - test
+    uses: ./.github/workflows/container-publish-manifest.yml
+    permissions:
+      actions: read
+      contents: read
       packages: write
-    uses: ./.github/workflows/container-publish-multiarch.yml
+      id-token: write
+      attestations: write
     with:
-      artifact_name_pattern: ${{ needs.config.outputs.image_artifact_name_stem }}-*
-      image_tags: ${{ needs.metadata.outputs.image_tags }}
+      image-name: ${{ needs.config.outputs.image_name }}
+      platforms: ${{ needs.config.outputs.platforms }}
+
+  publish-manifest-private:
+    name: Publish Manifest Private
+    needs:
+      - config
+      - build-private
+      - test-private
+    uses: ./.github/workflows/container-publish-manifest.yml
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    with:
+      image-name: ${{ needs.config.outputs.image_name }}-hid
+      platforms: ${{ needs.config.outputs.platforms }}
+    secrets:
+      private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 
   mirror-to-dockerhub:
     name: Mirror images to DockerHub
     needs:
-      - build-multi-arch-image
+      - publish-manifest
+      - publish-manifest-private
       - config
-      - metadata
     if: github.event_name == 'release' && !github.event.release.prerelease
     permissions:
       contents: read
@@ -129,19 +157,22 @@ jobs:
     uses: ./.github/workflows/container-mirror.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}
-      image_tag_names: ${{ needs.metadata.outputs.image_tag_names }}
+      image_tag_names: ${{ needs.publish-manifest.outputs.image-tag-names }}
       target_registry: docker.io
     secrets:
-      registry_password: ${{ secrets.DOCKER_PASSWORD }}
-      registry_username: ${{ secrets.DOCKER_USERNAME }}
+      target-registry-username: ${{ secrets.DOCKER_USERNAME }}
+      target-registry-password: ${{ secrets.DOCKER_PASSWORD }}
 
   publish-readme:
     name: Publish docs to DockerHub
     needs:
-      - build-multi-arch-image
+      - publish-manifest
+      - publish-manifest-private
       - config
-      - metadata
-    if: github.event_name == 'release' && needs.metadata.outputs.latest == 'true'
+    if: |
+      github.event_name == 'release' &&
+      !github.event.release.prerelease &&
+      needs.publish-manifest.outputs.is-latest == 'true'
     uses: ./.github/workflows/dockerhub-description.yml
     with:
       image_name: ${{ needs.config.outputs.image_name }}

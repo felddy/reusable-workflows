@@ -12,3 +12,6 @@ venv
 
 ## Rust ##
 target
+
+## Kiro ##
+.kiro
