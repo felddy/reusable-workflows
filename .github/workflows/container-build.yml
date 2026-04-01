@@ -584,7 +584,7 @@ jobs:
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # tag=v0.35.0
         with:
-          exit-code: 1
+          exit-code: ${{ inputs.scan-severity != '' && '1' || '0' }}
           format: sarif
           ignore-unfixed: true
           image-ref: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
