@@ -1,8 +1,13 @@
 ---
 name: Lint
 
-# This reusable workflow runs the configure pre-commit hooks on the repository.
-# It handles of the caching and the installation of the hooks.
+# This reusable workflow runs the configured pre-commit hooks on the repository.
+# It handles caching and installation of the hooks.
+#
+# Python dependency installation supports both uv (preferred) and pip:
+#   - auto (default): uses uv if uv.lock is present, otherwise pip
+#   - uv: always use uv sync --frozen --only-group test
+#   - pip: always use pip install --requirement requirements-test.txt
 
 # Permissions are set at the job level; default to none at workflow level.
 permissions: {}
@@ -40,6 +45,15 @@ on: # yamllint disable-line rule:truthy
         description: The version of shfmt (shell format) to use.
         required: false
         type: string
+      package-manager:
+        description: >
+          Python package manager to use for installing lint dependencies.
+          'auto' detects based on the presence of uv.lock in the repository.
+          'uv' always uses uv sync --frozen --only-group test.
+          'pip' always uses pip install --requirement requirements-test.txt.
+        required: false
+        type: string
+        default: auto
 
 env:
   PIP_CACHE_DIR: ${{ inputs.pip_cache_dir }}
@@ -59,11 +73,13 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
+            astral.sh:443
             files.pythonhosted.org:443
             github.com:443
             golang.org:443
             index.crates.io:443
             objects.githubusercontent.com:443
+            osv.dev:443
             proxy.golang.org:443
             pypi.org:443
             raw.githubusercontent.com:443
@@ -71,11 +87,6 @@ jobs:
             release-assets.githubusercontent.com:443
             static.crates.io:443
             sum.golang.org:443
-
-      - id: setup-python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # tag=v6.2.0
-        with:
-          python-version: ${{ inputs.python_version }}
 
       # We need the Go version and Go cache location for the actions/cache step,
       # so the Go installation must happen before that.
@@ -94,7 +105,53 @@ jobs:
         run: |
           echo "dir=$(go env GOCACHE)" >> $GITHUB_OUTPUT
 
-      - uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # tag=v5.0.4
+      - name: Checkout source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+
+      # Detect which package manager to use. Runs after checkout so uv.lock
+      # is present on disk for the file existence check.
+      - name: Detect package manager
+        id: pkg-manager
+        run: |
+          INPUT="${{ inputs.package-manager }}"
+          if [[ "${INPUT}" == "uv" ]] || \
+             { [[ "${INPUT}" == "auto" ]] && [[ -f uv.lock ]]; }; then
+            echo "use-uv=true" >> $GITHUB_OUTPUT
+            echo "Package manager: uv"
+          else
+            echo "use-uv=false" >> $GITHUB_OUTPUT
+            echo "Package manager: pip"
+          fi
+
+      # ── uv path ────────────────────────────────────────────────────────────
+
+      - name: Set up uv
+        if: steps.pkg-manager.outputs.use-uv == 'true'
+        uses: astral-sh/setup-uv@f0ec1fc3b38f5e7cd731bb6ce540c5af426746bb # tag=v6.1.0
+        with:
+          enable-cache: true
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install dependencies (uv)
+        if: steps.pkg-manager.outputs.use-uv == 'true'
+        run: uv sync --frozen --only-group test
+
+      - name: Add venv to PATH (uv)
+        if: steps.pkg-manager.outputs.use-uv == 'true'
+        run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+
+      # ── pip path ───────────────────────────────────────────────────────────
+
+      - name: Set up Python
+        if: steps.pkg-manager.outputs.use-uv == 'false'
+        id: setup-python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # tag=v6.2.0
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Cache pip and pre-commit (pip)
+        if: steps.pkg-manager.outputs.use-uv == 'false'
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # tag=v5.0.4
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ inputs.python_version }}-\
@@ -112,19 +169,37 @@ jobs:
           restore-keys: |
             ${{ env.BASE_CACHE_KEY }}
 
+      - name: Install dependencies (pip)
+        if: steps.pkg-manager.outputs.use-uv == 'false'
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade --requirement requirements-test.txt
+
+      # ── shared path ────────────────────────────────────────────────────────
+
+      - name: Cache Go and pre-commit (uv)
+        if: steps.pkg-manager.outputs.use-uv == 'true'
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # tag=v5.0.4
+        env:
+          BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
+            py${{ inputs.python_version }}-\
+            go${{ steps.go-version.outputs.version }}-"
+        with:
+          path: |
+            ${{ inputs.pre_commit_cache_dir }}
+            ${{ inputs.curl_cache_dir }}
+            ${{ steps.go-cache.outputs.dir }}
+          key: "${{ env.BASE_CACHE_KEY }}\
+            ${{ hashFiles('uv.lock') }}-\
+            ${{ hashFiles('**/.pre-commit-config.yaml') }}"
+          restore-keys: |
+            ${{ env.BASE_CACHE_KEY }}
+
       - name: Setup curl cache
         run: mkdir -p ${{ inputs.curl_cache_dir }}
 
       - name: Install shfmt
         run: go install mvdan.cc/sh/v3/cmd/shfmt@${{ inputs.shfmt_version }}
-
-      - name: Checkout source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --upgrade --requirement requirements-test.txt
 
       - name: Set up pre-commit hook environments
         run: pre-commit install-hooks
