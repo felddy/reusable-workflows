@@ -188,11 +188,13 @@ jobs:
         with:
           egress-policy: audit
           allowed-endpoints: >
+            api.osv.dev:443
             files.pythonhosted.org:443
             ghcr.io:443
             github.com:443
             objects.githubusercontent.com:443
             pypi.org:443
+            releases.astral.sh:443
 
       - name: Set up QEMU for multi-arch testing
         if: matrix.runner == 'ubuntu-latest'
