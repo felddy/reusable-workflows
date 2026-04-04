@@ -2,10 +2,14 @@
 name: Build
 
 on: # yamllint disable-line rule:truthy
+  merge_group:
+    types:
+      - checks_requested
+  pull_request:
   push:
     branches:
-      - "**"
-  pull_request:
+      - develop
+      - develop-*
   release:
     types:
       - edited
