@@ -113,14 +113,14 @@ jobs:
 
       - name: Log in to source registry
         if: steps.source-auth.outputs.authenticate == 'true'
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # tag=v4.0.0
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # tag=v4.1.0
         with:
           registry: ${{ inputs.source_registry }}
           username: ${{ steps.source-auth.outputs.use-github-token == 'true' && github.actor || secrets.source-registry-username }}
           password: ${{ steps.source-auth.outputs.use-github-token == 'true' && secrets.GITHUB_TOKEN || secrets.source-registry-password }}
 
       - name: Log in to target registry
-        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # tag=v4.0.0
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # tag=v4.1.0
         with:
           registry: ${{ inputs.target_registry }}
           username: ${{ secrets.target-registry-username }}
