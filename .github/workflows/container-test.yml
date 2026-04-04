@@ -9,6 +9,11 @@ name: Test container image
 # The workflow fans out across all requested platforms using a matrix strategy
 # mirroring the pattern used in container-build.yml.  QEMU emulation is set up
 # per matrix job so non-native platforms can be tested on ubuntu-latest runners.
+#
+# Python dependency installation supports both uv (preferred) and pip:
+#   - auto (default): uses uv if uv.lock is present, otherwise pip
+#   - uv: always use uv sync --frozen --only-group test
+#   - pip: always use pip install --requirement requirements-test.txt
 
 # Permissions are set at the job level; default to none at workflow level.
 permissions: {}
@@ -50,6 +55,16 @@ on: # yamllint disable-line rule:truthy
         required: false
         type: string
         default: "3.14"
+
+      package-manager:
+        description: >
+          Python package manager to use for installing test dependencies.
+          'auto' detects based on the presence of uv.lock in the repository.
+          'uv' always uses uv sync --frozen --only-group test.
+          'pip' always uses pip install --requirement requirements-test.txt.
+        required: false
+        type: string
+        default: auto
 
       # Test secret names — controls the environment variable name exposed to pytest.
       # Pair each with the corresponding test-secret-N secret value.
@@ -173,11 +188,13 @@ jobs:
         with:
           egress-policy: audit
           allowed-endpoints: >
+            api.osv.dev:443
             files.pythonhosted.org:443
             ghcr.io:443
             github.com:443
             objects.githubusercontent.com:443
             pypi.org:443
+            releases.astral.sh:443
 
       - name: Set up QEMU for multi-arch testing
         if: matrix.runner == 'ubuntu-latest'
@@ -243,13 +260,51 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
 
+      # Detect which package manager to use. Runs after checkout so uv.lock
+      # is present on disk for the file existence check.
+      - name: Detect package manager
+        id: pkg-manager
+        run: |
+          INPUT="${{ inputs.package-manager }}"
+          if [[ "${INPUT}" == "uv" ]] || \
+             { [[ "${INPUT}" == "auto" ]] && [[ -f uv.lock ]]; }; then
+            echo "use-uv=true" >> $GITHUB_OUTPUT
+            echo "Package manager: uv"
+          else
+            echo "use-uv=false" >> $GITHUB_OUTPUT
+            echo "Package manager: pip"
+          fi
+
+      # ── uv path ────────────────────────────────────────────────────────────
+
+      - name: Set up uv
+        if: steps.pkg-manager.outputs.use-uv == 'true'
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57 # tag=v8.0.0
+        with:
+          enable-cache: true
+          python-version: ${{ inputs.python-version }}
+
+      - name: Install dependencies (uv)
+        if: steps.pkg-manager.outputs.use-uv == 'true'
+        run: uv sync --frozen --only-group test
+
+      # Expose the uv-managed venv to subsequent steps without requiring
+      # 'uv run' prefixes everywhere.
+      - name: Add venv to PATH (uv)
+        if: steps.pkg-manager.outputs.use-uv == 'true'
+        run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
+
+      # ── pip path ───────────────────────────────────────────────────────────
+
       - name: Set up Python
+        if: steps.pkg-manager.outputs.use-uv == 'false'
         id: setup-python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # tag=v6.2.0
         with:
           python-version: ${{ inputs.python-version }}
 
       - name: Cache pip
+        if: steps.pkg-manager.outputs.use-uv == 'false'
         uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # tag=v5.0.4
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
@@ -262,10 +317,13 @@ jobs:
           restore-keys: |
             ${{ env.BASE_CACHE_KEY }}
 
-      - name: Install dependencies
+      - name: Install dependencies (pip)
+        if: steps.pkg-manager.outputs.use-uv == 'false'
         run: |
           python -m pip install --upgrade pip
           pip install --upgrade --requirement requirements-test.txt
+
+      # ── shared path ────────────────────────────────────────────────────────
 
       - name: Prepare test secrets
         id: test-secrets
