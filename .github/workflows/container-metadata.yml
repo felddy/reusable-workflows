@@ -129,7 +129,7 @@ jobs:
             echo "ref-name=edge" >> $GITHUB_OUTPUT
           elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "strategy=workflow_dispatch" >> $GITHUB_OUTPUT
-            echo "ref-name=${{ github.event.inputs.image-tag || 'dispatch' }}" >> $GITHUB_OUTPUT
+            echo "ref-name=${{ github.event.inputs['image-tag'] || 'dispatch' }}" >> $GITHUB_OUTPUT
           else
             echo "::error::Unsupported GitHub event: '${EVENT_NAME}'. Add a handler in container-metadata.yml."
             {
