@@ -269,8 +269,13 @@ jobs:
               ;;
 
             workflow_dispatch)
-              add_tag "$REF_NAME"
+              DISPATCH_TAG="$(printf '%s' "$REF_NAME" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's/[^a-z0-9_.-]+/-/g' \
+                | sed -E 's/^-+|-+$//g')"
+              add_tag "$DISPATCH_TAG"
               ;;
+
             *)
               echo "::error::Unhandled strategy '${STRATEGY}' (event: '${{ github.event_name }}'). This is a bug in container-metadata.yml."
               {
