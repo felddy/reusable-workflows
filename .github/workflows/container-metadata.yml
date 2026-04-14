@@ -103,16 +103,12 @@ jobs:
           echo "event-name=$EVENT_NAME" >> $GITHUB_OUTPUT
 
           # Determine tag strategy based on event
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+          if [[ "$EVENT_NAME" == "merge_group" ]]; then
+            echo "strategy=branch" >> $GITHUB_OUTPUT
+            echo "ref-name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
             echo "strategy=pr" >> $GITHUB_OUTPUT
             echo "ref-name=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          elif [[ "$EVENT_NAME" == "release" ]]; then
-            if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
-              echo "strategy=prerelease" >> $GITHUB_OUTPUT
-            else
-              echo "strategy=release" >> $GITHUB_OUTPUT
-            fi
-            echo "ref-name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
           elif [[ "$EVENT_NAME" == "push" ]]; then
             if [[ "${{ github.ref }}" == refs/tags/* ]]; then
               echo "strategy=tag" >> $GITHUB_OUTPUT
@@ -121,9 +117,34 @@ jobs:
               echo "strategy=branch" >> $GITHUB_OUTPUT
               echo "ref-name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
             fi
+          elif [[ "$EVENT_NAME" == "release" ]]; then
+            if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+              echo "strategy=prerelease" >> $GITHUB_OUTPUT
+            else
+              echo "strategy=release" >> $GITHUB_OUTPUT
+            fi
+            echo "ref-name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          elif [[ "$EVENT_NAME" == "schedule" ]]; then
+            echo "strategy=schedule" >> $GITHUB_OUTPUT
+            echo "ref-name=edge" >> $GITHUB_OUTPUT
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "strategy=workflow_dispatch" >> $GITHUB_OUTPUT
+            echo "ref-name=${{ github.event.inputs.image-tag || 'dispatch' }}" >> $GITHUB_OUTPUT
           else
-            echo "strategy=default" >> $GITHUB_OUTPUT
-            echo "ref-name=latest" >> $GITHUB_OUTPUT
+            echo "::error::Unsupported GitHub event: '${EVENT_NAME}'. Add a handler in container-metadata.yml."
+            {
+              echo "## ❌ Unsupported GitHub Event"
+              echo ""
+              echo "| Field | Value |"
+              echo "| ----- | ----- |"
+              echo "| Event | \`${EVENT_NAME}\` |"
+              echo "| Ref | \`${GITHUB_REF}\` |"
+              echo "| SHA | \`${GITHUB_SHA}\` |"
+              echo ""
+              echo "Add a handler in the **Determine event context** step and a matching"
+              echo "case in **Generate tags** in \`container-metadata.yml\`."
+            } >> $GITHUB_STEP_SUMMARY
+            exit 1
           fi
 
       - name: Extract version from tag
@@ -203,11 +224,6 @@ jobs:
           }
 
           case "$STRATEGY" in
-            pr)
-              add_tag "pr-${{ github.event.pull_request.number }}"
-              add_tag "sha-${GITHUB_SHA:0:7}"
-              ;;
-
             branch)
               # Normalize branch name to a Docker-safe tag:
               # - convert to lowercase
@@ -219,6 +235,16 @@ jobs:
                 | sed -E 's/^-+|-+$//g')"
               add_tag "$BRANCH_TAG"
               add_tag "sha-${GITHUB_SHA:0:7}"
+              ;;
+
+            pr)
+              add_tag "pr-${{ github.event.pull_request.number }}"
+              add_tag "sha-${GITHUB_SHA:0:7}"
+              ;;
+
+            prerelease)
+              add_tag "$VERSION"
+              add_tag "prerelease"
               ;;
 
             release)
@@ -234,17 +260,32 @@ jobs:
               fi
               ;;
 
-            prerelease)
-              add_tag "$VERSION"
-              add_tag "prerelease"
+            schedule)
+              add_tag "edge"
               ;;
 
             tag)
               add_tag "$VERSION"
               ;;
 
+            workflow_dispatch)
+              add_tag "$REF_NAME"
+              ;;
             *)
-              add_tag "latest"
+              echo "::error::Unhandled strategy '${STRATEGY}' (event: '${{ github.event_name }}'). This is a bug in container-metadata.yml."
+              {
+                echo "## ❌ Unhandled Tag Strategy"
+                echo ""
+                echo "| Field | Value |"
+                echo "| ----- | ----- |"
+                echo "| Strategy | \`${STRATEGY}\` |"
+                echo "| Event | \`${{ github.event_name }}\` |"
+                echo "| Ref | \`${GITHUB_REF}\` |"
+                echo ""
+                echo "This strategy was set by **Determine event context** but has no"
+                echo "matching case in **Generate tags**. This is a bug in \`container-metadata.yml\`."
+              } >> $GITHUB_STEP_SUMMARY
+              exit 1
               ;;
           esac
 
