@@ -588,46 +588,21 @@ jobs:
           format: sarif
           ignore-unfixed: true
           image-ref: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
+          limit-severities-for-sarif: true
           output: trivy-results-${{ strategy.job-index }}.sarif
           severity: ${{ inputs.scan-severity }}
           vuln-type: os,library
         continue-on-error: true
 
-      - name: Run Trivy vulnerability scanner (JSON)
-        id: trivy-json
+      - name: Run Trivy vulnerability scanner (table)
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # tag=v0.36.0
         with:
           exit-code: 0
-          format: json
+          format: table
           ignore-unfixed: true
           image-ref: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
-          output: trivy-results-${{ strategy.job-index }}.json
-          severity: ${{ inputs.scan-severity }}
           vuln-type: os,library
-
-      - name: Parse scan results
-        id: scan-result
-        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
-        run: |
-          # Parse JSON results to count vulnerabilities by severity
-          if [ -f trivy-results-${{ strategy.job-index }}.json ]; then
-            CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
-            HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
-            MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="MEDIUM")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
-            LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="LOW")] | length' trivy-results-${{ strategy.job-index }}.json || echo 0)
-
-            echo "Platform ${{ matrix.platform }} vulnerabilities: CRITICAL=$CRITICAL, HIGH=$HIGH, MEDIUM=$MEDIUM, LOW=$LOW"
-          fi
-
-          # Set scan passed status
-          if [ "${{ steps.trivy-sarif.outcome }}" = "success" ]; then
-            echo "passed=true" >> $GITHUB_OUTPUT
-            echo "✅ Scan passed for ${{ matrix.platform }}"
-          else
-            echo "passed=false" >> $GITHUB_OUTPUT
-            echo "❌ Scan failed for ${{ matrix.platform }}"
-          fi
 
       - name: Upload scan results
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
@@ -641,7 +616,6 @@ jobs:
             }}
           path: |
             trivy-results-${{ strategy.job-index }}.sarif
-            trivy-results-${{ strategy.job-index }}.json
           retention-days: 30
 
       - name: Upload SARIF to GitHub Security
