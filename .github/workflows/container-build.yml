@@ -602,6 +602,18 @@ jobs:
           vuln-type: os,library
         continue-on-error: true
 
+      - name: Run Trivy vulnerability scanner (JSON)
+        id: trivy-json
+        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # tag=v0.36.0
+        with:
+          exit-code: 0
+          format: json
+          ignore-unfixed: true
+          image-ref: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
+          output: trivy-results-${{ strategy.job-index }}.json
+          vuln-type: os,library
+
       - name: Run Trivy vulnerability scanner (table)
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # tag=v0.36.0
