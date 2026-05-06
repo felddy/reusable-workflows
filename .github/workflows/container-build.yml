@@ -16,13 +16,15 @@ on: # yamllint disable-line rule:truthy
     inputs:
       # Required
       platforms:
-        description: Platforms to build (JSON array string, e.g. '["linux/amd64","linux/arm64"]')
+        description: Platforms to build (JSON array string, e.g.
+          '["linux/amd64","linux/arm64"]')
         required: true
         type: string
 
       # Publishing
       push:
-        description: Push image to registry (set to false for PR builds to avoid publishing untrusted images)
+        description: Push image to registry (set to false for PR builds to avoid
+          publishing untrusted images)
         required: false
         type: boolean
         default: true
@@ -62,17 +64,18 @@ on: # yamllint disable-line rule:truthy
       # Security Configuration
       scan-severity:
         description: >
-          Fail on vulnerabilities at or above this severity (e.g. CRITICAL,HIGH).
-          Set to empty string to disable the vulnerability gate entirely.
+          Fail on vulnerabilities at or above this severity (e.g.
+          CRITICAL,HIGH). Set to empty string to disable the vulnerability gate
+          entirely.
         required: false
         type: string
         default: CRITICAL,HIGH
 
       upload-scan-results:
         description: >
-          Upload vulnerability scan results (SARIF) to GitHub Security tab.
-          Set to false when vulnerabilities are in third-party code unrelated
-          to this repository (e.g. pre-installed application binaries).
+          Upload vulnerability scan results (SARIF) to GitHub Security tab. Set
+          to false when vulnerabilities are in third-party code unrelated to
+          this repository (e.g. pre-installed application binaries).
         required: false
         type: boolean
         default: true
@@ -151,17 +154,17 @@ on: # yamllint disable-line rule:truthy
       private-package-token:
         description: >
           Token for private package authentication (use instead of GITHUB_TOKEN
-          for private builds). Required permissions: packages:write, packages:read.
-          Generate a fine-grained personal access token at
-          https://github.com/settings/personal-access-tokens/new with
-          "Read and Write access to packages" under Repository permissions.
+          for private builds). Required permissions: packages:write,
+          packages:read. Generate a fine-grained personal access token at
+          https://github.com/settings/personal-access-tokens/new with "Read and
+          Write access to packages" under Repository permissions.
         required: false
 
       private-package-username:
         description: >
           Username for private-package-token authentication. Required when the
-          PAT owner differs from github.repository_owner (e.g. org repos using
-          a service account PAT). Defaults to github.repository_owner when absent.
+          PAT owner differs from github.repository_owner (e.g. org repos using a
+          service account PAT). Defaults to github.repository_owner when absent.
         required: false
 
     outputs:
@@ -377,7 +380,8 @@ jobs:
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # tag=v4.1.0
         with:
           registry: ghcr.io
-          username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
+          username: ${{ secrets.private-package-token && (secrets.private-package-username
+            || github.repository_owner) || github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Parse build arguments
@@ -477,7 +481,10 @@ jobs:
           # On branches/PRs: intentionally use 0 (Unix epoch) so BuildKit can
           # reuse cached layers regardless of when the commit was made. Using the
           # real timestamp on dev builds would bust the cache on every commit.
-          SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') && needs.calculate-source-date-epoch.outputs.source-date-epoch != '' && needs.calculate-source-date-epoch.outputs.source-date-epoch || '0' }}
+          SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') &&
+            needs.calculate-source-date-epoch.outputs.source-date-epoch != '' &&
+            needs.calculate-source-date-epoch.outputs.source-date-epoch || '0'
+            }}
         with:
           annotations: ${{ needs.metadata.outputs.annotations }}
           build-args: ${{ steps.parse-args.outputs.args }}
@@ -486,7 +493,8 @@ jobs:
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           labels: ${{ needs.metadata.outputs.image-labels }}
-          outputs: type=image,name=ghcr.io/${{ inputs.image-name }},push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
+          outputs: type=image,name=ghcr.io/${{ inputs.image-name
+            }},push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
           platforms: ${{ matrix.platform }}
           provenance: false
           sbom: false
@@ -619,14 +627,16 @@ jobs:
           retention-days: 30
 
       - name: Upload SARIF to GitHub Security
-        if: inputs.push && inputs.upload-scan-results && steps.check-attestations.outputs.has_vuln != 'true'
+        if: inputs.push && inputs.upload-scan-results &&
+          steps.check-attestations.outputs.has_vuln != 'true'
         uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # tag=codeql-bundle-v4.35.3
         with:
           category: container-scan-${{ matrix.platform }}
           sarif_file: trivy-results-${{ strategy.job-index }}.sarif
 
       - name: Fail if vulnerabilities found
-        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true' && steps.trivy-sarif.outcome == 'failure'
+        if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true' &&
+          steps.trivy-sarif.outcome == 'failure'
         run: |
           echo "::error::Security scan failed for ${{ matrix.platform }} - vulnerabilities found above threshold: ${{ inputs.scan-severity }}"
           exit 1
