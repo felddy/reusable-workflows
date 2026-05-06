@@ -13,6 +13,7 @@
         "pyenv",
         "pytest",
         "Qapla",
+        "sarif",
         "setuptools",
         "SHORTOPTS",
         "venv",
