@@ -641,7 +641,7 @@ jobs:
       - name: Upload SARIF to GitHub Security
         if: inputs.push && inputs.upload-scan-results &&
           steps.check-attestations.outputs.has_vuln != 'true'
-        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # tag=codeql-bundle-v4.35.3
+        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # tag=codeql-bundle-v4.35.4
         with:
           category: container-scan-${{ matrix.platform }}
           sarif_file: trivy-results-${{ strategy.job-index }}.sarif
