@@ -198,7 +198,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9ca718d3bf646d6534007c269a635b3e54cadf99 # tag=v2.19.2
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
         with:
           disable-sudo: true
           egress-policy: block
@@ -246,7 +246,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9ca718d3bf646d6534007c269a635b3e54cadf99 # tag=v2.19.2
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
         with:
           disable-sudo: true
           egress-policy: block
@@ -294,7 +294,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9ca718d3bf646d6534007c269a635b3e54cadf99 # tag=v2.19.2
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
         with:
           disable-sudo: true
           egress-policy: block
@@ -348,7 +348,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9ca718d3bf646d6534007c269a635b3e54cadf99 # tag=v2.19.2
+        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
         with:
           disable-sudo: true
           egress-policy: audit
@@ -641,7 +641,7 @@ jobs:
       - name: Upload SARIF to GitHub Security
         if: inputs.push && inputs.upload-scan-results &&
           steps.check-attestations.outputs.has_vuln != 'true'
-        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # tag=codeql-bundle-v4.35.4
+        uses: github/codeql-action/upload-sarif@9e0d7b8d25671d64c341c19c0152d693099fb5ba # tag=codeql-bundle-v4.35.5
         with:
           category: container-scan-${{ matrix.platform }}
           sarif_file: trivy-results-${{ strategy.job-index }}.sarif
