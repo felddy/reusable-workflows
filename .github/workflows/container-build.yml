@@ -198,7 +198,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # tag=v2.19.4
         with:
           disable-sudo: true
           egress-policy: block
@@ -246,7 +246,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # tag=v2.19.4
         with:
           disable-sudo: true
           egress-policy: block
@@ -294,7 +294,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # tag=v2.19.4
         with:
           disable-sudo: true
           egress-policy: block
@@ -348,7 +348,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # tag=v2.19.4
         with:
           disable-sudo: true
           egress-policy: audit
@@ -471,7 +471,7 @@ jobs:
 
       - name: Build and push container image
         id: build
-        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # tag=v7.1.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # tag=v7.2.0
         env:
           # Only upload build records in debug mode to reduce artifact storage
           DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.debug == true || env.ACTIONS_STEP_DEBUG == 'true' }}
