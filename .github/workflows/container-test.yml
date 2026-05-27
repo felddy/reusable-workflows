@@ -141,7 +141,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # tag=v2.19.4
         with:
           disable-sudo: true
           egress-policy: block
@@ -184,7 +184,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # tag=v2.19.4
         with:
           egress-policy: audit
           allowed-endpoints: >
@@ -203,7 +203,7 @@ jobs:
           platforms: all
 
       - name: Log in to registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # tag=v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # tag=v4.2.0
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.registry-token && github.repository_owner || github.actor }}
