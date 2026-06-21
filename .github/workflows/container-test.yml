@@ -141,7 +141,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # tag=v2.19.4
         with:
           disable-sudo: true
           egress-policy: block
@@ -184,7 +184,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@ab7a9404c0f3da075243ca237b5fac12c98deaa5 # tag=v2.19.3
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # tag=v2.19.4
         with:
           egress-policy: audit
           allowed-endpoints: >
@@ -198,12 +198,12 @@ jobs:
 
       - name: Set up QEMU for multi-arch testing
         if: matrix.runner == 'ubuntu-latest'
-        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # tag=v3.3.0
+        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # tag=v3.3.0
         with:
           platforms: all
 
       - name: Log in to registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # tag=v4.1.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # tag=v4.2.0
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.registry-token && github.repository_owner || github.actor }}
@@ -258,7 +258,7 @@ jobs:
           echo "Resolved image reference: ${IMAGE_REF}"
 
       - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # tag=v6.0.3
 
       # Detect which package manager to use. Runs after checkout so uv.lock
       # is present on disk for the file existence check.
@@ -279,7 +279,7 @@ jobs:
 
       - name: Set up uv
         if: steps.pkg-manager.outputs.use-uv == 'true'
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # tag=v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # tag=v8.2.0
         with:
           enable-cache: true
           python-version: ${{ inputs.python-version }}
