@@ -209,7 +209,7 @@ jobs:
             release-assets.githubusercontent.com:443
 
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # tag=v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # tag=v7.0.0
 
       - name: Calculate SOURCE_DATE_EPOCH
         id: calculate
@@ -354,7 +354,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # tag=v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # tag=v7.0.0
 
       - name: Enable debug mode
         if: inputs.debug == true
@@ -641,7 +641,7 @@ jobs:
       - name: Upload SARIF to GitHub Security
         if: inputs.push && inputs.upload-scan-results &&
           steps.check-attestations.outputs.has_vuln != 'true'
-        uses: github/codeql-action/upload-sarif@87557b9c84dde89fdd9b10e88954ac2f4248e463 # tag=codeql-bundle-v4.36.1
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # tag=codeql-bundle-v4.36.2
         with:
           category: container-scan-${{ matrix.platform }}
           sarif_file: trivy-results-${{ strategy.job-index }}.sarif
