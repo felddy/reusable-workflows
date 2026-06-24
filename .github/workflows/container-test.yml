@@ -305,7 +305,7 @@ jobs:
 
       - name: Cache pip
         if: steps.pkg-manager.outputs.use-uv == 'false'
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # tag=v5.0.5
+        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # tag=v6.0.0
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ steps.setup-python.outputs.python-version }}-"
