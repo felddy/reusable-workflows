@@ -364,7 +364,7 @@ jobs:
           echo "Debug mode enabled - verbose logging active"
 
       - name: Set up QEMU for multi-arch builds
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # tag=v3.3.0
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # tag=v3.3.0
         with:
           platforms: all
 
@@ -471,7 +471,7 @@ jobs:
 
       - name: Build and push container image
         id: build
-        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # tag=v7.2.0
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # tag=v7.3.0
         env:
           # Only upload build records in debug mode to reduce artifact storage
           DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.debug == true || env.ACTIONS_STEP_DEBUG == 'true' }}
@@ -656,7 +656,7 @@ jobs:
       - name: Attest vulnerability scan results
         id: attest-vuln-scan
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
-        uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # tag=v4.1.0
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # tag=v4.1.1
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.build.outputs.digest }}

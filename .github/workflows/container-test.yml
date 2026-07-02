@@ -198,7 +198,7 @@ jobs:
 
       - name: Set up QEMU for multi-arch testing
         if: matrix.runner == 'ubuntu-latest'
-        uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # tag=v3.3.0
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # tag=v3.3.0
         with:
           platforms: all
 
@@ -305,7 +305,7 @@ jobs:
 
       - name: Cache pip
         if: steps.pkg-manager.outputs.use-uv == 'false'
-        uses: actions/cache@2c8a9bd7457de244a408f35966fab2fb45fda9c8 # tag=v6.0.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # tag=v6.1.0
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ steps.setup-python.outputs.python-version }}-"
