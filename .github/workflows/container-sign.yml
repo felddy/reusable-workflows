@@ -156,7 +156,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Log in to container registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # tag=v4.2.0
+        uses: docker/login-action@c99871dec2022cc055c062a10cc1a1310835ceb4 # tag=v4.3.0
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.private-package-token && github.repository_owner || github.actor }}
