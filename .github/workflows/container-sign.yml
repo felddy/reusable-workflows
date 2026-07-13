@@ -90,7 +90,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # tag=v2.19.4
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # tag=v2.20.0
         with:
           disable-sudo: true
           egress-policy: audit
@@ -156,7 +156,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Log in to container registry
-        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # tag=v4.2.0
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # tag=v4.4.0
         with:
           registry: ${{ inputs.registry }}
           username: ${{ secrets.private-package-token && github.repository_owner || github.actor }}
