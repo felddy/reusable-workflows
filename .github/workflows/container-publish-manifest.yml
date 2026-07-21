@@ -229,7 +229,7 @@ jobs:
 
       - name: Attest manifest (build environment)
         if: inputs.push
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # tag=v4.1.1
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # tag=v4.2.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.manifest-digest.outputs.digest }}
