@@ -209,7 +209,7 @@ jobs:
             release-assets.githubusercontent.com:443
 
       - name: Checkout repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # tag=v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
 
       - name: Calculate SOURCE_DATE_EPOCH
         id: calculate
@@ -354,7 +354,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # tag=v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
 
       - name: Enable debug mode
         if: inputs.debug == true
@@ -377,7 +377,7 @@ jobs:
 
       - name: Log in to container registry
         if: inputs.push
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # tag=v4.4.0
+        uses: docker/login-action@06fb636fac595d6fb4b28a5dfcb21a6f5091859c # tag=v4.5.0
         with:
           registry: ghcr.io
           username: ${{ secrets.private-package-token && (secrets.private-package-username
@@ -641,7 +641,7 @@ jobs:
       - name: Upload SARIF to GitHub Security
         if: inputs.push && inputs.upload-scan-results &&
           steps.check-attestations.outputs.has_vuln != 'true'
-        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # tag=codeql-bundle-v4.37.0
+        uses: github/codeql-action/upload-sarif@e4fba868fa4b1b91e1fdab776edc8cfbe6e9fb81 # tag=codeql-bundle-v4.37.3
         with:
           category: container-scan-${{ matrix.platform }}
           sarif_file: trivy-results-${{ strategy.job-index }}.sarif
@@ -656,7 +656,7 @@ jobs:
       - name: Attest vulnerability scan results
         id: attest-vuln-scan
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # tag=v4.1.1
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # tag=v4.2.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.build.outputs.digest }}
