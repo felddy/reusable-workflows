@@ -150,7 +150,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # tag=v4.2.0
 
       - name: Log in to container registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # tag=v4.4.0
+        uses: docker/login-action@371161bbe7024a29a25c5e19bfcbc0804fe9ad2c # tag=v4.5.2
         with:
           registry: ghcr.io
           username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
@@ -229,7 +229,7 @@ jobs:
 
       - name: Attest manifest (build environment)
         if: inputs.push
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # tag=v4.1.1
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # tag=v4.2.0
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.manifest-digest.outputs.digest }}
