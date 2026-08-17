@@ -8,7 +8,7 @@ on: # yamllint disable-line rule:truthy
       - auto_merge_disabled
 
 env:
-  LABEL_NAME: automerge
+  LABEL_NAME: "automerge :bell:"
 
 jobs:
   add-remove-label:
