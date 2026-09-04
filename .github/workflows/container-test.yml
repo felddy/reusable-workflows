@@ -141,7 +141,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # tag=v2.21.0
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # tag=v2.21.1
         with:
           disable-sudo: true
           egress-policy: block
@@ -184,7 +184,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # tag=v2.21.0
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # tag=v2.21.1
         with:
           egress-policy: audit
           allowed-endpoints: >
@@ -198,7 +198,7 @@ jobs:
 
       - name: Set up QEMU for multi-arch testing
         if: matrix.runner == 'ubuntu-latest'
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # tag=v3.3.0
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # tag=v3.3.0
         with:
           platforms: all
 
