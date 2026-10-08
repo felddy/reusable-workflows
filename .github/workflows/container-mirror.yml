@@ -64,7 +64,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # tag=v2.21.1
+        uses: step-security/harden-runner@351661ca32ac09a36dc5ee2d536e3128f2a3c8ed # tag=v2.22.0
         with:
           disable-sudo: true
           egress-policy: audit
@@ -84,7 +84,7 @@ jobs:
             sum.golang.org:443
 
       - name: Install ORAS
-        uses: oras-project/setup-oras@1d808f7d7f6995cc68b7bf507bfe5c5446e1dc9d # tag=v2.0.1
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # tag=v2.0.2
 
       - name: Verify ORAS installation
         run: |
