@@ -10,8 +10,11 @@ COPY --from=xx / /
 # Set up the working directory
 WORKDIR /workspace
 
-# Set RUSTFLAGS for static linking with the GNU toolchain
-ENV RUSTFLAGS='-C target-feature=+crt-static'
+# Set RUSTFLAGS for static linking with the GNU toolchain.
+# relocation-model=static disables static-PIE, which newer rustc enables by
+# default with +crt-static; it needs glibc's rcrt1.o, missing on arm and
+# ppc64le in Debian trixie.
+ENV RUSTFLAGS='-C target-feature=+crt-static -C relocation-model=static'
 
 # Install clang and other necessary tools
 RUN apt-get update && \
