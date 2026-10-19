@@ -402,9 +402,9 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           BASE_SCOPE: ${{ inputs.cache-scope || 'build' }}
         run: |
-          # Create platform-specific cache scope for better cache hits
-          PLATFORM_SLUG="${PLATFORM//\//-}"  # Replace / with -
-          PLATFORM_SCOPE="${BASE_SCOPE}-${PLATFORM_SLUG}"
+          # Create platform-specific cache scope for better cache hits.
+          # Slug the whole scope: the base may be an image name with slashes.
+          PLATFORM_SCOPE=$(echo "${BASE_SCOPE}-${PLATFORM}" | tr '/' '-')
 
           echo "scope=$PLATFORM_SCOPE" >> $GITHUB_OUTPUT
           echo "Cache scope: $PLATFORM_SCOPE"

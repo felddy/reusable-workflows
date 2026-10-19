@@ -1,0 +1,805 @@
+---
+name: Container Pipeline Workflow
+
+# This reusable workflow runs the complete pipeline for ONE image flavor:
+#   metadata + matrices (computed once) → build → test → publish,
+# with optional DockerHub mirror/README publication on releases.
+#
+# Callers express multiple flavors (e.g. a public and a private image) as a
+# job matrix over this workflow, passing per-flavor inputs and
+# `secrets: inherit`; the `private` and `pass-build-secrets` inputs control
+# which inherited secrets each flavor actually receives.
+#
+# Fork pull requests are detected here: the pipeline builds without pushing
+# and skips test/publish, so callers need no fork conditionals.
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
+
+on: # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      # Required
+      image-name:
+        description: Container image name (without registry)
+        required: true
+        type: string
+
+      platforms:
+        description: Platforms to build (JSON array string)
+        required: true
+        type: string
+
+      # Flavor behavior
+      test-platforms:
+        description: >
+          Platforms to test (JSON array string). Must be a subset of
+          platforms; tests pull the per-platform digests produced by the
+          build stage.
+        required: false
+        type: string
+        default: '["linux/amd64"]'
+
+      private:
+        description: >
+          Build a private, repository-unlinked package: authenticate with
+          private-package-token and omit the source-repository link from
+          image metadata.
+        required: false
+        type: boolean
+        default: false
+
+      pass-build-secrets:
+        description: Forward the build-secret-N secrets to the build stage.
+        required: false
+        type: boolean
+        default: false
+
+      push:
+        description: >
+          Push to the registry. Fork pull requests are always downgraded to
+          build-only regardless of this input.
+        required: false
+        type: boolean
+        default: true
+
+      # Build configuration
+      context:
+        description: Build context path
+        required: false
+        type: string
+        default: .
+
+      dockerfile:
+        description: Path to Dockerfile
+        required: false
+        type: string
+        default: ./Dockerfile
+
+      build-args:
+        description: Build arguments (multiline string, KEY=VALUE per line)
+        required: false
+        type: string
+        default: ""
+
+      target:
+        description: Build target for multi-stage builds
+        required: false
+        type: string
+        default: ""
+
+      cache-scope:
+        description: Cache scope for this flavor (defaults to the image name)
+        required: false
+        type: string
+        default: ""
+
+      # Security configuration
+      scan-severity:
+        description: >
+          Fail on vulnerabilities at or above this severity (e.g.
+          CRITICAL,HIGH). Empty string disables the gate.
+        required: false
+        type: string
+        default: CRITICAL,HIGH
+
+      upload-scan-results:
+        description: Upload SARIF scan results to the GitHub Security tab.
+        required: false
+        type: boolean
+        default: true
+
+      vex-file:
+        description: Path to an OpenVEX document in the caller repository.
+        required: false
+        type: string
+        default: ""
+
+      # Test configuration
+      python-version:
+        description: Python version for running pytest
+        required: false
+        type: string
+        default: "3.14"
+
+      package-manager:
+        description: Python package manager for test dependencies (auto|uv|pip)
+        required: false
+        type: string
+        default: auto
+
+      # Release publication (DockerHub is maintenance-only; opt in per flavor)
+      mirror-on-release:
+        description: Mirror the published tags to docker.io on non-prerelease releases.
+        required: false
+        type: boolean
+        default: false
+
+      publish-readme-on-release:
+        description: Publish the README to DockerHub on latest non-prerelease releases.
+        required: false
+        type: boolean
+        default: false
+
+      debug:
+        description: Enable debug mode (verbose logging)
+        required: false
+        type: boolean
+        default: false
+
+      # Secret IDs for BuildKit secret mounts (--secret id=NAME)
+      build-secret-1-name:
+        description: Secret ID for build-secret-1
+        required: false
+        type: string
+        default: build-secret-1
+
+      build-secret-2-name:
+        description: Secret ID for build-secret-2
+        required: false
+        type: string
+        default: build-secret-2
+
+      build-secret-3-name:
+        description: Secret ID for build-secret-3
+        required: false
+        type: string
+        default: build-secret-3
+
+      build-secret-4-name:
+        description: Secret ID for build-secret-4
+        required: false
+        type: string
+        default: build-secret-4
+
+      build-secret-5-name:
+        description: Secret ID for build-secret-5
+        required: false
+        type: string
+        default: build-secret-5
+
+      # Environment variable names for test secrets
+      test-secret-1-name:
+        description: Environment variable name for test-secret-1
+        required: false
+        type: string
+        default: ""
+
+      test-secret-2-name:
+        description: Environment variable name for test-secret-2
+        required: false
+        type: string
+        default: ""
+
+      test-secret-3-name:
+        description: Environment variable name for test-secret-3
+        required: false
+        type: string
+        default: ""
+
+      test-secret-4-name:
+        description: Environment variable name for test-secret-4
+        required: false
+        type: string
+        default: ""
+
+      test-secret-5-name:
+        description: Environment variable name for test-secret-5
+        required: false
+        type: string
+        default: ""
+
+    secrets:
+      private-package-token:
+        description: >
+          Token for private package publication; used only when the private
+          input is true. Required permissions: packages:write.
+        required: false
+
+      private-package-username:
+        description: >
+          Username for private-package-token authentication. Defaults to
+          github.repository_owner when absent.
+        required: false
+
+      docker-hub-username:
+        description: >
+          Docker Hub username for authenticated base-image fallback pulls
+          and (when enabled) release mirroring and README publication.
+        required: false
+
+      docker-hub-password:
+        description: Docker Hub access token paired with docker-hub-username.
+        required: false
+
+      build-secret-1:
+        description: Build secret 1 (forwarded only when pass-build-secrets)
+        required: false
+
+      build-secret-2:
+        description: Build secret 2 (forwarded only when pass-build-secrets)
+        required: false
+
+      build-secret-3:
+        description: Build secret 3 (forwarded only when pass-build-secrets)
+        required: false
+
+      build-secret-4:
+        description: Build secret 4 (forwarded only when pass-build-secrets)
+        required: false
+
+      build-secret-5:
+        description: Build secret 5 (forwarded only when pass-build-secrets)
+        required: false
+
+      test-secret-1:
+        description: Secret exposed to pytest as the env var named by test-secret-1-name
+        required: false
+
+      test-secret-2:
+        description: Secret exposed to pytest as the env var named by test-secret-2-name
+        required: false
+
+      test-secret-3:
+        description: Secret exposed to pytest as the env var named by test-secret-3-name
+        required: false
+
+      test-secret-4:
+        description: Secret exposed to pytest as the env var named by test-secret-4-name
+        required: false
+
+      test-secret-5:
+        description: Secret exposed to pytest as the env var named by test-secret-5-name
+        required: false
+
+    outputs:
+      image-name:
+        description: The image name used by this pipeline
+        value: ${{ inputs.image-name }}
+
+      image-digest:
+        description: Final multi-arch manifest digest (sha256:...)
+        value: ${{ jobs.publish.outputs.image-digest }}
+
+      image-tags:
+        description: Full image tags (newline-separated)
+        value: ${{ jobs.metadata.outputs.image-tags }}
+
+      image-tag-names:
+        description: Bare tag names (space-separated)
+        value: ${{ jobs.metadata.outputs.tag-names }}
+
+      image-version:
+        description: Calculated version
+        value: ${{ jobs.metadata.outputs.version }}
+
+      is-latest:
+        description: Whether this build is the latest release
+        value: ${{ jobs.metadata.outputs.is-latest }}
+
+      pushed:
+        description: Whether images were pushed (false for fork PRs or push=false)
+        value: ${{ jobs.metadata.outputs.push }}
+
+jobs:
+  # Compute metadata (tags, labels, annotations, version) and the effective
+  # push decision ONCE for this flavor; downstream stages receive the values
+  # as inputs.
+  metadata:
+    name: Generate Metadata
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    outputs:
+      image-tags: ${{ steps.meta.outputs.tags }}
+      image-labels: ${{ steps.meta.outputs.labels }}
+      annotations: ${{ steps.meta.outputs.annotations }}
+      version: ${{ steps.version.outputs.version }}
+      is-latest: ${{ steps.determine-latest.outputs.is-latest }}
+      tag-names: ${{ steps.tags.outputs.tag-names }}
+      commit-epoch: ${{ steps.commit-timestamp.outputs.epoch }}
+      push: ${{ steps.push.outputs.push }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Determine effective push
+        id: push
+        # Fork pull requests have no write token or secrets; downgrade to a
+        # build-only run so fork contributors still get build feedback.
+        env:
+          PUSH_INPUT: ${{ inputs.push }}
+          IS_FORK: ${{ github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.full_name != github.repository }}
+        run: |
+          if [[ "${PUSH_INPUT}" == "true" && "${IS_FORK}" != "true" ]]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            if [[ "${IS_FORK}" == "true" ]]; then
+              echo "Fork pull request: building without push"
+            fi
+          fi
+
+      - name: Get commit timestamp
+        id: commit-timestamp
+        run: |
+          # Derive the created timestamp from the commit being built.
+          # This is stable for a given commit regardless of event type,
+          # ensuring reproducibility across push, release, PR, and schedule events.
+          EPOCH=$(git log -1 --format=%ct "${GITHUB_SHA}")
+          TIMESTAMP=$(date -u -d "@${EPOCH}" '+%Y-%m-%dT%H:%M:%SZ')
+          echo "epoch=$EPOCH" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+          echo "Commit timestamp: $TIMESTAMP (epoch: $EPOCH)"
+
+      - name: Determine event context
+        id: context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          DISPATCH_TAG: ${{ github.event.inputs.image-tag || 'dispatch' }}
+        run: |
+          echo "event-name=$EVENT_NAME" >> $GITHUB_OUTPUT
+
+          # Determine tag strategy based on event
+          if [[ "$EVENT_NAME" == "merge_group" ]]; then
+            echo "strategy=branch" >> $GITHUB_OUTPUT
+            echo "ref-name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "strategy=pr" >> $GITHUB_OUTPUT
+            echo "ref-name=pr-${PR_NUMBER}" >> $GITHUB_OUTPUT
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+              echo "strategy=tag" >> $GITHUB_OUTPUT
+              echo "ref-name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            else
+              echo "strategy=branch" >> $GITHUB_OUTPUT
+              echo "ref-name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+            fi
+          elif [[ "$EVENT_NAME" == "release" ]]; then
+            if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
+              echo "strategy=prerelease" >> $GITHUB_OUTPUT
+            else
+              echo "strategy=release" >> $GITHUB_OUTPUT
+            fi
+            echo "ref-name=${RELEASE_TAG}" >> $GITHUB_OUTPUT
+          elif [[ "$EVENT_NAME" == "schedule" ]]; then
+            echo "strategy=schedule" >> $GITHUB_OUTPUT
+            echo "ref-name=edge" >> $GITHUB_OUTPUT
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "strategy=workflow_dispatch" >> $GITHUB_OUTPUT
+            echo "ref-name=${DISPATCH_TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Unsupported GitHub event: '${EVENT_NAME}'. Add a handler in container-pipeline.yml."
+            {
+              echo "## ❌ Unsupported GitHub Event"
+              echo ""
+              echo "| Field | Value |"
+              echo "| ----- | ----- |"
+              echo "| Event | \`${EVENT_NAME}\` |"
+              echo "| Ref | \`${GITHUB_REF}\` |"
+              echo "| SHA | \`${GITHUB_SHA}\` |"
+              echo ""
+              echo "Add a handler in the **Determine event context** step and a matching"
+              echo "case in **Generate tags** in \`container-pipeline.yml\`."
+            } >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Extract version from tag
+        id: version
+        env:
+          REF_NAME: ${{ steps.context.outputs.ref-name }}
+          STRATEGY: ${{ steps.context.outputs.strategy }}
+        run: |
+          # Extract semantic version from tag
+          if [[ "$STRATEGY" == "release" ]] || [[ "$STRATEGY" == "prerelease" ]] || [[ "$STRATEGY" == "tag" ]]; then
+            # Remove 'v' prefix if present
+            VERSION="${REF_NAME#v}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+            # Extract major, minor, patch
+            if [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-.*)?$ ]]; then
+              echo "major=${BASH_REMATCH[1]}" >> $GITHUB_OUTPUT
+              echo "minor=${BASH_REMATCH[2]}" >> $GITHUB_OUTPUT
+              echo "patch=${BASH_REMATCH[3]}" >> $GITHUB_OUTPUT
+              echo "prerelease=${BASH_REMATCH[4]}" >> $GITHUB_OUTPUT
+            else
+              echo "version=$VERSION" >> $GITHUB_OUTPUT
+              echo "major=" >> $GITHUB_OUTPUT
+              echo "minor=" >> $GITHUB_OUTPUT
+              echo "patch=" >> $GITHUB_OUTPUT
+              echo "prerelease=" >> $GITHUB_OUTPUT
+            fi
+          else
+            # For non-release builds, use commit SHA
+            echo "version=sha-${GITHUB_SHA:0:7}" >> $GITHUB_OUTPUT
+            echo "major=" >> $GITHUB_OUTPUT
+            echo "minor=" >> $GITHUB_OUTPUT
+            echo "patch=" >> $GITHUB_OUTPUT
+            echo "prerelease=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine if latest
+        id: determine-latest
+        env:
+          STRATEGY: ${{ steps.context.outputs.strategy }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          IS_LATEST="false"
+
+          # Only consider non-prerelease releases for latest check
+          if [[ "$STRATEGY" == "release" && "${RELEASE_PRERELEASE}" == "false" ]]; then
+            REPO="${GITHUB_REPOSITORY}"
+            API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+
+            # Fetch the tag name of the latest GitHub release
+            LATEST_TAG="$(
+              curl -sSL \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "${API_URL}" | jq -r '.tag_name // empty'
+            )"
+
+            # Mark as latest only if this release's tag matches the latest release tag
+            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" == "${RELEASE_TAG}" ]]; then
+              IS_LATEST="true"
+            fi
+          fi
+          echo "is-latest=$IS_LATEST" >> $GITHUB_OUTPUT
+
+      - name: Generate tags
+        id: tags
+        env:
+          STRATEGY: ${{ steps.context.outputs.strategy }}
+          REF_NAME: ${{ steps.context.outputs.ref-name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MAJOR: ${{ steps.version.outputs.major }}
+          MINOR: ${{ steps.version.outputs.minor }}
+          IS_LATEST: ${{ steps.determine-latest.outputs.is-latest }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          # Build newline-separated type=raw,value= expressions for docker/metadata-action
+          TAGS=""
+
+          add_tag() {
+            TAGS="${TAGS}type=raw,value=${1}\n"
+          }
+
+          case "$STRATEGY" in
+            branch)
+              # Normalize branch name to a Docker-safe tag:
+              # - convert to lowercase
+              # - replace any chars not in [a-z0-9_.-] (including /, spaces, @, etc.) with -
+              # - trim leading/trailing dashes
+              BRANCH_TAG="$(printf '%s' "$REF_NAME" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's/[^a-z0-9_.-]+/-/g' \
+                | sed -E 's/^-+|-+$//g')"
+              add_tag "$BRANCH_TAG"
+              add_tag "sha-${GITHUB_SHA:0:7}"
+              ;;
+
+            pr)
+              add_tag "$REF_NAME"
+              add_tag "sha-${GITHUB_SHA:0:7}"
+              ;;
+
+            prerelease)
+              add_tag "$VERSION"
+              add_tag "prerelease"
+              ;;
+
+            release)
+              add_tag "$VERSION"
+              if [[ -n "$MAJOR" ]] && [[ -n "$MINOR" ]]; then
+                add_tag "$MAJOR.$MINOR"
+                add_tag "$MAJOR"
+              fi
+              # Only add :release and :latest tags when this is the latest release
+              if [[ "${IS_LATEST}" == "true" ]]; then
+                add_tag "release"
+                add_tag "latest"
+              fi
+              ;;
+
+            schedule)
+              add_tag "edge"
+              ;;
+
+            tag)
+              add_tag "$VERSION"
+              ;;
+
+            workflow_dispatch)
+              DISPATCH_TAG="$(printf '%s' "$REF_NAME" \
+                | tr '[:upper:]' '[:lower:]' \
+                | sed -E 's/[^a-z0-9_.-]+/-/g' \
+                | sed -E 's/^-+|-+$//g')"
+              add_tag "$DISPATCH_TAG"
+              ;;
+
+            *)
+              echo "::error::Unhandled strategy '${STRATEGY}' (event: '${EVENT_NAME}'). This is a bug in container-pipeline.yml."
+              exit 1
+              ;;
+          esac
+
+          # Use multiline output delimiter for type=raw,value= expressions
+          delimiter="$(openssl rand -hex 8)"
+          echo "tags<<${delimiter}" >> $GITHUB_OUTPUT
+          printf "%b" "$TAGS" >> $GITHUB_OUTPUT
+          echo "${delimiter}" >> $GITHUB_OUTPUT
+
+          # Also output bare tag names space-separated (for the mirror stage)
+          TAG_NAMES=$(printf "%b" "$TAGS" | sed 's/type=raw,value=//g' | tr '\n' ' ' | sed 's/ $//')
+          echo "tag-names=$TAG_NAMES" >> $GITHUB_OUTPUT
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # tag=v6.2.0
+        with:
+          images: ghcr.io/${{ inputs.image-name }}
+          tags: |
+            ${{ steps.tags.outputs.tags }}
+          # Use the git commit timestamp for org.opencontainers.image.created to ensure
+          # reproducibility. This is stable for a given commit regardless of event type
+          # (push, release, PR, schedule), unlike repository metadata which can change
+          # independently of the commit being built.
+          # Private flavors omit the source link so the package is not linked
+          # to (and exposed on) the repository packages page.
+          labels: |
+            org.opencontainers.image.title=${{ github.event.repository.name }}
+            org.opencontainers.image.description=${{ github.event.repository.description }}
+            org.opencontainers.image.url=${{ github.event.repository.html_url }}
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+            org.opencontainers.image.created=${{ steps.commit-timestamp.outputs.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=${{ github.event.repository.license.spdx_id }}
+            org.opencontainers.image.authors=${{ github.repository_owner }}
+            ${{ !inputs.private && format('org.opencontainers.image.source={0}', github.event.repository.html_url) || '' }}
+          annotations: |
+            ${{ !inputs.private && format('org.opencontainers.image.source={0}', github.event.repository.html_url) || '' }}
+
+      - name: Output metadata summary
+        env:
+          IMAGE_NAME: ${{ inputs.image-name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          STRATEGY: ${{ steps.context.outputs.strategy }}
+          IS_LATEST: ${{ steps.determine-latest.outputs.is-latest }}
+          PRIVATE: ${{ inputs.private }}
+          PUSH: ${{ steps.push.outputs.push }}
+          META_TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          echo "## Container Metadata Generated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/${IMAGE_NAME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Strategy:** \`${STRATEGY}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Is Latest:** \`${IS_LATEST}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Private (unlinked):** \`${PRIVATE}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Push:** \`${PUSH}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Tags" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${META_TAGS}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  # Map platforms to native GitHub-hosted runners where available; fall back
+  # to ubuntu-latest (+ QEMU) for platforms without a native runner.
+  generate-matrix:
+    name: Generate platform matrices
+    runs-on: ubuntu-latest
+
+    permissions: {}
+
+    outputs:
+      build-matrix: ${{ steps.set.outputs.build-matrix }}
+      test-matrix: ${{ steps.set.outputs.test-matrix }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            127.0.0.1
+
+      - name: Set matrices
+        id: set
+        env:
+          PLATFORMS_JSON: ${{ inputs.platforms }}
+          TEST_PLATFORMS_JSON: ${{ inputs.test-platforms }}
+        run: |
+          to_matrix() {
+            jq -c '
+              map({
+                platform: .,
+                runner: (
+                  if . == "linux/arm64/v8" or . == "linux/arm64" then "ubuntu-24.04-arm"
+                  else "ubuntu-latest"
+                  end
+                )
+              }) | {include: .}
+            ' <<<"$1"
+          }
+          echo "build-matrix=$(to_matrix "${PLATFORMS_JSON}")" >> "$GITHUB_OUTPUT"
+          echo "test-matrix=$(to_matrix "${TEST_PLATFORMS_JSON}")" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build and Publish Container
+    needs:
+      - metadata
+      - generate-matrix
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+      security-events: write
+    uses: ./.github/workflows/container-build.yml
+    with:
+      build-matrix: ${{ needs.generate-matrix.outputs.build-matrix }}
+      image-name: ${{ inputs.image-name }}
+      image-labels: ${{ needs.metadata.outputs.image-labels }}
+      image-annotations: ${{ needs.metadata.outputs.annotations }}
+      source-date-epoch: ${{ needs.metadata.outputs.commit-epoch }}
+      push: ${{ needs.metadata.outputs.push == 'true' }}
+      context: ${{ inputs.context }}
+      dockerfile: ${{ inputs.dockerfile }}
+      build-args: ${{ inputs.build-args }}
+      target: ${{ inputs.target }}
+      scan-severity: ${{ inputs.scan-severity }}
+      upload-scan-results: ${{ inputs.upload-scan-results }}
+      vex-file: ${{ inputs.vex-file }}
+      cache-scope: ${{ inputs.cache-scope || inputs.image-name }}
+      debug: ${{ inputs.debug }}
+      build-secret-1-name: ${{ inputs.build-secret-1-name }}
+      build-secret-2-name: ${{ inputs.build-secret-2-name }}
+      build-secret-3-name: ${{ inputs.build-secret-3-name }}
+      build-secret-4-name: ${{ inputs.build-secret-4-name }}
+      build-secret-5-name: ${{ inputs.build-secret-5-name }}
+    secrets:
+      private-package-token: ${{ inputs.private && secrets.private-package-token || '' }}
+      private-package-username: ${{ inputs.private && secrets.private-package-username || '' }}
+      docker-hub-username: ${{ secrets.docker-hub-username }}
+      docker-hub-password: ${{ secrets.docker-hub-password }}
+      build-secret-1: ${{ inputs.pass-build-secrets && secrets.build-secret-1 || '' }}
+      build-secret-2: ${{ inputs.pass-build-secrets && secrets.build-secret-2 || '' }}
+      build-secret-3: ${{ inputs.pass-build-secrets && secrets.build-secret-3 || '' }}
+      build-secret-4: ${{ inputs.pass-build-secrets && secrets.build-secret-4 || '' }}
+      build-secret-5: ${{ inputs.pass-build-secrets && secrets.build-secret-5 || '' }}
+
+  test:
+    name: Test Container
+    needs:
+      - metadata
+      - generate-matrix
+      - build
+    if: needs.metadata.outputs.push == 'true'
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+    uses: ./.github/workflows/container-test.yml
+    with:
+      image-name: ${{ inputs.image-name }}
+      test-matrix: ${{ needs.generate-matrix.outputs.test-matrix }}
+      python-version: ${{ inputs.python-version }}
+      package-manager: ${{ inputs.package-manager }}
+      test-secret-1-name: ${{ inputs.test-secret-1-name }}
+      test-secret-2-name: ${{ inputs.test-secret-2-name }}
+      test-secret-3-name: ${{ inputs.test-secret-3-name }}
+      test-secret-4-name: ${{ inputs.test-secret-4-name }}
+      test-secret-5-name: ${{ inputs.test-secret-5-name }}
+    secrets:
+      private-package-token: ${{ inputs.private && secrets.private-package-token || '' }}
+      private-package-username: ${{ inputs.private && secrets.private-package-username || '' }}
+      test-secret-1: ${{ secrets.test-secret-1 }}
+      test-secret-2: ${{ secrets.test-secret-2 }}
+      test-secret-3: ${{ secrets.test-secret-3 }}
+      test-secret-4: ${{ secrets.test-secret-4 }}
+      test-secret-5: ${{ secrets.test-secret-5 }}
+
+  publish:
+    name: Publish Manifest
+    needs:
+      - metadata
+      - build
+      - test
+    if: needs.metadata.outputs.push == 'true'
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/container-publish-manifest.yml
+    with:
+      image-name: ${{ inputs.image-name }}
+      platforms: ${{ inputs.platforms }}
+      image-tags: ${{ needs.metadata.outputs.image-tags }}
+    secrets:
+      private-package-token: ${{ inputs.private && secrets.private-package-token || '' }}
+      private-package-username: ${{ inputs.private && secrets.private-package-username || '' }}
+
+  # DockerHub publication is maintenance-only; flavors opt in explicitly.
+  mirror:
+    name: Mirror to DockerHub
+    needs:
+      - metadata
+      - publish
+    if: |
+      inputs.mirror-on-release &&
+      github.event_name == 'release' && !github.event.release.prerelease &&
+      needs.metadata.outputs.push == 'true'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/container-mirror.yml
+    with:
+      image-name: ${{ inputs.image-name }}
+      image-tag-names: ${{ needs.metadata.outputs.tag-names }}
+      target-registry: docker.io
+    secrets:
+      target-registry-username: ${{ secrets.docker-hub-username }}
+      target-registry-password: ${{ secrets.docker-hub-password }}
+
+  publish-readme:
+    name: Publish docs to DockerHub
+    needs:
+      - metadata
+      - publish
+    if: |
+      inputs.publish-readme-on-release &&
+      github.event_name == 'release' && !github.event.release.prerelease &&
+      needs.metadata.outputs.is-latest == 'true' &&
+      needs.metadata.outputs.push == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/dockerhub-description.yml
+    with:
+      image-name: ${{ inputs.image-name }}
+    secrets:
+      docker-hub-username: ${{ secrets.docker-hub-username }}
+      docker-hub-password: ${{ secrets.docker-hub-password }}
