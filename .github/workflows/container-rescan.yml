@@ -212,11 +212,13 @@ jobs:
       - name: Download SBOM attestation
         run: |
           # The SBOM was attested at build time; scanning it avoids pulling
-          # the image or any base layers.
+          # the image or any base layers. GitHub attestations are stored as
+          # Sigstore bundles (statement at .dsseEnvelope.payload); plain DSSE
+          # envelopes carry it at .payload.
           cosign download attestation \
             --predicate-type "${PREDICATE_TYPE_SBOM}" \
             "${IMAGE_REF}" \
-            | head -n1 | jq -r '.payload' | base64 -d \
+            | head -n1 | jq -r '.dsseEnvelope.payload // .payload' | base64 -d \
             | jq '.predicate' > sbom.spdx.json
 
           if ! jq -e '.spdxVersion' sbom.spdx.json > /dev/null; then

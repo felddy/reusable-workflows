@@ -398,10 +398,12 @@ jobs:
               echo "::error::No digest artifact found for ${PLATFORM}"
               exit 1
             fi
+            # GitHub attestations are stored as Sigstore bundles (statement
+            # at .dsseEnvelope.payload); plain DSSE envelopes use .payload.
             cosign download attestation \
               --predicate-type "${PREDICATE_TYPE_SBOM}" \
               "ghcr.io/${IMAGE_NAME}@sha256:${HEX}" \
-              | head -n1 | jq -r '.payload' | base64 -d \
+              | head -n1 | jq -r '.dsseEnvelope.payload // .payload' | base64 -d \
               | jq '.predicate' > /tmp/sbom/platform.spdx.json
             SBOM_FILE=/tmp/sbom/platform.spdx.json
           fi
