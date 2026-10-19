@@ -1,0 +1,50 @@
+---
+name: CI Gate Workflow
+
+# This reusable workflow is a single aggregate status check for branch
+# protection: it passes when every job in the caller's `needs` context
+# finished as success or skipped. Call it with `if: always()` and pass
+# `${{ toJSON(needs) }}` so skipped-but-required paths are evaluated too.
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
+
+on: # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      needs-json:
+        description: The caller's needs context, passed as toJSON(needs).
+        required: true
+        type: string
+
+jobs:
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+
+    permissions: {}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            127.0.0.1
+
+      - name: Evaluate needed jobs
+        env:
+          NEEDS_JSON: ${{ inputs.needs-json }}
+        run: |
+          jq . <<<"${NEEDS_JSON}"
+          FAILED=$(jq -r '
+            [to_entries[]
+             | select(.value.result != "success" and .value.result != "skipped")
+             | .key] | join(", ")
+          ' <<<"${NEEDS_JSON}")
+          if [[ -n "${FAILED}" ]]; then
+            echo "::error::Gate failed; unsuccessful jobs: ${FAILED}"
+            exit 1
+          fi
+          echo "All needed jobs succeeded or were skipped."
