@@ -519,8 +519,12 @@ jobs:
           echo "scope=$PLATFORM_SCOPE" >> $GITHUB_OUTPUT
           echo "Cache scope: $PLATFORM_SCOPE"
 
-      - name: Build and push container image
-        id: build
+      - name: Build and push container image (attempt 1)
+        id: build-1
+        # A transient registry failure (rate limit, mirror outage) fails this
+        # attempt without failing the job; attempt 2 retries once from the
+        # warm layer cache. Keep env/with in sync with attempt 2.
+        continue-on-error: true
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # tag=v7.4.0
         env:
           # Only upload build records in debug mode to reduce artifact storage
@@ -550,6 +554,53 @@ jobs:
           sbom: false
           secret-files: ${{ steps.secrets.outputs.secret-files }}
           target: ${{ inputs.target }}
+
+      - name: Build and push container image (attempt 2)
+        id: build-2
+        if: steps.build-1.outcome == 'failure'
+        # Keep env/with in sync with attempt 1.
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # tag=v7.4.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.debug == true || env.ACTIONS_STEP_DEBUG == 'true' }}
+          SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') &&
+            needs.calculate-source-date-epoch.outputs.source-date-epoch != '' &&
+            needs.calculate-source-date-epoch.outputs.source-date-epoch || '0'
+            }}
+        with:
+          annotations: ${{ needs.metadata.outputs.annotations }}
+          build-args: ${{ steps.parse-args.outputs.args }}
+          cache-from: type=gha,scope=${{ steps.cache-scope.outputs.scope }}
+          cache-to: type=gha,mode=max,scope=${{ steps.cache-scope.outputs.scope }}
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          labels: ${{ needs.metadata.outputs.image-labels }}
+          outputs: type=image,name=ghcr.io/${{ inputs.image-name
+            }},push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
+          platforms: ${{ matrix.platform }}
+          provenance: false
+          sbom: false
+          secret-files: ${{ steps.secrets.outputs.secret-files }}
+          target: ${{ inputs.target }}
+
+      - name: Resolve build result
+        id: build
+        env:
+          OUTCOME_1: ${{ steps.build-1.outcome }}
+          OUTCOME_2: ${{ steps.build-2.outcome }}
+          DIGEST_1: ${{ steps.build-1.outputs.digest }}
+          DIGEST_2: ${{ steps.build-2.outputs.digest }}
+        run: |
+          # Normalize the two attempts into a single step output so the rest
+          # of the job (and the job's outputs) reference one digest source.
+          if [[ "${OUTCOME_1}" == "success" ]]; then
+            echo "digest=${DIGEST_1}" >> "$GITHUB_OUTPUT"
+          elif [[ "${OUTCOME_2}" == "success" ]]; then
+            echo "::warning::First build attempt failed; retry succeeded"
+            echo "digest=${DIGEST_2}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Both build attempts failed"
+            exit 1
+          fi
 
       - name: Export digest
         id: digest
