@@ -118,9 +118,8 @@ digest artifacts are the hot path).
 
 - [ ] After one week of green scheduled builds (Phase A exit
   criterion): bump-version minor → 4.3.0, tag, publish release.
-- [ ] Operator step: enable Docker Hub immutable tags (semver regex)
-  on `felddy/reusable-workflow` mirror repos — low-risk trial before
-  consumers adopt it (D4).
+- Docker Hub immutable-tags trial de-scoped (2026-10-19): GHCR is the
+  system of record and Docker Hub publication is maintenance-only.
 
 ## Phase B — attestation modernization (v4.4.x) ##
 
@@ -325,9 +324,9 @@ and use path-based references into it. Decide at implementation.
   `_config.yml`, ci-gate job, fork conditionals; `FROM node` →
   docker.io reference; add `_rescan.yml` (daily) + `_retag.yml`;
   weekly build cron; secret names per migration guide.
-- [ ] Operator: Docker Hub immutable tags (semver regex) on
-  `felddy/foundryvtt`; enable release immutability; apply ported
-  rulesets change for the gate check.
+- [ ] Operator: enable release immutability; apply ported rulesets
+  change for the gate check. (Docker Hub immutable tags de-scoped —
+  GHCR is the system of record.)
 - [ ] Acceptance: full pipeline green for both flavors including a
   prerelease cut end-to-end; preinstall package remains private and
   unlinked.

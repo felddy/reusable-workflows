@@ -30,6 +30,11 @@ Resolved from the stage-1 open questions:
    major tags as plain git tags.
 1. **Flavor API:** single-flavor pipeline workflow + caller-side
    matrix (rationale below).
+1. **GHCR is the system of record (2026-10-19).** Docker Hub
+   publication (mirror + README) continues in maintenance mode but may
+   be dropped in v5; Docker Hub-specific hardening (immutable tags) is
+   de-scoped. All attestation, signing, verification, and rescan work
+   targets ghcr.io.
 
 ## Target architecture ##
 
@@ -191,10 +196,11 @@ fork conditionals.
   → verify commands) into the release notes between HTML marker
   comments via the API (notes stay editable post-publish; assets do
   not). Requires `contents: write` on the publish job.
-- **Docker Hub.** Enable regex immutable tags (semver only) on
-  mirrored repos; `container-mirror.yml` treats a rejected push to an
-  immutable tag as success when digests already match, error when they
-  differ.
+- **Docker Hub.** De-scoped (GHCR is the system of record; Docker Hub
+  publication is maintenance-only pending possible removal in v5).
+  `container-mirror.yml` still gains tolerance for rejected pushes
+  whose digests already match, so enabling Hub immutable tags later
+  cannot break the mirror.
 - **This repo.** Enable release immutability; releases are published
   complete by release-please (D7). Floating `v5` is a plain git tag
   moved by a small post-release job (plain tags are not locked).
