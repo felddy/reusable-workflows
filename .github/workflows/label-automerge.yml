@@ -18,10 +18,12 @@ jobs:
     steps:
       - name: Update label
         run: |
-          if [[ "${{ github.event.action }}" == "auto_merge_enabled" ]]; then
-            gh pr edit ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --add-label "${{ env.LABEL_NAME }}"
-          elif [[ "${{ github.event.action }}" == "auto_merge_disabled" ]]; then
-            gh pr edit ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --remove-label "${{ env.LABEL_NAME }}"
+          if [[ "${EVENT_ACTION}" == "auto_merge_enabled" ]]; then
+            gh pr edit "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --add-label "${LABEL_NAME}"
+          elif [[ "${EVENT_ACTION}" == "auto_merge_disabled" ]]; then
+            gh pr edit "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --remove-label "${LABEL_NAME}"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_ACTION: ${{ github.event.action }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}

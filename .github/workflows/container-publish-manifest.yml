@@ -108,8 +108,10 @@ jobs:
 
       - name: Derive image slug
         id: slugs
+        env:
+          IMAGE_NAME: ${{ inputs.image-name }}
         run: |
-          IMAGE_SLUG=$(echo "${{ inputs.image-name }}" | tr '/' '-')
+          IMAGE_SLUG=$(echo "${IMAGE_NAME}" | tr '/' '-')
           echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
           echo "Image slug: ${IMAGE_SLUG}"
 
@@ -165,9 +167,11 @@ jobs:
 
       - name: Create and push multi-arch manifest
         id: create-manifest
+        env:
+          IMAGE_TAGS: ${{ needs.metadata.outputs.image-tags }}
+          IMAGE_NAME: ${{ inputs.image-name }}
+          DRY_RUN_FLAG: ${{ inputs.push == false && '--dry-run' || '' }}
         run: |
-          IMAGE_TAGS="${{ needs.metadata.outputs.image-tags }}"
-
           # Build --tag flags from newline-separated image-tags
           TAG_FLAGS=""
           while IFS= read -r tag; do
@@ -188,7 +192,7 @@ jobs:
               echo "::error::Multiple digest files found in ${subdir}: ${HEX}"
               exit 1
             fi
-            DIGEST_REFS="${DIGEST_REFS} ghcr.io/${{ inputs.image-name }}@sha256:${HEX}"
+            DIGEST_REFS="${DIGEST_REFS} ghcr.io/${IMAGE_NAME}@sha256:${HEX}"
           done
 
           echo "Creating manifest with tags:"
@@ -199,15 +203,17 @@ jobs:
 
           # shellcheck disable=SC2086
           docker buildx imagetools create \
-            ${{ inputs.push == false && '--dry-run' || '' }} \
+            ${DRY_RUN_FLAG} \
             ${TAG_FLAGS} ${DIGEST_REFS}
 
       - name: Extract manifest digest
         id: manifest-digest
         if: inputs.push
+        env:
+          IMAGE_TAGS: ${{ needs.metadata.outputs.image-tags }}
         run: |
           # Use the first tag to extract the manifest digest
-          FIRST_TAG=$(echo "${{ needs.metadata.outputs.image-tags }}" | head -n1)
+          FIRST_TAG=$(echo "${IMAGE_TAGS}" | head -n1)
           echo "Extracting digest from: ${FIRST_TAG}"
 
           DIGEST=$(crane digest "${FIRST_TAG}")
@@ -249,21 +255,26 @@ jobs:
 
       - name: Sign manifest (keyless)
         if: inputs.push
+        env:
+          IMAGE_REF: ghcr.io/${{ inputs.image-name }}@${{ steps.manifest-digest.outputs.digest }}
         run: |
-          IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ steps.manifest-digest.outputs.digest }}"
           echo "Signing manifest: ${IMAGE_REF}"
           cosign sign --yes "${IMAGE_REF}"
           echo "✅ Manifest signed successfully"
 
       - name: Output manifest summary
         if: always()
+        env:
+          IMAGE_NAME: ${{ inputs.image-name }}
+          DIGEST: ${{ steps.manifest-digest.outputs.digest }}
+          IMAGE_TAGS: ${{ needs.metadata.outputs.image-tags }}
         run: |
           echo "## Manifest Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Digest:** \`${{ steps.manifest-digest.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/${IMAGE_NAME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${DIGEST}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Tags" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "${{ needs.metadata.outputs.image-tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "${IMAGE_TAGS}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

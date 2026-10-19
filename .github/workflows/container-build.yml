@@ -317,8 +317,9 @@ jobs:
 
       - name: Set matrix
         id: set-matrix
+        env:
+          PLATFORMS_JSON: ${{ inputs.platforms }}
         run: |
-          PLATFORMS_JSON='${{ inputs.platforms }}'
           MATRIX=$(echo "${PLATFORMS_JSON}" | jq -c '
             map({
               platform: .,
@@ -440,10 +441,10 @@ jobs:
 
       - name: Parse build arguments
         id: parse-args
+        env:
+          BUILD_ARGS: ${{ inputs.build-args }}
         run: |
           # Parse multiline build-args into format for docker build
-          BUILD_ARGS="${{ inputs.build-args }}"
-
           if [[ -n "$BUILD_ARGS" ]]; then
             # Use a delimiter for multiline output
             delimiter="$(openssl rand -hex 8)"
@@ -459,6 +460,17 @@ jobs:
 
       - name: Prepare build secrets
         id: secrets
+        env:
+          BUILD_SECRET_1: ${{ secrets.build-secret-1 }}
+          BUILD_SECRET_2: ${{ secrets.build-secret-2 }}
+          BUILD_SECRET_3: ${{ secrets.build-secret-3 }}
+          BUILD_SECRET_4: ${{ secrets.build-secret-4 }}
+          BUILD_SECRET_5: ${{ secrets.build-secret-5 }}
+          BUILD_SECRET_1_NAME: ${{ inputs.build-secret-1-name }}
+          BUILD_SECRET_2_NAME: ${{ inputs.build-secret-2-name }}
+          BUILD_SECRET_3_NAME: ${{ inputs.build-secret-3-name }}
+          BUILD_SECRET_4_NAME: ${{ inputs.build-secret-4-name }}
+          BUILD_SECRET_5_NAME: ${{ inputs.build-secret-5-name }}
         run: |
           # Prepare secrets for BuildKit secret mounts.
           # secret-files input expects newline-separated "id=path" entries.
@@ -470,35 +482,15 @@ jobs:
           SECRET_FILES=""
           SECRET_COUNT=0
 
-          if [[ -n "${{ secrets.build-secret-1 }}" ]]; then
-            printf '%s' "${{ secrets.build-secret-1 }}" > /tmp/build-secret-1
-            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-1-name }}=/tmp/build-secret-1"$'\n'
-            SECRET_COUNT=$((SECRET_COUNT + 1))
-          fi
-
-          if [[ -n "${{ secrets.build-secret-2 }}" ]]; then
-            printf '%s' "${{ secrets.build-secret-2 }}" > /tmp/build-secret-2
-            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-2-name }}=/tmp/build-secret-2"$'\n'
-            SECRET_COUNT=$((SECRET_COUNT + 1))
-          fi
-
-          if [[ -n "${{ secrets.build-secret-3 }}" ]]; then
-            printf '%s' "${{ secrets.build-secret-3 }}" > /tmp/build-secret-3
-            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-3-name }}=/tmp/build-secret-3"$'\n'
-            SECRET_COUNT=$((SECRET_COUNT + 1))
-          fi
-
-          if [[ -n "${{ secrets.build-secret-4 }}" ]]; then
-            printf '%s' "${{ secrets.build-secret-4 }}" > /tmp/build-secret-4
-            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-4-name }}=/tmp/build-secret-4"$'\n'
-            SECRET_COUNT=$((SECRET_COUNT + 1))
-          fi
-
-          if [[ -n "${{ secrets.build-secret-5 }}" ]]; then
-            printf '%s' "${{ secrets.build-secret-5 }}" > /tmp/build-secret-5
-            SECRET_FILES="${SECRET_FILES}${{ inputs.build-secret-5-name }}=/tmp/build-secret-5"$'\n'
-            SECRET_COUNT=$((SECRET_COUNT + 1))
-          fi
+          for i in 1 2 3 4 5; do
+            value_var="BUILD_SECRET_${i}"
+            name_var="BUILD_SECRET_${i}_NAME"
+            if [[ -n "${!value_var}" ]]; then
+              printf '%s' "${!value_var}" > "/tmp/build-secret-${i}"
+              SECRET_FILES="${SECRET_FILES}${!name_var}=/tmp/build-secret-${i}"$'\n'
+              SECRET_COUNT=$((SECRET_COUNT + 1))
+            fi
+          done
 
           # Write multiline output using heredoc delimiter
           delimiter="$(openssl rand -hex 8)"
@@ -512,12 +504,12 @@ jobs:
 
       - name: Prepare platform-specific cache scope
         id: cache-scope
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          BASE_SCOPE: ${{ inputs.cache-scope || 'build' }}
         run: |
           # Create platform-specific cache scope for better cache hits
-          PLATFORM="${{ matrix.platform }}"
           PLATFORM_SLUG="${PLATFORM//\//-}"  # Replace / with -
-
-          BASE_SCOPE="${{ inputs.cache-scope || 'build' }}"
           PLATFORM_SCOPE="${BASE_SCOPE}-${PLATFORM_SLUG}"
 
           echo "scope=$PLATFORM_SCOPE" >> $GITHUB_OUTPUT
@@ -609,27 +601,29 @@ jobs:
       - name: Export digest
         id: digest
         if: inputs.push
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE_NAME: ${{ inputs.image-name }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          digest="${{ steps.build.outputs.digest }}"
-
           # Validate digest is non-empty and well-formed before proceeding
-          if [[ -z "$digest" ]]; then
+          if [[ -z "$DIGEST" ]]; then
             echo "::error::Build step produced no digest - build likely failed"
             exit 1
           fi
-          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            echo "::error::Invalid digest format: $digest"
+          if [[ ! "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "::error::Invalid digest format: $DIGEST"
             exit 1
           fi
 
           mkdir -p /tmp/digests
-          touch "/tmp/digests/${digest#sha256:}"
-          echo "digest=$digest" >> $GITHUB_OUTPUT
-          echo "Digest: $digest"
+          touch "/tmp/digests/${DIGEST#sha256:}"
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          echo "Digest: $DIGEST"
 
           # Derive slugs for artifact naming
-          IMAGE_SLUG=$(echo "${{ inputs.image-name }}" | tr '/' '-')
-          PLATFORM_SLUG=$(echo "${{ matrix.platform }}" | tr '/' '-')
+          IMAGE_SLUG=$(echo "$IMAGE_NAME" | tr '/' '-')
+          PLATFORM_SLUG=$(echo "$PLATFORM" | tr '/' '-')
           echo "image-slug=${IMAGE_SLUG}" >> $GITHUB_OUTPUT
           echo "platform-slug=${PLATFORM_SLUG}" >> $GITHUB_OUTPUT
           echo "Artifact name: digests-${IMAGE_SLUG}-${PLATFORM_SLUG}"
@@ -640,12 +634,16 @@ jobs:
 
       - name: Authenticate cosign with registry
         if: inputs.push
-        run: |
-          # Cosign needs explicit authentication to read attestations
+        env:
           # Prefer an explicit username for private-package-token if provided, otherwise
           # fall back to repository_owner (when using the PAT) or github.actor.
-          echo "${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}" | \
-            cosign login ghcr.io -u ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }} --password-stdin
+          REGISTRY_USER: ${{ secrets.private-package-token && (secrets.private-package-username
+            || github.repository_owner) || github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
+        run: |
+          # Cosign needs explicit authentication to read attestations
+          echo "$REGISTRY_TOKEN" | \
+            cosign login ghcr.io -u "$REGISTRY_USER" --password-stdin
           echo "✅ Cosign authenticated with registry"
 
       - name: Install ORAS
@@ -656,9 +654,9 @@ jobs:
         id: check-attestations
         if: inputs.push
         timeout-minutes: 3
+        env:
+          IMAGE_REF: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
         run: |
-          IMAGE_REF="ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}"
-
           echo "Checking for existing attestations on platform image..."
           echo "Image reference: $IMAGE_REF"
 
@@ -672,10 +670,10 @@ jobs:
             ' <<<"${json}"
           }
 
-          echo "has_provenance=$(has_pred "${{ env.PREDICATE_TYPE_PROVENANCE }}")" >> "${GITHUB_OUTPUT}"
-          echo "has_sbom=$(has_pred "${{ env.PREDICATE_TYPE_SBOM }}")" >> "${GITHUB_OUTPUT}"
-          echo "has_vuln=$(has_pred "${{ env.PREDICATE_TYPE_VULN }}")" >> "${GITHUB_OUTPUT}"
-          echo "has_build_env=$(has_pred "${{ env.PREDICATE_TYPE_BUILD_ENV }}")" >> "${GITHUB_OUTPUT}"
+          echo "has_provenance=$(has_pred "${PREDICATE_TYPE_PROVENANCE}")" >> "${GITHUB_OUTPUT}"
+          echo "has_sbom=$(has_pred "${PREDICATE_TYPE_SBOM}")" >> "${GITHUB_OUTPUT}"
+          echo "has_vuln=$(has_pred "${PREDICATE_TYPE_VULN}")" >> "${GITHUB_OUTPUT}"
+          echo "has_build_env=$(has_pred "${PREDICATE_TYPE_BUILD_ENV}")" >> "${GITHUB_OUTPUT}"
 
       - name: Upload digest
         if: inputs.push
@@ -754,8 +752,11 @@ jobs:
       - name: Fail if vulnerabilities found
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true' &&
           steps.trivy-sarif.outcome == 'failure'
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          SCAN_SEVERITY: ${{ inputs.scan-severity }}
         run: |
-          echo "::error::Security scan failed for ${{ matrix.platform }} - vulnerabilities found above threshold: ${{ inputs.scan-severity }}"
+          echo "::error::Security scan failed for ${PLATFORM} - vulnerabilities found above threshold: ${SCAN_SEVERITY}"
           exit 1
 
       - name: Attest vulnerability scan results
@@ -811,23 +812,30 @@ jobs:
 
       - name: Output platform build summary
         if: always()
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          CACHE_SCOPE: ${{ steps.cache-scope.outputs.scope }}
+          HAS_SBOM: ${{ steps.check-attestations.outputs.has_sbom }}
+          HAS_VULN: ${{ steps.check-attestations.outputs.has_vuln }}
+          SOURCE_DATE_EPOCH: ${{ needs.calculate-source-date-epoch.outputs.source-date-epoch }}
         run: |
-          echo "## Platform Build Complete: ${{ matrix.platform }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Platform Build Complete: ${PLATFORM}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Digest:** \`${{ steps.build.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Cache Scope:** \`${{ steps.cache-scope.outputs.scope }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${DIGEST}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Cache Scope:** \`${CACHE_SCOPE}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ steps.check-attestations.outputs.has_sbom }}" = "true" ] || [ "${{ steps.check-attestations.outputs.has_vuln }}" = "true" ]; then
+          if [ "${HAS_SBOM}" = "true" ] || [ "${HAS_VULN}" = "true" ]; then
             echo "### ⏭️  Attestations Already Exist" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Skipped work for existing attestations:" >> $GITHUB_STEP_SUMMARY
 
-            if [ "${{ steps.check-attestations.outputs.has_vuln }}" = "true" ]; then
+            if [ "${HAS_VULN}" = "true" ]; then
               echo "- ✓ Vulnerability scanning (attestation exists)" >> $GITHUB_STEP_SUMMARY
             fi
 
-            if [ "${{ steps.check-attestations.outputs.has_sbom }}" = "true" ]; then
+            if [ "${HAS_SBOM}" = "true" ]; then
               echo "- ✓ SBOM generation (attestation exists)" >> $GITHUB_STEP_SUMMARY
             fi
 
@@ -835,7 +843,7 @@ jobs:
           fi
 
           echo "### Reproducibility Information" >> $GITHUB_STEP_SUMMARY
-          echo "**SOURCE_DATE_EPOCH:** \`${{ needs.calculate-source-date-epoch.outputs.source-date-epoch }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**SOURCE_DATE_EPOCH:** \`${SOURCE_DATE_EPOCH}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "This build uses deterministic timestamps for reproducibility." >> $GITHUB_STEP_SUMMARY
           echo "Rebuilding the same commit with the same inputs should produce the same digest." >> $GITHUB_STEP_SUMMARY

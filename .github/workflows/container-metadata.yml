@@ -98,8 +98,13 @@ jobs:
 
       - name: Determine event context
         id: context
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          DISPATCH_TAG: ${{ github.event.inputs.image-tag || 'dispatch' }}
         run: |
-          EVENT_NAME="${{ github.event_name }}"
           echo "event-name=$EVENT_NAME" >> $GITHUB_OUTPUT
 
           # Determine tag strategy based on event
@@ -108,9 +113,9 @@ jobs:
             echo "ref-name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
           elif [[ "$EVENT_NAME" == "pull_request" ]]; then
             echo "strategy=pr" >> $GITHUB_OUTPUT
-            echo "ref-name=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+            echo "ref-name=pr-${PR_NUMBER}" >> $GITHUB_OUTPUT
           elif [[ "$EVENT_NAME" == "push" ]]; then
-            if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
               echo "strategy=tag" >> $GITHUB_OUTPUT
               echo "ref-name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
             else
@@ -118,18 +123,18 @@ jobs:
               echo "ref-name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
             fi
           elif [[ "$EVENT_NAME" == "release" ]]; then
-            if [[ "${{ github.event.release.prerelease }}" == "true" ]]; then
+            if [[ "${RELEASE_PRERELEASE}" == "true" ]]; then
               echo "strategy=prerelease" >> $GITHUB_OUTPUT
             else
               echo "strategy=release" >> $GITHUB_OUTPUT
             fi
-            echo "ref-name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "ref-name=${RELEASE_TAG}" >> $GITHUB_OUTPUT
           elif [[ "$EVENT_NAME" == "schedule" ]]; then
             echo "strategy=schedule" >> $GITHUB_OUTPUT
             echo "ref-name=edge" >> $GITHUB_OUTPUT
           elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "strategy=workflow_dispatch" >> $GITHUB_OUTPUT
-            echo "ref-name=${{ github.event.inputs['image-tag'] || 'dispatch' }}" >> $GITHUB_OUTPUT
+            echo "ref-name=${DISPATCH_TAG}" >> $GITHUB_OUTPUT
           else
             echo "::error::Unsupported GitHub event: '${EVENT_NAME}'. Add a handler in container-metadata.yml."
             {
@@ -149,10 +154,10 @@ jobs:
 
       - name: Extract version from tag
         id: version
+        env:
+          REF_NAME: ${{ steps.context.outputs.ref-name }}
+          STRATEGY: ${{ steps.context.outputs.strategy }}
         run: |
-          REF_NAME="${{ steps.context.outputs.ref-name }}"
-          STRATEGY="${{ steps.context.outputs.strategy }}"
-
           # Extract semantic version from tag
           if [[ "$STRATEGY" == "release" ]] || [[ "$STRATEGY" == "prerelease" ]] || [[ "$STRATEGY" == "tag" ]]; then
             # Remove 'v' prefix if present
@@ -183,25 +188,29 @@ jobs:
 
       - name: Determine if latest
         id: determine-latest
+        env:
+          STRATEGY: ${{ steps.context.outputs.strategy }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          STRATEGY="${{ steps.context.outputs.strategy }}"
           IS_LATEST="false"
 
           # Only consider non-prerelease releases for latest check
-          if [[ "$STRATEGY" == "release" && "${{ github.event.release.prerelease }}" == "false" ]]; then
+          if [[ "$STRATEGY" == "release" && "${RELEASE_PRERELEASE}" == "false" ]]; then
             REPO="${GITHUB_REPOSITORY}"
             API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
             # Fetch the tag name of the latest GitHub release
             LATEST_TAG="$(
               curl -sSL \
-                -H "Authorization: Bearer ${{ github.token }}" \
+                -H "Authorization: Bearer ${GH_TOKEN}" \
                 -H "Accept: application/vnd.github+json" \
                 "${API_URL}" | jq -r '.tag_name // empty'
             )"
 
             # Mark as latest only if this release's tag matches the latest release tag
-            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" == "${{ github.event.release.tag_name }}" ]]; then
+            if [[ -n "$LATEST_TAG" && "$LATEST_TAG" == "${RELEASE_TAG}" ]]; then
               IS_LATEST="true"
             fi
           fi
@@ -209,13 +218,15 @@ jobs:
 
       - name: Generate tags
         id: tags
+        env:
+          STRATEGY: ${{ steps.context.outputs.strategy }}
+          REF_NAME: ${{ steps.context.outputs.ref-name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MAJOR: ${{ steps.version.outputs.major }}
+          MINOR: ${{ steps.version.outputs.minor }}
+          IS_LATEST: ${{ steps.determine-latest.outputs.is-latest }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          STRATEGY="${{ steps.context.outputs.strategy }}"
-          REF_NAME="${{ steps.context.outputs.ref-name }}"
-          VERSION="${{ steps.version.outputs.version }}"
-          MAJOR="${{ steps.version.outputs.major }}"
-          MINOR="${{ steps.version.outputs.minor }}"
-
           # Build newline-separated type=raw,value= expressions for docker/metadata-action
           TAGS=""
 
@@ -238,7 +249,7 @@ jobs:
               ;;
 
             pr)
-              add_tag "pr-${{ github.event.pull_request.number }}"
+              add_tag "$REF_NAME"
               add_tag "sha-${GITHUB_SHA:0:7}"
               ;;
 
@@ -254,7 +265,7 @@ jobs:
                 add_tag "$MAJOR"
               fi
               # Only add :release and :latest tags when this is the latest release
-              if [[ "${{ steps.determine-latest.outputs.is-latest }}" == "true" ]]; then
+              if [[ "${IS_LATEST}" == "true" ]]; then
                 add_tag "release"
                 add_tag "latest"
               fi
@@ -277,14 +288,14 @@ jobs:
               ;;
 
             *)
-              echo "::error::Unhandled strategy '${STRATEGY}' (event: '${{ github.event_name }}'). This is a bug in container-metadata.yml."
+              echo "::error::Unhandled strategy '${STRATEGY}' (event: '${EVENT_NAME}'). This is a bug in container-metadata.yml."
               {
                 echo "## ❌ Unhandled Tag Strategy"
                 echo ""
                 echo "| Field | Value |"
                 echo "| ----- | ----- |"
                 echo "| Strategy | \`${STRATEGY}\` |"
-                echo "| Event | \`${{ github.event_name }}\` |"
+                echo "| Event | \`${EVENT_NAME}\` |"
                 echo "| Ref | \`${GITHUB_REF}\` |"
                 echo ""
                 echo "This strategy was set by **Determine event context** but has no"
@@ -329,17 +340,25 @@ jobs:
             ${{ inputs.link-repository == true && format('org.opencontainers.image.source={0}', github.event.repository.html_url) || '' }}
 
       - name: Output metadata summary
+        env:
+          IMAGE_NAME: ${{ inputs.image-name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          STRATEGY: ${{ steps.context.outputs.strategy }}
+          IS_LATEST: ${{ steps.determine-latest.outputs.is-latest }}
+          LINK_REPOSITORY: ${{ inputs.link-repository }}
+          META_TAGS: ${{ steps.meta.outputs.tags }}
+          META_LABELS: ${{ steps.meta.outputs.labels }}
         run: |
           echo "## Container Metadata Generated" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Image:** \`ghcr.io/${{ inputs.image-name }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Strategy:** \`${{ steps.context.outputs.strategy }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Is Latest:** \`${{ steps.determine-latest.outputs.is-latest }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "**Linked to Repository:** \`${{ inputs.link-repository }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`ghcr.io/${IMAGE_NAME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Strategy:** \`${STRATEGY}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Is Latest:** \`${IS_LATEST}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Linked to Repository:** \`${LINK_REPOSITORY}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [[ "${{ inputs.link-repository }}" == "false" ]]; then
+          if [[ "${LINK_REPOSITORY}" == "false" ]]; then
             echo "### ⚠️ Private Package (Not Linked)" >> $GITHUB_STEP_SUMMARY
             echo "This package is NOT linked to the repository (no org.opencontainers.image.source label)." >> $GITHUB_STEP_SUMMARY
             echo "- Package is scoped to user/org account" >> $GITHUB_STEP_SUMMARY
@@ -351,10 +370,10 @@ jobs:
 
           echo "### Tags" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "${META_TAGS}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Labels" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.meta.outputs.labels }}" >> $GITHUB_STEP_SUMMARY
+          echo "${META_LABELS}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

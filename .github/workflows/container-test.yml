@@ -150,11 +150,12 @@ jobs:
 
       - name: Set matrix
         id: set-matrix
+        env:
+          PLATFORMS_JSON: ${{ inputs.platforms }}
         run: |
           # Map each platform to its native GitHub-hosted runner where available.
           # Falls back to ubuntu-latest (+ QEMU emulation) for platforms without
           # a native runner.
-          PLATFORMS_JSON='${{ inputs.platforms }}'
           MATRIX=$(echo "${PLATFORMS_JSON}" | jq -c '
             map({
               platform: .,
@@ -284,10 +285,11 @@ jobs:
       # is present on disk for the file existence check.
       - name: Detect package manager
         id: pkg-manager
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
-          INPUT="${{ inputs.package-manager }}"
-          if [[ "${INPUT}" == "uv" ]] || \
-             { [[ "${INPUT}" == "auto" ]] && [[ -f uv.lock ]]; }; then
+          if [[ "${PACKAGE_MANAGER}" == "uv" ]] || \
+             { [[ "${PACKAGE_MANAGER}" == "auto" ]] && [[ -f uv.lock ]]; }; then
             echo "use-uv=true" >> $GITHUB_OUTPUT
             echo "Package manager: uv"
           else
@@ -347,25 +349,28 @@ jobs:
 
       - name: Prepare test secrets
         id: test-secrets
+        env:
+          TEST_SECRET_1: ${{ secrets.test-secret-1 }}
+          TEST_SECRET_2: ${{ secrets.test-secret-2 }}
+          TEST_SECRET_3: ${{ secrets.test-secret-3 }}
+          TEST_SECRET_4: ${{ secrets.test-secret-4 }}
+          TEST_SECRET_5: ${{ secrets.test-secret-5 }}
+          TEST_SECRET_1_NAME: ${{ inputs.test-secret-1-name }}
+          TEST_SECRET_2_NAME: ${{ inputs.test-secret-2-name }}
+          TEST_SECRET_3_NAME: ${{ inputs.test-secret-3-name }}
+          TEST_SECRET_4_NAME: ${{ inputs.test-secret-4-name }}
+          TEST_SECRET_5_NAME: ${{ inputs.test-secret-5-name }}
         run: |
           # Export each named secret as an environment variable for pytest.
           # Uses GITHUB_ENV so the values are available to subsequent steps
           # and properly masked in logs by GitHub's secret redaction.
-          if [[ -n "${{ inputs.test-secret-1-name }}" && -n "${{ secrets.test-secret-1 }}" ]]; then
-            echo "${{ inputs.test-secret-1-name }}=${{ secrets.test-secret-1 }}" >> $GITHUB_ENV
-          fi
-          if [[ -n "${{ inputs.test-secret-2-name }}" && -n "${{ secrets.test-secret-2 }}" ]]; then
-            echo "${{ inputs.test-secret-2-name }}=${{ secrets.test-secret-2 }}" >> $GITHUB_ENV
-          fi
-          if [[ -n "${{ inputs.test-secret-3-name }}" && -n "${{ secrets.test-secret-3 }}" ]]; then
-            echo "${{ inputs.test-secret-3-name }}=${{ secrets.test-secret-3 }}" >> $GITHUB_ENV
-          fi
-          if [[ -n "${{ inputs.test-secret-4-name }}" && -n "${{ secrets.test-secret-4 }}" ]]; then
-            echo "${{ inputs.test-secret-4-name }}=${{ secrets.test-secret-4 }}" >> $GITHUB_ENV
-          fi
-          if [[ -n "${{ inputs.test-secret-5-name }}" && -n "${{ secrets.test-secret-5 }}" ]]; then
-            echo "${{ inputs.test-secret-5-name }}=${{ secrets.test-secret-5 }}" >> $GITHUB_ENV
-          fi
+          for i in 1 2 3 4 5; do
+            name_var="TEST_SECRET_${i}_NAME"
+            value_var="TEST_SECRET_${i}"
+            if [[ -n "${!name_var}" && -n "${!value_var}" ]]; then
+              echo "${!name_var}=${!value_var}" >> $GITHUB_ENV
+            fi
+          done
 
       - name: Run pytest
         env:
