@@ -3,77 +3,111 @@
 [![Build](https://github.com/felddy/reusable-workflows/actions/workflows/_build.yml/badge.svg)](https://github.com/felddy/reusable-workflows/actions/workflows/_build.yml)
 [![Platforms](https://img.shields.io/badge/platforms-386%20%7C%20amd64%20%7C%20arm%2Fv5%20%7C%20arm%2Fv6%20%7C%20arm%2Fv7%20%7C%20arm%2Fv8%20%7C%20arm64%2Fv8%20%7C%20ppc64le%20%7C%20riscv64%20%7C%20s390x-blue)](https://github.com/felddy/reusable-workflows/pkgs/container/reusable-workflow/versions?filters%5Bversion_type%5D=tagged)
 
-This repository contains reusable GitHub Actions workflows for use in other repositories.
+This repository contains reusable GitHub Actions workflows for use in other
+repositories.
 
 ## Workflow Composition ##
 
-`_build.yml` is the entry-point orchestrator that wires the reusable building
-blocks into a complete CI pipeline. All other workflows are reusable building
-blocks intended to be called from an orchestrator.
+`container-pipeline.yml` is the primary reusable entry point: it runs the
+complete pipeline for one image flavor. Callers with multiple flavors (for
+example a public and a private image) express them as a job matrix over the
+pipeline. The `_*.yml` workflows are this repository's own orchestrators and
+double as reference implementations.
 
 | Workflow | Type | Purpose |
 | --- | --- | --- |
-| `_build.yml` | Orchestrator | Full CI pipeline: build → test → publish |
-| `container-build.yml` | Reusable | Build all platforms, push digests |
-| `container-publish-manifest.yml` | Reusable | Assemble + sign multi-arch manifest |
-| `container-test.yml` | Reusable | Pull image from registry and run pytest |
+| `container-pipeline.yml` | Reusable | Full flavor pipeline: metadata → build → test → publish |
+| `container-build.yml` | Building block | Build all platforms, push digests, scan, attest |
+| `container-test.yml` | Building block | Pull image from registry by digest and run pytest |
+| `container-publish-manifest.yml` | Building block | Assemble, attest, sign, and verify the manifest |
 | `container-rescan.yml` | Reusable | Rescan published images from attested SBOMs |
-| `container-metadata.yml` | Reusable | Generate OCI tags, labels, annotations |
+| `container-retag.yml` | Reusable | Reconcile floating tags after release edits |
 | `container-mirror.yml` | Reusable | Mirror image to another registry |
-| `common-lint.yml` | Reusable | Run linters across the repository |
+| `project-config.yml` | Reusable | Derive version, image name, and platform config |
+| `ci-gate.yml` | Reusable | Aggregate status check for branch protection |
+| `common-lint.yml` | Reusable | Run pre-commit linters across the repository |
 | `diagnostics.yml` | Reusable | Emit runner and environment diagnostics |
-| `_config.yml` | Reusable | Emit repository-specific build configuration |
-| `dockerhub-description.yml` | Reusable | Publish README to DockerHub |
+| `dockerhub-description.yml` | Reusable | Publish README to DockerHub (maintenance-only) |
+| `_build.yml` | Orchestrator | This repo's CI: two flavors through the pipeline |
+| `_rescan.yml` | Orchestrator | Daily CVE rescan of published images |
+| `_retag.yml` | Orchestrator | Floating-tag reconciliation on release edits |
 
 ### Pipeline Flow ###
 
 ```mermaid
 graph TD
-    A[push / pull_request / release / schedule] --> B[diagnostics]
-    A --> C[config]
-    A --> D[lint]
+    A[push / PR / release:published / weekly cron] --> C[project-config]
+    A --> L[common-lint]
+    A --> D[diagnostics]
+    C --> P["container-pipeline<br/>(matrix: one job per flavor)"]
+    L --> P
+    D --> P
+    P --> G[ci-gate]
 
-    B --> E["build<br/>(all platforms, push digests)"]
-    C --> E
-    D --> E
-    B --> F["build-private<br/>(all platforms, push digests)"]
-    C --> F
-    D --> F
+    E[release:edited] --> T["container-retag<br/>(repoint floating tags, no rebuild)"]
+    S[daily cron] --> R["container-rescan<br/>(scan attested SBOMs, no rebuild)"]
 
-    E --> G["test<br/>(pull by digest)"]
-    F --> H["test-private<br/>(pull by digest)"]
-
-    G --> I["publish-manifest<br/>(assemble + sign)"]
-    E --> I
-
-    H --> J["publish-manifest-private<br/>(assemble + sign)"]
-    F --> J
-
-    I --> K[mirror-to-dockerhub]
-    J --> K
-    I --> L[publish-readme]
+    subgraph container-pipeline internals
+        M["metadata + matrices<br/>(computed once)"] --> B["build per platform<br/>(push by digest, scan, attest)"]
+        B --> X["test per platform<br/>(pull by digest)"]
+        X --> U["publish manifest<br/>(assemble, attest, sign, verify)"]
+        U --> V["record digest on release"]
+        U --> W["DockerHub mirror + README<br/>(opt-in, releases only)"]
+    end
 ```
 
-### Three-Stage Design ###
+### Stage Design ###
 
-The pipeline is split into three distinct stages to catch failures early and
-ensure the tested image is identical to what gets published.
+**Metadata** is computed once per flavor: tags, labels, annotations,
+version, the platform/runner matrices, and the effective push decision.
+Fork pull requests are detected here and downgraded to build-only runs, so
+callers need no fork conditionals.
 
-**Build** — `container-build.yml` pushes each platform image to the registry
-by digest only. No manifest is assembled at this stage, so no tag is created
-yet. This keeps the build phase fast and focused.
+**Build** pushes each platform image to ghcr.io by digest only, scans it
+with Trivy (gated by `scan-severity`, with OpenVEX suppression via
+`vex-file`), and attests SBOM and vulnerability results per platform.
+Base-image pulls route through mirror.gcr.io with authenticated Docker Hub
+fallback, and transient failures retry once.
 
-**Test** — `container-test.yml` pulls the image directly from ghcr.io using
-the digest produced by the build stage. Pulling by digest (rather than loading
-a tar artifact) means the tested image is byte-for-byte identical to what will
-appear in the final manifest. It also avoids the overhead of exporting and
-re-importing large tar files, and works naturally with multi-platform builds
-where each platform has its own digest.
+**Test** pulls the image from the registry by the digest produced by the
+build stage, so the tested image is byte-for-byte identical to what is
+published.
 
-**Publish manifest** — `container-publish-manifest.yml` assembles the
-multi-arch manifest, attests provenance, and signs the result. This job only
-runs after the corresponding test job succeeds, so a manifest is never
-published for an untested image.
+**Publish** assembles the multi-arch manifest under a staging tag, applies
+the final tags behind an immutable-tag guard (semver tags are never
+repointed; identical digests are no-ops), attests SLSA provenance and the
+per-platform SBOMs against the index digest, signs with cosign keyless, and
+then **verifies** everything: `gh attestation verify` for provenance and
+SBOM plus `cosign verify` must pass or the pipeline fails. On release
+events the final digest is recorded in the release notes.
+
+**Rescan** (scheduled daily) downloads the attested SBOMs of published
+tags, scans them for new CVEs without pulling any image, refreshes the
+vulnerability attestations, and fails above the severity threshold — so
+full rebuilds only happen weekly.
+
+## Verifying published images ##
+
+Every published index carries SLSA provenance, SPDX SBOMs, vulnerability
+attestations, and a cosign keyless signature:
+
+```console
+gh attestation verify oci://ghcr.io/felddy/reusable-workflow:latest \
+  --repo felddy/reusable-workflows
+
+cosign verify \
+  --certificate-identity-regexp \
+    '^https://github\.com/felddy/reusable-workflows/\.github/workflows/container-publish-manifest\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/felddy/reusable-workflow:latest
+```
+
+Builds run on GitHub-hosted runners with provenance generated inside this
+reusable workflow, meeting SLSA v1.0 Build L3 expectations: consumers can
+verify that an image was produced by this workflow, from which commit, and
+with which inputs. Release tags are protected by repository rulesets (see
+`.github/rulesets/`) and the publish-time immutable-tag guard; `gh release
+verify` covers releases themselves once release immutability is enabled.
 
 ### Concurrency Group ###
 
@@ -90,19 +124,14 @@ concurrency:
 
 When a pull request event fires on a branch that already has a running push
 event workflow, the push run is cancelled and the PR run proceeds. For
-`schedule` and `workflow_dispatch` events on `main`, the group key resolves to
-`main` so concurrent scheduled runs cancel each other. This eliminates
+`schedule` and `workflow_dispatch` events on `main`, the group key resolves
+to `main` so concurrent scheduled runs cancel each other. This eliminates
 redundant duplicate runs without any per-job conditionals.
 
-### Fork Pull Requests ###
+## Migrating from v4 ##
 
-Registry-pushing jobs (`build`, `build-private`, and their downstream jobs)
-are skipped for pull requests opened from forks. GitHub does not provide write
-secrets or a writable `GITHUB_TOKEN` to fork PR workflows, so push attempts
-would fail with authentication errors. Lint and diagnostics still run, giving
-fork contributors CI feedback on code quality. Maintainers can check out the
-fork branch locally and run the full pipeline manually if a complete build
-validation is needed before merging.
+See [docs/v5/migration.md](docs/v5/migration.md) for the complete v4 → v5
+breaking-change list with before/after caller snippets.
 
 ## Contributing ##
 
