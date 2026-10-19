@@ -38,10 +38,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Give every matrix row explicit values for every field the
+          # pipeline call forwards; expression fallbacks (|| defaults)
+          # misread intentionally-empty and missing values.
           - flavor: public
             image-name: felddy/foundryvtt
             private: false
             pass-build-secrets: false
+            scan-severity: CRITICAL,HIGH
+            upload-scan-results: true
             mirror: true
             readme: true
           - flavor: preinstall
@@ -67,8 +72,8 @@ jobs:
       test-platforms: ${{ needs.config.outputs.test-platforms }}
       private: ${{ matrix.private }}
       pass-build-secrets: ${{ matrix.pass-build-secrets }}
-      scan-severity: ${{ matrix.scan-severity || 'CRITICAL,HIGH' }}
-      upload-scan-results: ${{ matrix.upload-scan-results != false }}
+      scan-severity: ${{ matrix.scan-severity }}
+      upload-scan-results: ${{ matrix.upload-scan-results }}
       build-args: ${{ needs.config.outputs.build-args }}
       mirror-on-release: ${{ matrix.mirror }}
       publish-readme-on-release: ${{ matrix.readme }}
