@@ -262,7 +262,21 @@ jobs:
             BARE="${full_tag##*:}"
 
             if [[ "${BARE}" =~ ${IMMUTABLE_PATTERN} ]]; then
-              EXISTING=$(crane digest "${full_tag}" 2>/dev/null || true)
+              # Fail closed: only a confirmed missing manifest counts as an
+              # absent tag. A transient lookup error must not let an existing
+              # immutable-class tag be overwritten unguarded.
+              set +e
+              LOOKUP=$(crane digest "${full_tag}" 2>&1)
+              LOOKUP_RC=$?
+              set -e
+              if [[ ${LOOKUP_RC} -eq 0 ]]; then
+                EXISTING="${LOOKUP}"
+              elif grep -qiE "MANIFEST_UNKNOWN|NAME_UNKNOWN" <<<"${LOOKUP}"; then
+                EXISTING=""
+              else
+                echo "::error::Could not determine whether tag '${BARE}' exists: ${LOOKUP}"
+                exit 1
+              fi
               if [[ "${EXISTING}" == "${NEW_DIGEST}" ]]; then
                 echo "✓ ${BARE}: already points at ${NEW_DIGEST} (no-op)"
                 continue
