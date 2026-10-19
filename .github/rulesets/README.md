@@ -27,6 +27,16 @@ authenticated as a repository admin.
   new release, so updates are allowed; deletion and non-fast-forward
   moves are blocked. A floating tag can only move forward.
 
+## Tag-rule semantics ##
+
+GitHub evaluates a tag move to a *descendant* commit as a fast-forward
+update: advancing a floating major tag (for example `v4` to a newer
+release commit) passes the `non_fast_forward` rule with no bypass.
+Moving a tag backward or deleting it violates the rules and requires a
+bypass actor, as does any create, update, or delete of a full semver
+tag. Automation that must create semver tags (release tooling) needs
+its identity added to `version-tag.json`'s `bypass_actors`.
+
 ## Applying ##
 
 Push the local rulesets up to GitHub:
