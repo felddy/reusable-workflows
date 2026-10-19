@@ -109,6 +109,13 @@ Conventions:
 
 ### A7 — Release v4.3.0 ###
 
+Known transient (observed 2026-10-19, post-merge run): artifact
+downloads can fail with `HTTP 503: Egress is over the account limit`
+— GitHub's Actions artifact-egress quota, unrelated to registries.
+`gh run rerun --failed` recovers once the quota window moves. If it
+recurs, Phase C should reduce artifact round-trips (the per-platform
+digest artifacts are the hot path).
+
 - [ ] After one week of green scheduled builds (Phase A exit
   criterion): bump-version minor → 4.3.0, tag, publish release.
 - [ ] Operator step: enable Docker Hub immutable tags (semver regex)
