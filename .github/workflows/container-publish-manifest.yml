@@ -476,11 +476,13 @@ jobs:
           echo "✅ SBOM attestation verified"
 
       - name: Verify cosign signature
-        # The signing identity is this reusable workflow, so the expected
-        # certificate identity is constant for every caller repository.
+        # The signing identity is the publish job of this reusable workflow,
+        # so the expected certificate identity is the same for every caller
+        # repository. Pin the full workflow path: a signature from any other
+        # workflow in this repository must not satisfy the gate.
         run: |
           cosign verify \
-            --certificate-identity-regexp '^https://github\.com/felddy/reusable-workflows/' \
+            --certificate-identity-regexp '^https://github\.com/felddy/reusable-workflows/\.github/workflows/container-publish-manifest\.yml@' \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
             "${IMAGE_REF}" > /dev/null
           echo "✅ cosign signature verified"
