@@ -1,0 +1,30 @@
+{
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    }
+  ],
+  "conditions": {
+    "ref_name": {
+      "exclude": [
+        "refs/tags/v*.*"
+      ],
+      "include": [
+        "refs/tags/v*"
+      ]
+    }
+  },
+  "enforcement": "active",
+  "name": "Major tag protections",
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    }
+  ],
+  "target": "tag"
+}
