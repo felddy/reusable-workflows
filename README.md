@@ -17,6 +17,7 @@ blocks intended to be called from an orchestrator.
 | `container-build.yml` | Reusable | Build all platforms, push digests |
 | `container-publish-manifest.yml` | Reusable | Assemble + sign multi-arch manifest |
 | `container-test.yml` | Reusable | Pull image from registry and run pytest |
+| `container-rescan.yml` | Reusable | Rescan published images from attested SBOMs |
 | `container-metadata.yml` | Reusable | Generate OCI tags, labels, annotations |
 | `container-mirror.yml` | Reusable | Mirror image to another registry |
 | `common-lint.yml` | Reusable | Run linters across the repository |

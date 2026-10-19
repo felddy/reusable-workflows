@@ -86,9 +86,17 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      # actions/attest@v4 records artifact storage metadata
+      artifact-metadata: write
 
     outputs:
       image-digest: ${{ steps.manifest-digest.outputs.digest }}
+      has-sbom: ${{ steps.check-attestations.outputs.has_sbom }}
+
+    env:
+      PREDICATE_TYPE_PROVENANCE: https://slsa.dev/provenance/v1
+      PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
+      PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
 
     steps:
       - name: Harden Runner
@@ -225,8 +233,54 @@ jobs:
           echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
           echo "Manifest digest: ${DIGEST}"
 
-      - name: Attest manifest (SLSA provenance)
+      - name: Install ORAS
         if: inputs.push
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # tag=v2.0.2
+
+      # Re-publishing the same digests (e.g. a scheduled edge run with a warm
+      # cache) yields the same index digest; skip attestations that already
+      # exist so they do not accumulate on the manifest.
+      - name: Check attestation existence
+        id: check-attestations
+        if: inputs.push
+        timeout-minutes: 3
+        env:
+          IMAGE_REF: ghcr.io/${{ inputs.image-name }}@${{ steps.manifest-digest.outputs.digest }}
+          PLATFORMS_JSON: ${{ inputs.platforms }}
+        run: |
+          echo "Checking for existing attestations on index..."
+          echo "Image reference: $IMAGE_REF"
+
+          json="$(oras discover --format json "${IMAGE_REF}")"
+
+          # Returns "true" or "false" (as text)
+          has_pred() {
+            local predicate="$1"
+            jq -r --arg p "${predicate}" '
+              any(.referrers[]?; .annotations["dev.sigstore.bundle.predicateType"] == $p)
+            ' <<<"${json}"
+          }
+
+          # One SBOM attestation is expected per platform. Comparing against
+          # the platform count means a partially-attested index (one platform
+          # failed in an earlier run) is re-attested rather than skipped.
+          SBOM_COUNT=$(jq -r --arg p "${PREDICATE_TYPE_SBOM}" '
+            [.referrers[]? | select(.annotations["dev.sigstore.bundle.predicateType"] == $p)] | length
+          ' <<<"${json}")
+          PLATFORM_COUNT=$(jq -r 'length' <<<"${PLATFORMS_JSON}")
+          if [[ "${SBOM_COUNT}" -ge "${PLATFORM_COUNT}" ]]; then
+            HAS_SBOM=true
+          else
+            HAS_SBOM=false
+          fi
+          echo "SBOM attestations: ${SBOM_COUNT}/${PLATFORM_COUNT}"
+
+          echo "has_provenance=$(has_pred "${PREDICATE_TYPE_PROVENANCE}")" >> "${GITHUB_OUTPUT}"
+          echo "has_sbom=${HAS_SBOM}" >> "${GITHUB_OUTPUT}"
+          echo "has_build_env=$(has_pred "${PREDICATE_TYPE_BUILD_ENV}")" >> "${GITHUB_OUTPUT}"
+
+      - name: Attest manifest (SLSA provenance)
+        if: inputs.push && steps.check-attestations.outputs.has_provenance != 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # tag=v4.2.2
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
@@ -234,12 +288,12 @@ jobs:
           push-to-registry: true
 
       - name: Attest manifest (build environment)
-        if: inputs.push
+        if: inputs.push && steps.check-attestations.outputs.has_build_env != 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # tag=v4.2.2
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.manifest-digest.outputs.digest }}
-          predicate-type: https://github.com/felddy/reusable-workflows/build-environment/v1
+          predicate-type: ${{ env.PREDICATE_TYPE_BUILD_ENV }}
           predicate: |
             {
               "runner": "${{ runner.os }}",
@@ -278,3 +332,186 @@ jobs:
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           echo "${IMAGE_TAGS}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+
+  # Attest each platform's SBOM against the index digest so that
+  # `gh attestation verify oci://<image>:<tag>` (which resolves to the index)
+  # finds SBOM attestations. Platform-level SBOM attestations are created by
+  # container-build.yml; this job re-targets the same documents.
+  attest-index-sbom:
+    name: Attest SBOM to index (${{ matrix.platform }})
+    needs:
+      - publish
+    if: inputs.push && needs.publish.outputs.has-sbom != 'true'
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(inputs.platforms) }}
+
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      # actions/attest@v4 records artifact storage metadata
+      artifact-metadata: write
+
+    env:
+      PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Log in to container registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # tag=v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
+          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # tag=v4.1.2
+
+      - name: Obtain platform SBOM
+        id: sbom
+        env:
+          IMAGE_NAME: ${{ inputs.image-name }}
+          PLATFORM: ${{ matrix.platform }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_TOKEN: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ secrets.private-package-token && (secrets.private-package-username
+            || github.repository_owner) || github.actor }}
+        run: |
+          IMAGE_SLUG=$(echo "${IMAGE_NAME}" | tr '/' '-')
+          PLATFORM_SLUG=$(echo "${PLATFORM}" | tr '/' '-')
+          mkdir -p /tmp/sbom
+
+          # Prefer the SBOM artifact from this run's build job. When the
+          # build skipped SBOM generation (the platform image was already
+          # attested in an earlier run), fall back to downloading the SBOM
+          # attestation from the platform image itself.
+          if gh run download "${{ github.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --name "sbom-${IMAGE_SLUG}-${PLATFORM_SLUG}" \
+            --dir /tmp/sbom; then
+            SBOM_FILE=$(ls /tmp/sbom/*.spdx.json | head -n1)
+            echo "Using SBOM artifact: ${SBOM_FILE}"
+          else
+            echo "SBOM artifact not found; extracting from platform attestation"
+            gh run download "${{ github.run_id }}" \
+              --repo "${{ github.repository }}" \
+              --name "digests-${IMAGE_SLUG}-${PLATFORM_SLUG}" \
+              --dir /tmp/digest
+            HEX=$(ls /tmp/digest | grep -E '^[a-f0-9]{64}$' | head -n1)
+            if [[ -z "${HEX}" ]]; then
+              echo "::error::No digest artifact found for ${PLATFORM}"
+              exit 1
+            fi
+            # GitHub attestations are stored as Sigstore bundles (statement
+            # at .dsseEnvelope.payload); plain DSSE envelopes use .payload.
+            cosign download attestation \
+              --predicate-type "${PREDICATE_TYPE_SBOM}" \
+              "ghcr.io/${IMAGE_NAME}@sha256:${HEX}" \
+              | head -n1 | jq -r '.dsseEnvelope.payload // .payload' | base64 -d \
+              | jq '.predicate' > /tmp/sbom/platform.spdx.json
+            SBOM_FILE=/tmp/sbom/platform.spdx.json
+          fi
+
+          if ! jq -e '.spdxVersion' "${SBOM_FILE}" > /dev/null; then
+            echo "::error::${SBOM_FILE} is not a valid SPDX document"
+            exit 1
+          fi
+          echo "sbom-file=${SBOM_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Attest SBOM against index
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # tag=v4.2.2
+        with:
+          subject-name: ghcr.io/${{ inputs.image-name }}
+          subject-digest: ${{ needs.publish.outputs.image-digest }}
+          sbom-path: ${{ steps.sbom.outputs.sbom-file }}
+          push-to-registry: true
+
+  # Fail the pipeline unless the published image actually verifies: GitHub
+  # attestations for provenance and SBOM, and the cosign keyless signature.
+  verify:
+    name: Verify attestations and signature
+    needs:
+      - publish
+      - attest-index-sbom
+    # attest-index-sbom is skipped when the index already carries SBOM
+    # attestations; verification must still run in that case.
+    if: |
+      always() && inputs.push &&
+      needs.publish.result == 'success' &&
+      (needs.attest-index-sbom.result == 'success' ||
+       needs.attest-index-sbom.result == 'skipped')
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: read
+
+    env:
+      IMAGE_REF: ghcr.io/${{ inputs.image-name }}@${{ needs.publish.outputs.image-digest }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
+        with:
+          disable-sudo: true
+          egress-policy: audit
+
+      - name: Log in to container registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # tag=v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
+          password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # tag=v4.1.2
+
+      - name: Verify provenance attestation
+        run: |
+          gh attestation verify "oci://${IMAGE_REF}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --predicate-type https://slsa.dev/provenance/v1
+          echo "✅ provenance attestation verified"
+
+      - name: Verify SBOM attestation
+        run: |
+          gh attestation verify "oci://${IMAGE_REF}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --predicate-type https://spdx.dev/Document/v2.3
+          echo "✅ SBOM attestation verified"
+
+      - name: Verify cosign signature
+        # The signing identity is the publish job of this reusable workflow,
+        # so the expected certificate identity is the same for every caller
+        # repository. Pin the full workflow path: a signature from any other
+        # workflow in this repository must not satisfy the gate.
+        run: |
+          cosign verify \
+            --certificate-identity-regexp '^https://github\.com/felddy/reusable-workflows/\.github/workflows/container-publish-manifest\.yml@' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "${IMAGE_REF}" > /dev/null
+          echo "✅ cosign signature verified"
+
+      - name: Output verification summary
+        env:
+          HAS_SBOM: ${{ needs.publish.outputs.has-sbom }}
+        run: |
+          echo "## Verification Passed ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${IMAGE_REF}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- SLSA provenance attestation (GitHub)" >> $GITHUB_STEP_SUMMARY
+          echo "- SPDX SBOM attestation (GitHub)" >> $GITHUB_STEP_SUMMARY
+          echo "- cosign keyless signature (Sigstore)" >> $GITHUB_STEP_SUMMARY

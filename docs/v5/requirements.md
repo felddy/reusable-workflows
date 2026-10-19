@@ -90,8 +90,8 @@ Findings that drive these requirements:
 - **R2.5 (should)** Document (and where possible verify in CI) the
   consumer-side verification story: `gh release verify`,
   `gh attestation verify oci://...`, cosign verify, and digest-pinned
-  `FROM`/`uses:` references. Enable Docker Hub immutable tags (regex:
-  semver only) for mirrored repositories.
+  `FROM`/`uses:` references. (Docker Hub immutable tags de-scoped
+  2026-10-19: GHCR is the system of record.)
 - **R2.6 (could)** Evaluate publishing this repo's own releases as
   immutable (locks `vX.Y.Z`; keeps floating `v5` as a plain git tag)
   and adopting release automation so `version.txt`, the tag, and the
