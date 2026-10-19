@@ -297,7 +297,7 @@ lines; acceptable until a better mechanism exists).
 
 ### C9 — Release v5.0.0-rc1 ###
 
-- [ ] Bump to 5.0.0-rc1, tag, publish as prerelease.
+- [x] Bump to 5.0.0-rc1, tag, publish as prerelease.
 - [ ] Acceptance: this repo runs wholly on the rc; rc announcement
   notes link the migration guide.
 
