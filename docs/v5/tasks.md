@@ -179,27 +179,26 @@ digest artifacts are the hot path).
 
 ## Phase C — v5 breaking core (v5.0.0-rc) ##
 
-### C1 — Composite actions extraction (D6, R4.6) — 2 PRs ###
+### C1 — Dedupe internals (D6, R4.6) — folded into C4 ###
 
-Constraint discovered in Phase A: a reusable workflow cannot reference
-its own composite actions by local path — `uses: ./...` resolves
-against the *caller's* checkout. The composites must either be
-referenced by full `owner/repo/path@ref` (requires a ref-update step
-at release time) or the workflow must first check out
-felddy/reusable-workflows at `github.workflow_ref` into a subdirectory
-and use path-based references into it. Decide at implementation.
+Decision (follows from the Phase A finding): composites are not used.
+A reusable workflow cannot reference its own composite actions by
+local path (`uses: ./...` resolves against the *caller's* checkout),
+and checking this repository out into the consumer workspace would
+pollute docker build contexts. Instead, `container-pipeline.yml`
+computes metadata and the platform/runner matrices **once** as inline
+jobs and passes the results to build/test/publish as inputs. This
+removes the duplicated metadata computation (previously run in both
+build and publish), the `calculate-source-date-epoch` and
+`determine-visibility` jobs, and both `generate-matrix` copies. The
+uv/pip detection block stays duplicated between test and lint (30
+lines; acceptable until a better mechanism exists).
 
-- [ ] PR 1: `.github/actions/container-metadata` composite replacing
-  `container-metadata.yml` (absorbs `determine-visibility` and the
-  `calculate-source-date-epoch` job via its `commit-epoch` output);
-  rewire `container-build.yml` and `container-publish-manifest.yml`;
-  delete `container-metadata.yml` and `container-sign.yml`.
-- [ ] PR 2: `.github/actions/platform-matrix` (shared by build +
-  test) and `.github/actions/python-test-deps` (shared by test +
-  lint).
-- [ ] Acceptance: dogfood green; job count per flavor drops (no
-  metadata/epoch/visibility jobs); `grep -r container-sign` and
-  `grep -r container-metadata.yml` return nothing.
+- [ ] Delete `container-metadata.yml` (logic moves into the pipeline's
+  inline metadata job) and dead `container-sign.yml`.
+- [ ] Acceptance: dogfood green; job count per flavor drops;
+  `grep -r container-sign` and `grep -r container-metadata.yml`
+  return nothing.
 
 ### C2 — Naming and token unification (D6, R4.1, R4.5) ###
 
@@ -223,7 +222,13 @@ and use path-based references into it. Decide at implementation.
 
 ### C4 — container-pipeline.yml (D2, R4.3) ###
 
-- [ ] New workflow chaining build → test → publish for one flavor.
+- [ ] New workflow for one flavor: inline `metadata` job (absorbed
+  from container-metadata.yml, plus fork-PR detection and visibility
+  from the `private` input) and inline `generate-matrix` job feed
+  build → test → publish called as sibling reusable workflows with
+  metadata/matrix passed as inputs. Optional release-event post-jobs:
+  DockerHub mirror and README publication (flavor opts in — avoids
+  the matrix-job output-collision problem for downstream jobs).
   Inputs: image/platform/scan settings plus `private`,
   `pass-build-secrets`, `test-platforms`, `cache-scope` (defaults to
   flavor name), `vex-file`, `force-tag-overwrite`. Secrets forwarded
