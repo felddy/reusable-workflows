@@ -15,7 +15,9 @@ on: # yamllint disable-line rule:truthy
       - edited
       - published
   schedule:
-    - cron: 0 10 * * * # everyday at 10am
+    # Weekly image refresh (updates the edge tag). Daily CVE monitoring is
+    # handled by _rescan.yml against the attested SBOMs.
+    - cron: 0 10 * * 1 # Mondays at 10am
   workflow_dispatch:
 
 concurrency:

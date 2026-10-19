@@ -1,0 +1,56 @@
+---
+name: Rescan
+
+# Daily CVE monitoring of the published images: scans the attested SBOMs of
+# the floating tags without rebuilding or pulling images. The weekly Build
+# workflow refreshes the images themselves.
+
+on: # yamllint disable-line rule:truthy
+  schedule:
+    - cron: 0 10 * * * # everyday at 10am
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  config:
+    name: Config
+    uses: ./.github/workflows/_config.yml
+
+  rescan:
+    name: Rescan Container
+    needs:
+      - config
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+      security-events: write
+    uses: ./.github/workflows/container-rescan.yml
+    with:
+      image-name: ${{ needs.config.outputs.image_name }}
+      tags: '["latest","edge"]'
+
+  rescan-private:
+    name: Rescan Container Private
+    needs:
+      - config
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+      security-events: write
+    uses: ./.github/workflows/container-rescan.yml
+    with:
+      image-name: ${{ needs.config.outputs.image_name }}-hid
+      tags: '["latest","edge"]'
+    secrets:
+      private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
