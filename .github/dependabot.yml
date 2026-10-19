@@ -21,20 +21,6 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: docker-compose
-    directory: /
-    schedule:
-      interval: daily
-    labels:
-      - "bot :robot:"
-      - "dependencies :game_die:"
-      - "docker :whale:"
-    groups:
-      docker-compose-all:
-        applies-to: version-updates
-        patterns:
-          - "*"
-
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -45,20 +31,6 @@ updates:
       - "github-actions :octocat:"
     groups:
       github-actions-all:
-        applies-to: version-updates
-        patterns:
-          - "*"
-
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: daily
-    labels:
-      - "bot :robot:"
-      - "dependencies :game_die:"
-      - "javascript :coffee:"
-    groups:
-      npm-all:
         applies-to: version-updates
         patterns:
           - "*"
