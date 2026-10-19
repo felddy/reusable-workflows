@@ -818,34 +818,49 @@ jobs:
           MARKER_START="<!-- container-digest:${IMAGE_NAME} -->"
           MARKER_END="<!-- /container-digest:${IMAGE_NAME} -->"
 
-          RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
-          RELEASE_ID=$(jq -r '.id' <<<"${RELEASE_JSON}")
-          BODY=$(jq -r '.body // ""' <<<"${RELEASE_JSON}")
+          # Built line-by-line so existing release-note content is never
+          # reindented or otherwise rewritten outside this section.
+          SECTION=$(printf '%s\n' \
+            "${MARKER_START}" \
+            "**Container image** \`ghcr.io/${IMAGE_NAME}\`" \
+            "" \
+            '```text' \
+            "ghcr.io/${IMAGE_NAME}@${DIGEST}" \
+            '```' \
+            "" \
+            "Verify: \`gh attestation verify oci://ghcr.io/${IMAGE_NAME}@${DIGEST} --repo ${GITHUB_REPOSITORY}\`" \
+            "${MARKER_END}")
 
-          # Replace any previous section for this image (idempotent re-runs)
-          CLEANED=$(printf '%s\n' "${BODY}" | awk -v s="${MARKER_START}" -v e="${MARKER_END}" '
-            $0 == s {skip=1; next}
-            $0 == e {skip=0; next}
-            !skip {print}')
+          # Concurrent flavors patch the same body. The job-level concurrency
+          # group serializes up to two flavors; the delayed read-back below
+          # catches a racing stale write and retries. (With more than two
+          # flavors GitHub may cancel a queued job — that surfaces as a
+          # visible job failure, never a silent loss.)
+          for attempt in 1 2 3 4 5; do
+            RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+            RELEASE_ID=$(jq -r '.id' <<<"${RELEASE_JSON}")
+            BODY=$(jq -r '.body // ""' <<<"${RELEASE_JSON}")
 
-          NEW_BODY="${CLEANED}
+            # Replace any previous section for this image (idempotent re-runs)
+            CLEANED=$(printf '%s\n' "${BODY}" | awk -v s="${MARKER_START}" -v e="${MARKER_END}" '
+              $0 == s {skip=1; next}
+              $0 == e {skip=0; next}
+              !skip {print}')
 
-          ${MARKER_START}
-          **Container image** \`ghcr.io/${IMAGE_NAME}\`
+            NEW_BODY="${CLEANED}"$'\n\n'"${SECTION}"
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+              -f body="${NEW_BODY}" > /dev/null
 
-          \`\`\`text
-          ghcr.io/${IMAGE_NAME}@${DIGEST}
-          \`\`\`
-
-          Verify: \`gh attestation verify oci://ghcr.io/${IMAGE_NAME}@${DIGEST} --repo ${GITHUB_REPOSITORY}\`
-          ${MARKER_END}"
-
-          # Strip the heredoc-style leading indentation added above
-          NEW_BODY=$(printf '%s\n' "${NEW_BODY}" | sed 's/^          //')
-
-          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
-            -f body="${NEW_BODY}" > /dev/null
-          echo "Recorded ghcr.io/${IMAGE_NAME}@${DIGEST} on release ${RELEASE_TAG}"
+            sleep $((RANDOM % 8 + 5))
+            CURRENT=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq '.body // ""')
+            if grep -qF "ghcr.io/${IMAGE_NAME}@${DIGEST}" <<<"${CURRENT}"; then
+              echo "Recorded ghcr.io/${IMAGE_NAME}@${DIGEST} on release ${RELEASE_TAG}"
+              exit 0
+            fi
+            echo "Lost a concurrent update race (attempt ${attempt}); retrying"
+          done
+          echo "::error::Failed to record the image digest after 5 attempts"
+          exit 1
 
   # DockerHub publication is maintenance-only; flavors opt in explicitly.
   mirror:
