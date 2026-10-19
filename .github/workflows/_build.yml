@@ -132,7 +132,7 @@ jobs:
       image-name: ${{ needs.config.outputs.image_name }}-hid
       platforms: ${{ needs.config.outputs.test_platforms }}
     secrets:
-      registry-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
+      private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
 
   publish-manifest:
     name: Publish Manifest
@@ -184,9 +184,9 @@ jobs:
       packages: read
     uses: ./.github/workflows/container-mirror.yml
     with:
-      image_name: ${{ needs.config.outputs.image_name }}
-      image_tag_names: ${{ needs.publish-manifest.outputs.image-tag-names }}
-      target_registry: docker.io
+      image-name: ${{ needs.config.outputs.image_name }}
+      image-tag-names: ${{ needs.publish-manifest.outputs.image-tag-names }}
+      target-registry: docker.io
     secrets:
       target-registry-username: ${{ secrets.DOCKER_USERNAME }}
       target-registry-password: ${{ secrets.DOCKER_PASSWORD }}
@@ -205,7 +205,7 @@ jobs:
       contents: read
     uses: ./.github/workflows/dockerhub-description.yml
     with:
-      image_name: ${{ needs.config.outputs.image_name }}
+      image-name: ${{ needs.config.outputs.image_name }}
     secrets:
-      docker_password: ${{ secrets.DOCKER_PASSWORD }}
-      docker_username: ${{ secrets.DOCKER_USERNAME }}
+      docker-hub-password: ${{ secrets.DOCKER_PASSWORD }}
+      docker-hub-username: ${{ secrets.DOCKER_USERNAME }}
