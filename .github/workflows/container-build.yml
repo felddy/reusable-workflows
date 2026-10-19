@@ -366,6 +366,10 @@ jobs:
       # vulnerability scans (Trivy tries each repository in turn).
       TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2
       TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1,mirror.gcr.io/aquasec/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1
+      # The secrets context is unavailable in step-level `if`, so surface
+      # the presence check through the job environment instead.
+      DOCKER_HUB_CONFIGURED: ${{ secrets.docker-hub-username != '' &&
+        secrets.docker-hub-password != '' }}
 
     steps:
       - name: Harden Runner
@@ -437,7 +441,7 @@ jobs:
       - name: Log in to Docker Hub for fallback pulls
         # Authenticates the Docker Hub fallback path used when mirror.gcr.io
         # misses. Pull-only; images are pushed to ghcr.io.
-        if: ${{ secrets.docker-hub-username && secrets.docker-hub-password }}
+        if: env.DOCKER_HUB_CONFIGURED == 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # tag=v4.6.0
         with:
           username: ${{ secrets.docker-hub-username }}
@@ -480,8 +484,8 @@ jobs:
           # secret-files input expects newline-separated "id=path" entries.
           # We write each secret to a temp file and output the id=path pairs.
           # Using secret-files (file paths) rather than secrets (inline values)
-          # avoids the multiline expression stripping issue in GitHub Actions
-          # `with:` blocks where ${{ steps.*.outputs.* }} newlines are removed.
+          # avoids the newline stripping GitHub Actions applies to multiline
+          # step-output expressions inside with: blocks.
           umask 077
           SECRET_FILES=""
           SECRET_COUNT=0
