@@ -359,6 +359,10 @@ jobs:
       PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
       PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
       PREDICATE_TYPE_BUILD_ENV: https://github.com/felddy/reusable-workflows/build-environment/v1
+      # Ordered fallback lists so a single registry outage cannot fail the
+      # vulnerability scans (Trivy tries each repository in turn).
+      TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2
+      TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1,mirror.gcr.io/aquasec/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1
 
     steps:
       - name: Harden Runner
