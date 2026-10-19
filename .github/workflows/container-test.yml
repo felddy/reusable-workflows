@@ -27,13 +27,13 @@ on: # yamllint disable-line rule:truthy
         required: true
         type: string
 
-      platforms:
+      test-matrix:
         description: >
-          JSON array of platforms to test
-          (e.g. '["linux/amd64"]' or '["linux/amd64","linux/arm64"]').
-          The workflow resolves the registry reference for each platform
-          from the digest artifacts uploaded by container-build.yml and
-          fans out test jobs across all listed platforms in parallel.
+          Platform/runner matrix (JSON object string with an include list),
+          produced by container-pipeline.yml's generate-matrix job. The
+          workflow resolves the registry reference for each platform from
+          the digest artifacts uploaded by container-build.yml and fans out
+          test jobs across all listed platforms in parallel.
         required: true
         type: string
 
@@ -133,56 +133,14 @@ on: # yamllint disable-line rule:truthy
         required: false
 
 jobs:
-  # Convert the platforms JSON array into a matrix for the test job.
-  # This mirrors the pattern used in container-build.yml.
-  generate-matrix:
-    name: Generate platform matrix
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: none
-
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
-        with:
-          disable-sudo: true
-          egress-policy: block
-          allowed-endpoints: >
-            127.0.0.1
-
-      - name: Set matrix
-        id: set-matrix
-        env:
-          PLATFORMS_JSON: ${{ inputs.platforms }}
-        run: |
-          # Map each platform to its native GitHub-hosted runner where available.
-          # Falls back to ubuntu-latest (+ QEMU emulation) for platforms without
-          # a native runner.
-          MATRIX=$(echo "${PLATFORMS_JSON}" | jq -c '
-            map({
-              platform: .,
-              runner: (
-                if . == "linux/arm64/v8" or . == "linux/arm64" then "ubuntu-24.04-arm"
-                else "ubuntu-latest"
-                end
-              )
-            }) | {include: .}
-          ')
-          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
-
   test:
     # Pulls the image from the registry by digest and runs pytest.
     name: Test ${{ matrix.platform }}
-    needs: generate-matrix
     runs-on: ${{ matrix.runner }}
 
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+      matrix: ${{ fromJSON(inputs.test-matrix) }}
 
     permissions:
       actions: read

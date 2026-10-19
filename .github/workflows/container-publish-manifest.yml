@@ -27,6 +27,13 @@ on: # yamllint disable-line rule:truthy
         required: true
         type: string
 
+      image-tags:
+        description: >
+          Full image tags to apply (newline-separated registry/name:tag
+          entries), produced by container-pipeline.yml's metadata job.
+        required: true
+        type: string
+
       push:
         description: Push manifest to registry. Set false for dry-run.
         required: false
@@ -52,32 +59,10 @@ on: # yamllint disable-line rule:truthy
         description: Final multi-arch manifest digest (sha256:...)
         value: ${{ jobs.publish.outputs.image-digest }}
 
-      image-tags:
-        description: Tags applied to the manifest
-        value: ${{ jobs.metadata.outputs.image-tags }}
-
-      image-tag-names:
-        description: Bare tag names (space-separated)
-        value: ${{ jobs.metadata.outputs.tag-names }}
-
-      is-latest:
-        description: Whether this is the latest release
-        value: ${{ jobs.metadata.outputs.is-latest }}
-
 jobs:
-  # Generate metadata (tags, labels, annotations) for the manifest
-  metadata:
-    name: Generate Metadata
-    permissions:
-      contents: read
-    uses: ./.github/workflows/container-metadata.yml
-    with:
-      image-name: ${{ inputs.image-name }}
-
   # Assemble multi-arch manifest from per-platform digests, then attest and sign
   publish:
     name: Publish Manifest
-    needs: metadata
     runs-on: ubuntu-latest
 
     permissions:
@@ -176,7 +161,7 @@ jobs:
       - name: Create and push multi-arch manifest
         id: create-manifest
         env:
-          IMAGE_TAGS: ${{ needs.metadata.outputs.image-tags }}
+          IMAGE_TAGS: ${{ inputs.image-tags }}
           IMAGE_NAME: ${{ inputs.image-name }}
           DRY_RUN_FLAG: ${{ inputs.push == false && '--dry-run' || '' }}
         run: |
@@ -218,7 +203,7 @@ jobs:
         id: manifest-digest
         if: inputs.push
         env:
-          IMAGE_TAGS: ${{ needs.metadata.outputs.image-tags }}
+          IMAGE_TAGS: ${{ inputs.image-tags }}
         run: |
           # Use the first tag to extract the manifest digest
           FIRST_TAG=$(echo "${IMAGE_TAGS}" | head -n1)
@@ -321,7 +306,7 @@ jobs:
         env:
           IMAGE_NAME: ${{ inputs.image-name }}
           DIGEST: ${{ steps.manifest-digest.outputs.digest }}
-          IMAGE_TAGS: ${{ needs.metadata.outputs.image-tags }}
+          IMAGE_TAGS: ${{ inputs.image-tags }}
         run: |
           echo "## Manifest Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

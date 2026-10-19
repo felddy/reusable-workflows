@@ -15,11 +15,35 @@ on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       # Required
-      platforms:
-        description: Platforms to build (JSON array string, e.g.
-          '["linux/amd64","linux/arm64"]')
+      build-matrix:
+        description: >
+          Platform/runner matrix (JSON object string with an include list,
+          e.g. '{"include":[{"platform":"linux/amd64","runner":"ubuntu-latest"}]}').
+          Produced by container-pipeline.yml's generate-matrix job.
         required: true
         type: string
+
+      # Metadata (produced once by container-pipeline.yml's metadata job)
+      image-labels:
+        description: OCI labels to apply (newline-separated key=value)
+        required: false
+        type: string
+        default: ""
+
+      image-annotations:
+        description: OCI annotations to apply (newline-separated)
+        required: false
+        type: string
+        default: ""
+
+      source-date-epoch:
+        description: >
+          Unix epoch used as SOURCE_DATE_EPOCH on release-tag builds for
+          reproducible timestamps. Development builds always use 0 for
+          maximum layer-cache reuse.
+        required: false
+        type: string
+        default: ""
 
       # Publishing
       push:
@@ -195,166 +219,15 @@ on: # yamllint disable-line rule:truthy
         description: The image name used in this build
         value: ${{ inputs.image-name }}
 
-      image-tags:
-        description: Generated image tags
-        value: ${{ jobs.metadata.outputs.image-tags }}
-
-      image-tag-names:
-        description: Bare tag names only (space-separated, e.g. "1.2.3 1.2 1 latest")
-        value: ${{ jobs.metadata.outputs.tag-names }}
-
-      image-version:
-        description: Calculated version
-        value: ${{ jobs.metadata.outputs.version }}
-
 jobs:
-  # Calculate SOURCE_DATE_EPOCH for reproducible builds
-  calculate-source-date-epoch:
-    name: Calculate SOURCE_DATE_EPOCH
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
-
-    outputs:
-      source-date-epoch: ${{ steps.calculate.outputs.source-date-epoch }}
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
-        with:
-          disable-sudo: true
-          egress-policy: block
-          allowed-endpoints: >
-            api.github.com:443
-            github.com:443
-            objects.githubusercontent.com:443
-            release-assets.githubusercontent.com:443
-
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Calculate SOURCE_DATE_EPOCH
-        id: calculate
-        run: |
-          # Calculate commit timestamp for SOURCE_DATE_EPOCH
-          # This value is used conditionally in the build step:
-          # - Release builds (refs/tags/*): Use commit timestamp for release tracking
-          # - Development builds (branches, PRs): Use 0 for maximum cache reuse
-          # The build step automatically selects the appropriate value based on github.ref
-          if [ -d .git ]; then
-            # Get the commit timestamp from git
-            COMMIT_TIMESTAMP=$(git log -1 --format=%ct)
-            echo "source-date-epoch=$COMMIT_TIMESTAMP" >> $GITHUB_OUTPUT
-            COMMIT_DATE=$(date -u -d "@$COMMIT_TIMESTAMP" '+%Y-%m-%d %H:%M:%S UTC')
-            echo "Reproducible build timestamp: $COMMIT_DATE (epoch: $COMMIT_TIMESTAMP)"
-          else
-            # Fallback to Unix epoch (0) for reproducibility
-            FALLBACK_TIMESTAMP=0
-            echo "source-date-epoch=$FALLBACK_TIMESTAMP" >> $GITHUB_OUTPUT
-            echo "::warning::Not in a git repository, using Unix epoch (0) for SOURCE_DATE_EPOCH"
-          fi
-
-  # Determine visibility based on presence of private-package-token
-  determine-visibility:
-    name: Determine Visibility
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: none
-
-    outputs:
-      link-repository: ${{ steps.check.outputs.link-repository }}
-      is-private: ${{ steps.check.outputs.is-private }}
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
-        with:
-          disable-sudo: true
-          egress-policy: block
-          allowed-endpoints: >
-            127.0.0.1
-
-      - name: Check for private package token
-        id: check
-        run: |
-          # If private-package-token is provided, package is private (unlinked)
-          # Otherwise, package is public (linked to repository)
-          if [[ -n "${{ secrets.private-package-token }}" ]]; then
-            echo "link-repository=false" >> $GITHUB_OUTPUT
-            echo "is-private=true" >> $GITHUB_OUTPUT
-            echo "Private package mode: will NOT link to repository"
-          else
-            echo "link-repository=true" >> $GITHUB_OUTPUT
-            echo "is-private=false" >> $GITHUB_OUTPUT
-            echo "Public package mode: will link to repository"
-          fi
-
-  # Generate metadata (tags, labels, version)
-  metadata:
-    name: Generate Metadata
-    needs:
-      - determine-visibility
-    permissions:
-      contents: read
-    uses: ./.github/workflows/container-metadata.yml
-    with:
-      image-name: ${{ inputs.image-name }}
-      link-repository: ${{ needs.determine-visibility.outputs.link-repository == 'true' }}
-
-  # Map platforms to native GitHub-hosted runners where available.
-  # Falls back to ubuntu-latest (+ QEMU) for platforms without a native runner.
-  generate-matrix:
-    name: Generate platform matrix
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: none
-
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
-        with:
-          disable-sudo: true
-          egress-policy: block
-          allowed-endpoints: >
-            127.0.0.1
-
-      - name: Set matrix
-        id: set-matrix
-        env:
-          PLATFORMS_JSON: ${{ inputs.platforms }}
-        run: |
-          MATRIX=$(echo "${PLATFORMS_JSON}" | jq -c '
-            map({
-              platform: .,
-              runner: (
-                if . == "linux/arm64/v8" or . == "linux/arm64" then "ubuntu-24.04-arm"
-                else "ubuntu-latest"
-                end
-              )
-            }) | {include: .}
-          ')
-          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
-
   # Build container image (multi-architecture support)
   build:
     name: Build ${{ matrix.platform }}
-    needs:
-      - calculate-source-date-epoch
-      - metadata
-      - generate-matrix
     runs-on: ${{ matrix.runner }}
 
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+      matrix: ${{ fromJSON(inputs.build-matrix) }}
 
     outputs:
       digest: ${{ steps.build.outputs.digest }}
@@ -553,17 +426,17 @@ jobs:
           # reuse cached layers regardless of when the commit was made. Using the
           # real timestamp on dev builds would bust the cache on every commit.
           SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') &&
-            needs.calculate-source-date-epoch.outputs.source-date-epoch != '' &&
-            needs.calculate-source-date-epoch.outputs.source-date-epoch || '0'
+            inputs.source-date-epoch != '' &&
+            inputs.source-date-epoch || '0'
             }}
         with:
-          annotations: ${{ needs.metadata.outputs.annotations }}
+          annotations: ${{ inputs.image-annotations }}
           build-args: ${{ steps.parse-args.outputs.args }}
           cache-from: type=gha,scope=${{ steps.cache-scope.outputs.scope }}
           cache-to: type=gha,mode=max,scope=${{ steps.cache-scope.outputs.scope }}
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
-          labels: ${{ needs.metadata.outputs.image-labels }}
+          labels: ${{ inputs.image-labels }}
           outputs: type=image,name=ghcr.io/${{ inputs.image-name
             }},push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
           platforms: ${{ matrix.platform }}
@@ -580,17 +453,17 @@ jobs:
         env:
           DOCKER_BUILD_RECORD_UPLOAD: ${{ inputs.debug == true || env.ACTIONS_STEP_DEBUG == 'true' }}
           SOURCE_DATE_EPOCH: ${{ startsWith(github.ref, 'refs/tags/') &&
-            needs.calculate-source-date-epoch.outputs.source-date-epoch != '' &&
-            needs.calculate-source-date-epoch.outputs.source-date-epoch || '0'
+            inputs.source-date-epoch != '' &&
+            inputs.source-date-epoch || '0'
             }}
         with:
-          annotations: ${{ needs.metadata.outputs.annotations }}
+          annotations: ${{ inputs.image-annotations }}
           build-args: ${{ steps.parse-args.outputs.args }}
           cache-from: type=gha,scope=${{ steps.cache-scope.outputs.scope }}
           cache-to: type=gha,mode=max,scope=${{ steps.cache-scope.outputs.scope }}
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
-          labels: ${{ needs.metadata.outputs.image-labels }}
+          labels: ${{ inputs.image-labels }}
           outputs: type=image,name=ghcr.io/${{ inputs.image-name
             }},push-by-digest=true,name-canonical=true,push=${{ inputs.push }}
           platforms: ${{ matrix.platform }}
@@ -850,7 +723,7 @@ jobs:
           CACHE_SCOPE: ${{ steps.cache-scope.outputs.scope }}
           HAS_SBOM: ${{ steps.check-attestations.outputs.has_sbom }}
           HAS_VULN: ${{ steps.check-attestations.outputs.has_vuln }}
-          SOURCE_DATE_EPOCH: ${{ needs.calculate-source-date-epoch.outputs.source-date-epoch }}
+          SOURCE_DATE_EPOCH: ${{ inputs.source-date-epoch }}
         run: |
           echo "## Platform Build Complete: ${PLATFORM}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
