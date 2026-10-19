@@ -210,9 +210,14 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           TAG: ${{ matrix.tag }}
         run: |
-          echo "image-slug=$(echo "${IMAGE_NAME}" | tr '/' '-')" >> "$GITHUB_OUTPUT"
-          echo "platform-slug=$(echo "${PLATFORM}" | tr '/' '-')" >> "$GITHUB_OUTPUT"
-          echo "sarif-category=rescan-${TAG}-$(echo "${PLATFORM}" | tr '/' '-')" >> "$GITHUB_OUTPUT"
+          IMAGE_SLUG=$(echo "${IMAGE_NAME}" | tr '/' '-')
+          PLATFORM_SLUG=$(echo "${PLATFORM}" | tr '/' '-')
+          echo "image-slug=${IMAGE_SLUG}" >> "$GITHUB_OUTPUT"
+          echo "platform-slug=${PLATFORM_SLUG}" >> "$GITHUB_OUTPUT"
+          # Include the image slug: multiple images rescanned in one
+          # repository must not share SARIF categories, or their analyses
+          # overwrite each other in code scanning.
+          echo "sarif-category=rescan-${IMAGE_SLUG}-${TAG}-${PLATFORM_SLUG}" >> "$GITHUB_OUTPUT"
 
       - name: Download SBOM attestation
         run: |

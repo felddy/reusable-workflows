@@ -157,9 +157,9 @@ digest artifacts are the hot path).
 - [x] New `container-rescan.yml` (workflow_call): resolve job maps
   tags → platform digests (crane); matrixed scan job downloads each
   platform's SBOM attestation, runs `trivy sbom` with the fallback DB
-  config (A3), uploads SARIF (category `rescan-<tag>-<platform>`),
-  refreshes the vuln attestation via `actions/attest`, fails above
-  threshold.
+  config (A3), uploads SARIF (category
+  `rescan-<image>-<tag>-<platform>`), refreshes the vuln attestation
+  via `actions/attest`, fails above threshold.
 - [x] New `_rescan.yml` caller in this repo: daily cron, both flavors,
   tags `["latest","edge"]`.
 - [x] `_build.yml`: schedule is weekly (Monday 10:00 UTC); `edge`
