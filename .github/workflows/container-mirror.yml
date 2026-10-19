@@ -93,6 +93,10 @@ jobs:
 
       - name: Determine source authentication method
         id: source-auth
+        env:
+          SOURCE_USERNAME: ${{ secrets.source-registry-username }}
+          SOURCE_PASSWORD: ${{ secrets.source-registry-password }}
+          SOURCE_REGISTRY: ${{ inputs.source_registry }}
         run: |
           # Determine if we should authenticate to source registry
           # Logic:
@@ -100,10 +104,10 @@ jobs:
           # 2. If ghcr.io and no source credentials -> use GITHUB_TOKEN
           # 3. Otherwise -> skip (public registry)
 
-          if [ -n "${{ secrets.source-registry-username }}" ] && [ -n "${{ secrets.source-registry-password }}" ]; then
+          if [ -n "${SOURCE_USERNAME}" ] && [ -n "${SOURCE_PASSWORD}" ]; then
             echo "authenticate=true" >> $GITHUB_OUTPUT
             echo "use-github-token=false" >> $GITHUB_OUTPUT
-          elif [ "${{ inputs.source_registry }}" = "ghcr.io" ]; then
+          elif [ "${SOURCE_REGISTRY}" = "ghcr.io" ]; then
             echo "authenticate=true" >> $GITHUB_OUTPUT
             echo "use-github-token=true" >> $GITHUB_OUTPUT
           else
@@ -131,7 +135,7 @@ jobs:
           set -euo pipefail
 
           # Parse space-delimited tags into array for sequential processing
-          IFS=' ' read -ra TAGS <<< "${{ inputs.image_tag_names }}"
+          IFS=' ' read -ra TAGS <<< "${IMAGE_TAG_NAMES}"
 
           # Process each tag sequentially
           for tag in "${TAGS[@]}"; do
@@ -245,3 +249,4 @@ jobs:
           SOURCE_REGISTRY: ${{ inputs.source_registry }}
           TARGET_REGISTRY: ${{ inputs.target_registry }}
           IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG_NAMES: ${{ inputs.image_tag_names }}

@@ -107,15 +107,18 @@ jobs:
 
       - name: Checkout source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          persist-credentials: false
 
       # Detect which package manager to use. Runs after checkout so uv.lock
       # is present on disk for the file existence check.
       - name: Detect package manager
         id: pkg-manager
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
-          INPUT="${{ inputs.package-manager }}"
-          if [[ "${INPUT}" == "uv" ]] || \
-             { [[ "${INPUT}" == "auto" ]] && [[ -f uv.lock ]]; }; then
+          if [[ "${PACKAGE_MANAGER}" == "uv" ]] || \
+             { [[ "${PACKAGE_MANAGER}" == "auto" ]] && [[ -f uv.lock ]]; }; then
             echo "use-uv=true" >> $GITHUB_OUTPUT
             echo "Package manager: uv"
           else
@@ -196,10 +199,15 @@ jobs:
             ${{ env.BASE_CACHE_KEY }}
 
       - name: Setup curl cache
-        run: mkdir -p ${{ inputs.curl_cache_dir }}
+        env:
+          CURL_CACHE_DIR: ${{ inputs.curl_cache_dir }}
+        # Expand a leading ~ ourselves; it does not expand inside a variable.
+        run: mkdir -p "${CURL_CACHE_DIR/#~/$HOME}"
 
       - name: Install shfmt
-        run: go install mvdan.cc/sh/v3/cmd/shfmt@${{ inputs.shfmt_version }}
+        env:
+          SHFMT_VERSION: ${{ inputs.shfmt_version }}
+        run: go install "mvdan.cc/sh/v3/cmd/shfmt@${SHFMT_VERSION}"
 
       - name: Set up pre-commit hook environments
         run: pre-commit install-hooks

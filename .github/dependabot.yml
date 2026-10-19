@@ -9,6 +9,8 @@ version: 2
 updates:
   - package-ecosystem: docker
     directory: /
+    cooldown:
+      default-days: 7
     schedule:
       interval: daily
     labels:
@@ -21,22 +23,10 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: docker-compose
-    directory: /
-    schedule:
-      interval: daily
-    labels:
-      - "bot :robot:"
-      - "dependencies :game_die:"
-      - "docker :whale:"
-    groups:
-      docker-compose-all:
-        applies-to: version-updates
-        patterns:
-          - "*"
-
   - package-ecosystem: github-actions
     directory: /
+    cooldown:
+      default-days: 7
     schedule:
       interval: daily
     labels:
@@ -49,22 +39,10 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: npm
-    directory: /
-    schedule:
-      interval: daily
-    labels:
-      - "bot :robot:"
-      - "dependencies :game_die:"
-      - "javascript :coffee:"
-    groups:
-      npm-all:
-        applies-to: version-updates
-        patterns:
-          - "*"
-
   - package-ecosystem: pip
     directory: /
+    cooldown:
+      default-days: 7
     schedule:
       interval: daily
     labels:
@@ -79,6 +57,8 @@ updates:
 
   - package-ecosystem: uv
     directory: /
+    cooldown:
+      default-days: 7
     schedule:
       interval: daily
     labels:
