@@ -192,9 +192,29 @@ jobs:
             files.pythonhosted.org:443
             ghcr.io:443
             github.com:443
+            mirror.gcr.io:443
             objects.githubusercontent.com:443
             pypi.org:443
             releases.astral.sh:443
+
+      - name: Configure Docker registry mirror
+        # Route docker.io pulls through mirror.gcr.io: mirror pulls do not
+        # count against Docker Hub rate limits, and a cache miss falls back
+        # to Docker Hub automatically. This is an inline step rather than a
+        # local composite action because local action paths resolve against
+        # the caller's checkout when this reusable workflow runs in another
+        # repository. Keep in sync with the copy in container-build.yml.
+        run: |
+          if [[ -s /etc/docker/daemon.json ]]; then
+            jq '."registry-mirrors" = ["https://mirror.gcr.io"]' /etc/docker/daemon.json > /tmp/daemon.json
+          else
+            jq -n '{"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+          fi
+          sudo mkdir -p /etc/docker
+          sudo mv /tmp/daemon.json /etc/docker/daemon.json
+          sudo systemctl restart docker
+          echo "Docker daemon registry mirrors:"
+          docker info --format '{{json .RegistryConfig.Mirrors}}'
 
       - name: Set up QEMU for multi-arch testing
         if: matrix.runner == 'ubuntu-latest'
