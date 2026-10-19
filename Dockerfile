@@ -1,8 +1,7 @@
 # Stage 1: Set up the cross-compilation environment
 FROM --platform=$BUILDPLATFORM tonistiigi/xx:latest AS xx
 
-# Base image for the build.  Pulled from Docker Hub; CI routes docker.io
-# through a registry mirror to avoid anonymous rate limits.
+# Base image for the build
 FROM --platform=$BUILDPLATFORM rust:trixie AS build
 
 # Copy the xx scripts for setting up the cross-compilation environment

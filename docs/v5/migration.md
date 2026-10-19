@@ -97,6 +97,13 @@ Pipeline caller jobs need, beyond the v4 set: `artifact-metadata: write`
 (actions/attest@v4 storage records) and `contents: write` (digest recording
 in release notes). The full block is shown in the snippet above.
 
+With `permissions: {}` at the workflow level, *every* job needs an explicit
+grant — including jobs that call the repository's own local workflows. A
+local config workflow whose job requests `contents: read` (for its
+checkout) fails validation at startup with "The nested job is requesting
+'contents: read', but is only allowed 'contents: none'" unless the calling
+job grants it.
+
 ## 3. Renamed inputs and secrets ##
 
 | Workflow | v4 | v5 |
