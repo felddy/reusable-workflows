@@ -86,6 +86,8 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      # actions/attest@v4 records artifact storage metadata
+      artifact-metadata: write
 
     outputs:
       image-digest: ${{ steps.manifest-digest.outputs.digest }}

@@ -355,6 +355,8 @@ jobs:
       packages: write
       id-token: write
       attestations: write
+      # actions/attest@v4 records artifact storage metadata
+      artifact-metadata: write
       security-events: write
 
     env:
@@ -795,7 +797,9 @@ jobs:
 
       - name: Attest SBOM
         if: inputs.push && steps.check-attestations.outputs.has_sbom != 'true'
-        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # tag=v4.1.0
+        # actions/attest-sbom is deprecated; actions/attest detects the SPDX
+        # format from sbom-path and applies the same predicate type.
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # tag=v4.2.2
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.build.outputs.digest }}
