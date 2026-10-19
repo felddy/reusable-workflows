@@ -49,16 +49,12 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
+            "context": "CI Gate / Gate",
+            "integration_id": 15368
+          },
+          {
             "context": "CodeQL",
             "integration_id": 57789
-          },
-          {
-            "context": "Test Container / Test linux/amd64",
-            "integration_id": 15368
-          },
-          {
-            "context": "Test Container / Test linux/arm64/v8",
-            "integration_id": 15368
           },
           {
             "context": "Trivy",
