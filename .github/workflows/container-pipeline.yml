@@ -828,7 +828,7 @@ jobs:
             "ghcr.io/${IMAGE_NAME}@${DIGEST}" \
             '```' \
             "" \
-            "Verify: \`gh attestation verify oci://ghcr.io/${IMAGE_NAME}@${DIGEST} --repo ${GITHUB_REPOSITORY}\`" \
+            "Verify: \`gh attestation verify oci://ghcr.io/${IMAGE_NAME}@${DIGEST} --repo ${GITHUB_REPOSITORY} --signer-repo felddy/reusable-workflows\`" \
             "${MARKER_END}")
 
           # Concurrent flavors patch the same body. The job-level concurrency
