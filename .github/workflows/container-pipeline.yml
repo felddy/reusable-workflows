@@ -780,6 +780,73 @@ jobs:
       private-package-token: ${{ inputs.private && secrets.private-package-token || '' }}
       private-package-username: ${{ inputs.private && secrets.private-package-username || '' }}
 
+  # Release notes remain editable after publish even under immutable
+  # releases, so the exact image digest is recorded there, linking the
+  # frozen release to the image it produced.
+  record-release-digest:
+    name: Record digest on release
+    needs:
+      - metadata
+      - publish
+    if: github.event_name == 'release' && needs.metadata.outputs.push == 'true'
+    runs-on: ubuntu-latest
+
+    # Both flavors patch the same release body; serialize the read-modify-write.
+    concurrency:
+      group: release-digest-${{ github.event.release.tag_name }}
+      cancel-in-progress: false
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+
+      - name: Record image digest in release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_NAME: ${{ inputs.image-name }}
+          DIGEST: ${{ needs.publish.outputs.image-digest }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          MARKER_START="<!-- container-digest:${IMAGE_NAME} -->"
+          MARKER_END="<!-- /container-digest:${IMAGE_NAME} -->"
+
+          RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          RELEASE_ID=$(jq -r '.id' <<<"${RELEASE_JSON}")
+          BODY=$(jq -r '.body // ""' <<<"${RELEASE_JSON}")
+
+          # Replace any previous section for this image (idempotent re-runs)
+          CLEANED=$(printf '%s\n' "${BODY}" | awk -v s="${MARKER_START}" -v e="${MARKER_END}" '
+            $0 == s {skip=1; next}
+            $0 == e {skip=0; next}
+            !skip {print}')
+
+          NEW_BODY="${CLEANED}
+
+          ${MARKER_START}
+          **Container image** \`ghcr.io/${IMAGE_NAME}\`
+
+          \`\`\`text
+          ghcr.io/${IMAGE_NAME}@${DIGEST}
+          \`\`\`
+
+          Verify: \`gh attestation verify oci://ghcr.io/${IMAGE_NAME}@${DIGEST} --repo ${GITHUB_REPOSITORY}\`
+          ${MARKER_END}"
+
+          # Strip the heredoc-style leading indentation added above
+          NEW_BODY=$(printf '%s\n' "${NEW_BODY}" | sed 's/^          //')
+
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -f body="${NEW_BODY}" > /dev/null
+          echo "Recorded ghcr.io/${IMAGE_NAME}@${DIGEST} on release ${RELEASE_TAG}"
+
   # DockerHub publication is maintenance-only; flavors opt in explicitly.
   mirror:
     name: Mirror to DockerHub

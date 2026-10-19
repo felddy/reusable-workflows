@@ -78,7 +78,9 @@ jobs:
             readme: false
     permissions:
       actions: read
-      contents: read
+      # contents: write lets the pipeline record image digests in release
+      # notes; every other pipeline job narrows back to contents: read.
+      contents: write
       packages: write
       id-token: write
       attestations: write
