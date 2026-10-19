@@ -1,0 +1,59 @@
+---
+name: Retag
+
+# Reconciles floating container tags when a release is edited. Under
+# immutable releases, edits can only change metadata (notes, prerelease
+# flag, latest marker), so the response is retagging existing digests —
+# never a rebuild.
+
+on: # yamllint disable-line rule:truthy
+  release:
+    types:
+      - edited
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: Git tag of the release to reconcile (e.g. v1.2.3)
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  config:
+    name: Config
+    permissions:
+      contents: read
+    uses: ./.github/workflows/project-config.yml
+    with:
+      image-name: felddy/reusable-workflow
+
+  retag:
+    name: Retag Container
+    needs:
+      - config
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/container-retag.yml
+    with:
+      image-name: ${{ needs.config.outputs.image-name }}
+      release-tag: ${{ github.event.release.tag_name || inputs.release-tag }}
+
+  retag-private:
+    name: Retag Container Private
+    needs:
+      - config
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/container-retag.yml
+    with:
+      image-name: ${{ needs.config.outputs.image-name }}-hid
+      release-tag: ${{ github.event.release.tag_name || inputs.release-tag }}
+    secrets:
+      private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}

@@ -12,11 +12,11 @@ on: # yamllint disable-line rule:truthy
       - develop-*
   release:
     types:
-      - edited
       - published
   schedule:
     # Weekly image refresh (updates the edge tag). Daily CVE monitoring is
-    # handled by _rescan.yml against the attested SBOMs.
+    # handled by _rescan.yml against the attested SBOMs; floating-tag
+    # reconciliation after release edits is handled by _retag.yml.
     - cron: 0 10 * * 1 # Mondays at 10am
   workflow_dispatch:
 
@@ -39,7 +39,16 @@ jobs:
 
   config:
     name: Config
-    uses: ./.github/workflows/_config.yml
+    permissions:
+      contents: read
+    uses: ./.github/workflows/project-config.yml
+    with:
+      image-name: felddy/reusable-workflow
+      platforms: >-
+        ["linux/386","linux/amd64","linux/arm/v5","linux/arm/v6",
+        "linux/arm/v7","linux/arm/v8","linux/arm64/v8",
+        "linux/ppc64le","linux/riscv64","linux/s390x"]
+      test-platforms: '["linux/amd64","linux/arm64/v8"]'
 
   lint:
     name: Lint
@@ -47,165 +56,59 @@ jobs:
       contents: read
     uses: ./.github/workflows/common-lint.yml
 
-  build:
-    name: Build and Publish Container
+  pipeline:
+    name: Pipeline (${{ matrix.flavor }})
     needs:
+      - diagnostics
       - config
       - lint
-      - diagnostics
-    # Skip registry-pushing jobs on fork PRs — secrets are unavailable and
-    # GITHUB_TOKEN is read-only, so pushes would fail with auth errors.
-    if: |
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: public
+            image-suffix: ""
+            private: false
+            mirror: true
+            readme: true
+          - flavor: private
+            image-suffix: -hid
+            private: true
+            mirror: false
+            readme: false
     permissions:
-      contents: read
+      actions: read
+      # contents: write lets the pipeline record image digests in release
+      # notes; every other pipeline job narrows back to contents: read.
+      contents: write
       packages: write
       id-token: write
       attestations: write
-      security-events: write
       artifact-metadata: write
-    uses: ./.github/workflows/container-build.yml
-    with:
-      platforms: ${{ needs.config.outputs.platforms }}
-      image-name: ${{ needs.config.outputs.image_name }}
-      context: .
-      dockerfile: ./Dockerfile
-      scan-severity: CRITICAL,HIGH
-    secrets:
-      docker-hub-username: ${{ secrets.DOCKER_USERNAME }}
-      docker-hub-password: ${{ secrets.DOCKER_PASSWORD }}
-
-  build-private:
-    name: Build and Publish Container Private
-    needs:
-      - config
-      - lint
-      - diagnostics
-    if: |
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
       security-events: write
-      artifact-metadata: write
-    uses: ./.github/workflows/container-build.yml
+    uses: ./.github/workflows/container-pipeline.yml
     with:
+      image-name: ${{ needs.config.outputs.image-name }}${{ matrix.image-suffix }}
       platforms: ${{ needs.config.outputs.platforms }}
-      image-name: ${{ needs.config.outputs.image_name }}-hid
-      context: .
-      dockerfile: ./Dockerfile
+      test-platforms: ${{ needs.config.outputs.test-platforms }}
+      private: ${{ matrix.private }}
       scan-severity: CRITICAL,HIGH
+      mirror-on-release: ${{ matrix.mirror }}
+      publish-readme-on-release: ${{ matrix.readme }}
     secrets:
       private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
       docker-hub-username: ${{ secrets.DOCKER_USERNAME }}
       docker-hub-password: ${{ secrets.DOCKER_PASSWORD }}
 
-  test:
-    name: Test Container
+  ci-gate:
+    name: CI Gate
     needs:
+      - diagnostics
       - config
-      - build
-    uses: ./.github/workflows/container-test.yml
-    permissions:
-      actions: read
-      contents: read
-      packages: read
+      - lint
+      - pipeline
+    if: always()
+    permissions: {}
+    uses: ./.github/workflows/ci-gate.yml
     with:
-      image-name: ${{ needs.config.outputs.image_name }}
-      platforms: ${{ needs.config.outputs.test_platforms }}
-
-  test-private:
-    name: Test Container Private
-    needs:
-      - config
-      - build-private
-    uses: ./.github/workflows/container-test.yml
-    permissions:
-      actions: read
-      contents: read
-      packages: read
-    with:
-      image-name: ${{ needs.config.outputs.image_name }}-hid
-      platforms: ${{ needs.config.outputs.test_platforms }}
-    secrets:
-      registry-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
-
-  publish-manifest:
-    name: Publish Manifest
-    needs:
-      - config
-      - build
-      - test
-    uses: ./.github/workflows/container-publish-manifest.yml
-    permissions:
-      actions: read
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-      artifact-metadata: write
-    with:
-      image-name: ${{ needs.config.outputs.image_name }}
-      platforms: ${{ needs.config.outputs.platforms }}
-
-  publish-manifest-private:
-    name: Publish Manifest Private
-    needs:
-      - config
-      - build-private
-      - test-private
-    uses: ./.github/workflows/container-publish-manifest.yml
-    permissions:
-      actions: read
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
-      artifact-metadata: write
-    with:
-      image-name: ${{ needs.config.outputs.image_name }}-hid
-      platforms: ${{ needs.config.outputs.platforms }}
-    secrets:
-      private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
-
-  mirror-to-dockerhub:
-    name: Mirror images to DockerHub
-    needs:
-      - publish-manifest
-      - publish-manifest-private
-      - config
-    if: github.event_name == 'release' && !github.event.release.prerelease
-    permissions:
-      contents: read
-      packages: read
-    uses: ./.github/workflows/container-mirror.yml
-    with:
-      image_name: ${{ needs.config.outputs.image_name }}
-      image_tag_names: ${{ needs.publish-manifest.outputs.image-tag-names }}
-      target_registry: docker.io
-    secrets:
-      target-registry-username: ${{ secrets.DOCKER_USERNAME }}
-      target-registry-password: ${{ secrets.DOCKER_PASSWORD }}
-
-  publish-readme:
-    name: Publish docs to DockerHub
-    needs:
-      - publish-manifest
-      - publish-manifest-private
-      - config
-    if: |
-      github.event_name == 'release' &&
-      !github.event.release.prerelease &&
-      needs.publish-manifest.outputs.is-latest == 'true'
-    permissions:
-      contents: read
-    uses: ./.github/workflows/dockerhub-description.yml
-    with:
-      image_name: ${{ needs.config.outputs.image_name }}
-    secrets:
-      docker_password: ${{ secrets.DOCKER_PASSWORD }}
-      docker_username: ${{ secrets.DOCKER_USERNAME }}
+      needs-json: ${{ toJSON(needs) }}

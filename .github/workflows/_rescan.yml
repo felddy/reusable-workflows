@@ -19,7 +19,11 @@ permissions: {}
 jobs:
   config:
     name: Config
-    uses: ./.github/workflows/_config.yml
+    permissions:
+      contents: read
+    uses: ./.github/workflows/project-config.yml
+    with:
+      image-name: felddy/reusable-workflow
 
   rescan:
     name: Rescan Container
@@ -34,7 +38,7 @@ jobs:
       security-events: write
     uses: ./.github/workflows/container-rescan.yml
     with:
-      image-name: ${{ needs.config.outputs.image_name }}
+      image-name: ${{ needs.config.outputs.image-name }}
       tags: '["latest","edge"]'
 
   rescan-private:
@@ -50,7 +54,7 @@ jobs:
       security-events: write
     uses: ./.github/workflows/container-rescan.yml
     with:
-      image-name: ${{ needs.config.outputs.image_name }}-hid
+      image-name: ${{ needs.config.outputs.image-name }}-hid
       tags: '["latest","edge"]'
     secrets:
       private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}

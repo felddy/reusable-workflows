@@ -27,11 +27,37 @@ on: # yamllint disable-line rule:truthy
         required: true
         type: string
 
+      image-tags:
+        description: >
+          Full image tags to apply (newline-separated registry/name:tag
+          entries), produced by container-pipeline.yml's metadata job.
+        required: true
+        type: string
+
       push:
         description: Push manifest to registry. Set false for dry-run.
         required: false
         type: boolean
         default: true
+
+      immutable-tag-pattern:
+        description: >
+          Tags matching this regex are immutable-class: once published they
+          are never repointed to a different digest (GHCR has no native tag
+          immutability, so the guard is enforced here). Floating tags
+          (latest, release, edge, MAJOR, MAJOR.MINOR, branch and pr tags)
+          intentionally do not match the default.
+        required: false
+        type: string
+        default: ^v?[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$
+
+      force-tag-overwrite:
+        description: >
+          Override the immutable-tag guard and repoint existing
+          immutable-class tags. Emergency use only.
+        required: false
+        type: boolean
+        default: false
 
     secrets:
       private-package-token:
@@ -52,32 +78,10 @@ on: # yamllint disable-line rule:truthy
         description: Final multi-arch manifest digest (sha256:...)
         value: ${{ jobs.publish.outputs.image-digest }}
 
-      image-tags:
-        description: Tags applied to the manifest
-        value: ${{ jobs.metadata.outputs.image-tags }}
-
-      image-tag-names:
-        description: Bare tag names (space-separated)
-        value: ${{ jobs.metadata.outputs.tag-names }}
-
-      is-latest:
-        description: Whether this is the latest release
-        value: ${{ jobs.metadata.outputs.is-latest }}
-
 jobs:
-  # Generate metadata (tags, labels, annotations) for the manifest
-  metadata:
-    name: Generate Metadata
-    permissions:
-      contents: read
-    uses: ./.github/workflows/container-metadata.yml
-    with:
-      image-name: ${{ inputs.image-name }}
-
   # Assemble multi-arch manifest from per-platform digests, then attest and sign
   publish:
     name: Publish Manifest
-    needs: metadata
     runs-on: ubuntu-latest
 
     permissions:
@@ -176,9 +180,10 @@ jobs:
       - name: Create and push multi-arch manifest
         id: create-manifest
         env:
-          IMAGE_TAGS: ${{ needs.metadata.outputs.image-tags }}
+          IMAGE_TAGS: ${{ inputs.image-tags }}
           IMAGE_NAME: ${{ inputs.image-name }}
           DRY_RUN_FLAG: ${{ inputs.push == false && '--dry-run' || '' }}
+          STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           # Build --tag flags from newline-separated image-tags
           TAG_FLAGS=""
@@ -203,35 +208,93 @@ jobs:
             DIGEST_REFS="${DIGEST_REFS} ghcr.io/${IMAGE_NAME}@sha256:${HEX}"
           done
 
-          echo "Creating manifest with tags:"
+          echo "Desired tags:"
           echo "${IMAGE_TAGS}"
           echo ""
           echo "From digests:"
           echo "${DIGEST_REFS}"
 
-          # shellcheck disable=SC2086
-          docker buildx imagetools create \
-            ${DRY_RUN_FLAG} \
-            ${TAG_FLAGS} ${DIGEST_REFS}
+          if [[ -n "${DRY_RUN_FLAG}" ]]; then
+            # Dry-run: evaluate the full tag set without pushing anything.
+            # shellcheck disable=SC2086
+            docker buildx imagetools create ${DRY_RUN_FLAG} ${TAG_FLAGS} ${DIGEST_REFS}
+          else
+            # Push the manifest under a run-unique staging tag; final tags are
+            # applied by the guard step. The tag must be unique per run so an
+            # overlapping publish of the same image (different ref) cannot
+            # swap the manifest between creation and digest extraction. The
+            # staging tags point at the same manifest version as the final
+            # tags, so they add no storage.
+            # shellcheck disable=SC2086
+            docker buildx imagetools create --tag "ghcr.io/${IMAGE_NAME}:${STAGING_TAG}" ${DIGEST_REFS}
+          fi
 
       - name: Extract manifest digest
         id: manifest-digest
         if: inputs.push
         env:
-          IMAGE_TAGS: ${{ needs.metadata.outputs.image-tags }}
+          IMAGE_NAME: ${{ inputs.image-name }}
+          STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          # Use the first tag to extract the manifest digest
-          FIRST_TAG=$(echo "${IMAGE_TAGS}" | head -n1)
-          echo "Extracting digest from: ${FIRST_TAG}"
-
-          DIGEST=$(crane digest "${FIRST_TAG}")
+          DIGEST=$(crane digest "ghcr.io/${IMAGE_NAME}:${STAGING_TAG}")
           if [[ -z "$DIGEST" ]]; then
-            echo "::error::Failed to extract manifest digest from ${FIRST_TAG}"
+            echo "::error::Failed to extract manifest digest from staging tag"
             exit 1
           fi
 
           echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
           echo "Manifest digest: ${DIGEST}"
+
+      - name: Apply tags with immutable-tag guard
+        if: inputs.push
+        env:
+          IMAGE_NAME: ${{ inputs.image-name }}
+          IMAGE_TAGS: ${{ inputs.image-tags }}
+          IMMUTABLE_PATTERN: ${{ inputs.immutable-tag-pattern }}
+          FORCE: ${{ inputs.force-tag-overwrite }}
+          NEW_DIGEST: ${{ steps.manifest-digest.outputs.digest }}
+        run: |
+          # GHCR has no native tag immutability; enforce it here. A tag whose
+          # existing digest already matches is a no-op (idempotent re-runs);
+          # repointing an immutable-class tag requires force-tag-overwrite.
+          while IFS= read -r full_tag; do
+            [[ -z "${full_tag}" ]] && continue
+            BARE="${full_tag##*:}"
+
+            if [[ "${BARE}" =~ ${IMMUTABLE_PATTERN} ]]; then
+              # Fail closed: only a confirmed missing manifest counts as an
+              # absent tag. A transient lookup error must not let an existing
+              # immutable-class tag be overwritten unguarded.
+              set +e
+              LOOKUP=$(crane digest "${full_tag}" 2>&1)
+              LOOKUP_RC=$?
+              set -e
+              if [[ ${LOOKUP_RC} -eq 0 ]]; then
+                EXISTING="${LOOKUP}"
+              elif grep -qiE "MANIFEST_UNKNOWN|NAME_UNKNOWN" <<<"${LOOKUP}"; then
+                EXISTING=""
+              else
+                echo "::error::Could not determine whether tag '${BARE}' exists: ${LOOKUP}"
+                exit 1
+              fi
+              if [[ "${EXISTING}" == "${NEW_DIGEST}" ]]; then
+                echo "✓ ${BARE}: already points at ${NEW_DIGEST} (no-op)"
+                continue
+              fi
+              if [[ -n "${EXISTING}" && "${FORCE}" != "true" ]]; then
+                echo "::error::Tag '${BARE}' is immutable-class and already exists with digest ${EXISTING}; refusing to repoint it to ${NEW_DIGEST}. Set force-tag-overwrite to override."
+                exit 1
+              fi
+              if [[ -n "${EXISTING}" ]]; then
+                echo "::warning::Overwriting immutable-class tag '${BARE}' (force-tag-overwrite)"
+              fi
+            fi
+
+            # Tag from the captured digest, never from a staging ref that
+            # another run could have moved.
+            crane tag "ghcr.io/${IMAGE_NAME}@${NEW_DIGEST}" "${BARE}"
+            echo "Tagged ${BARE} -> ${NEW_DIGEST}"
+          done <<< "${IMAGE_TAGS}"
 
       - name: Install ORAS
         if: inputs.push
@@ -321,7 +384,7 @@ jobs:
         env:
           IMAGE_NAME: ${{ inputs.image-name }}
           DIGEST: ${{ steps.manifest-digest.outputs.digest }}
-          IMAGE_TAGS: ${{ needs.metadata.outputs.image-tags }}
+          IMAGE_TAGS: ${{ inputs.image-tags }}
         run: |
           echo "## Manifest Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

@@ -179,51 +179,57 @@ digest artifacts are the hot path).
 
 ## Phase C — v5 breaking core (v5.0.0-rc) ##
 
-### C1 — Composite actions extraction (D6, R4.6) — 2 PRs ###
+### C1 — Dedupe internals (D6, R4.6) — folded into C4 ###
 
-Constraint discovered in Phase A: a reusable workflow cannot reference
-its own composite actions by local path — `uses: ./...` resolves
-against the *caller's* checkout. The composites must either be
-referenced by full `owner/repo/path@ref` (requires a ref-update step
-at release time) or the workflow must first check out
-felddy/reusable-workflows at `github.workflow_ref` into a subdirectory
-and use path-based references into it. Decide at implementation.
+Decision (follows from the Phase A finding): composites are not used.
+A reusable workflow cannot reference its own composite actions by
+local path (`uses: ./...` resolves against the *caller's* checkout),
+and checking this repository out into the consumer workspace would
+pollute docker build contexts. Instead, `container-pipeline.yml`
+computes metadata and the platform/runner matrices **once** as inline
+jobs and passes the results to build/test/publish as inputs. This
+removes the duplicated metadata computation (previously run in both
+build and publish), the `calculate-source-date-epoch` and
+`determine-visibility` jobs, and both `generate-matrix` copies. The
+uv/pip detection block stays duplicated between test and lint (30
+lines; acceptable until a better mechanism exists).
 
-- [ ] PR 1: `.github/actions/container-metadata` composite replacing
-  `container-metadata.yml` (absorbs `determine-visibility` and the
-  `calculate-source-date-epoch` job via its `commit-epoch` output);
-  rewire `container-build.yml` and `container-publish-manifest.yml`;
-  delete `container-metadata.yml` and `container-sign.yml`.
-- [ ] PR 2: `.github/actions/platform-matrix` (shared by build +
-  test) and `.github/actions/python-test-deps` (shared by test +
-  lint).
-- [ ] Acceptance: dogfood green; job count per flavor drops (no
-  metadata/epoch/visibility jobs); `grep -r container-sign` and
-  `grep -r container-metadata.yml` return nothing.
+- [x] Delete `container-metadata.yml` (logic moves into the pipeline's
+  inline metadata job) and dead `container-sign.yml`.
+- [ ] Acceptance: dogfood green; job count per flavor drops;
+  `grep -r container-sign` and `grep -r container-metadata.yml`
+  return nothing.
 
 ### C2 — Naming and token unification (D6, R4.1, R4.5) ###
 
-- [ ] `container-mirror.yml` + `dockerhub-description.yml`: all
+- [x] `container-mirror.yml` + `dockerhub-description.yml`: all
   inputs/secrets to kebab-case; `container-test.yml`:
   `registry-token` → `private-package-token` (+ `-username`).
-- [ ] Update `_build.yml` callers in the same PR (atomic).
+- [x] Update `_build.yml` callers in the same commit (atomic).
 - [ ] Acceptance: dogfood green; no snake_case inputs remain
   (`grep -E '^      [a-z]+_' .github/workflows` clean); breaking
   changes logged for the migration guide.
 
 ### C3 — Fork-PR handling internalized (D3, R4.2) ###
 
-- [ ] `container-build.yml`: detect fork PRs; build-only mode (no
-  push, no digest export, no scan/attest); expose a `pushed` output.
-- [ ] `_build.yml`: delete the fork conditionals; test/publish skip
-  when `pushed != 'true'`.
+- [x] Fork detection lives in the pipeline's metadata job (single
+  place): fork PRs downgrade to build-only (no push, no digest export,
+  no scan/attest); the pipeline exposes a `pushed` output.
+- [x] `_build.yml`: fork conditionals deleted; test/publish skip
+  when the effective push is false.
 - [ ] Acceptance: dogfood green; a fork-simulation branch (condition
   temporarily forced) shows per-platform builds succeed with zero
   registry writes.
 
 ### C4 — container-pipeline.yml (D2, R4.3) ###
 
-- [ ] New workflow chaining build → test → publish for one flavor.
+- [x] New workflow for one flavor: inline `metadata` job (absorbed
+  from container-metadata.yml, plus fork-PR detection and visibility
+  from the `private` input) and inline `generate-matrix` job feed
+  build → test → publish called as sibling reusable workflows with
+  metadata/matrix passed as inputs. Optional release-event post-jobs:
+  DockerHub mirror and README publication (flavor opts in — avoids
+  the matrix-job output-collision problem for downstream jobs).
   Inputs: image/platform/scan settings plus `private`,
   `pass-build-secrets`, `test-platforms`, `cache-scope` (defaults to
   flavor name), `vex-file`, `force-tag-overwrite`. Secrets forwarded
@@ -235,10 +241,10 @@ and use path-based references into it. Decide at implementation.
 
 ### C5 — project-config.yml and ci-gate.yml (D6, R4.4) ###
 
-- [ ] `project-config.yml`: inputs `version-file`, `image-name`,
+- [x] `project-config.yml`: inputs `version-file`, `image-name`,
   `platforms`, `test-platforms`; outputs those plus `version` and
   `build-args` lines (`CONTAINER_VERSION=`).
-- [ ] `ci-gate.yml`: input `needs-json`; passes iff every result is
+- [x] `ci-gate.yml`: input `needs-json`; passes iff every result is
   `success` or `skipped`.
 - [ ] Acceptance: this repo's `_config.yml` is replaced by a
   `project-config.yml` call; gate goes red when any needed job is
@@ -246,21 +252,22 @@ and use path-based references into it. Decide at implementation.
 
 ### C6 — Immutability set (D4, R2.2–R2.4) — 3 PRs ###
 
-- [ ] PR 1 — tag-overwrite guard: in publish, resolve each
+- [x] Tag-overwrite guard: the manifest is pushed under a mutable
+  staging tag and final tags are applied individually; in detail:
   immutable-class tag (default pattern `^v?[0-9]+\.[0-9]+\.[0-9]+`)
   with crane before `imagetools create`; same digest → no-op,
   different digest → fail unless `force-tag-overwrite`. Mirror
   gains the matching tolerance (immutable-tag push rejection with
   equal digest → success).
-- [ ] PR 2 — `container-retag.yml`: recompute floating tags from
-  release state via the metadata composite; `crane tag` existing
-  digests; no build. New `_retag.yml` caller on `release: edited` +
-  dispatch; remove `edited` from `_build.yml` triggers; chain
-  mirror/readme after retag on non-prerelease.
-- [ ] PR 3 — digest-on-release: publish writes an idempotent,
-  marker-delimited "Container images" section (tag → index digest →
-  verify commands) into the release notes; `contents: write` on the
-  publish job (migration-guide entry).
+- [x] `container-retag.yml`: recomputes floating tags from release
+  state (API) and `crane tag`s existing digests; no build. `_retag.yml`
+  runs it on `release: edited` + dispatch; `edited` removed from
+  `_build.yml`. (Mirror/readme chaining dropped — DockerHub is
+  maintenance-only.)
+- [x] Digest-on-release: the pipeline writes an idempotent,
+  marker-delimited section (digest + verify command) into the release
+  notes, serialized per release across flavors; `contents: write` on
+  the pipeline caller job (migration-guide entry).
 - [ ] Acceptance: re-publishing an existing semver tag with different
   content fails the guard on a test branch; editing a release
   re-points `latest` without any build jobs; release notes show
@@ -268,23 +275,24 @@ and use path-based references into it. Decide at implementation.
 
 ### C7 — Rewrite `_build.yml` on the v5 pattern (D2) ###
 
-- [ ] Final form: project-config → matrix pipeline (2 flavors) →
-  ci-gate → mirror/readme on release; retag path from C6.
-- [ ] Update `development.json` required check to the gate job;
-  operator applies via `make apply-ruleset`.
+- [x] Final form: project-config → matrix pipeline (2 flavors,
+  mirror/readme opt-in inside the pipeline) → ci-gate; retag path from
+  C6.
+- [x] `development.json` required check updated to `CI Gate / Gate`;
+  operator applies via `make apply-ruleset` at merge.
 - [ ] Acceptance: full dogfood green across PR, push, dispatch
   events; branch protection shows the single gate check.
 
 ### C8 — Documentation (D5, R6.2, R6.3, R3.8) ###
 
-- [ ] README: v5 composition, mermaid update, SLSA Build L3 posture,
+- [x] README: v5 composition, mermaid update, SLSA Build L3 posture,
   verification commands (`gh attestation verify`, `cosign verify`,
   `gh release verify`).
-- [ ] `docs/v5/migration.md`: every breaking change with before/after
+- [x] `docs/v5/migration.md`: every breaking change with before/after
   caller snippets (foundryvtt-docker and weewx-docker shaped),
   permission-block diffs (`artifact-metadata: write`,
   `contents: write`), secret renames, consumer checklists for D4/D5.
-- [ ] Acceptance: migration guide reviewed against the actual diff of
+- [x] Acceptance: migration guide written against the actual diff of
   this repo's own `_build.yml` v4 → v5.
 
 ### C9 — Release v5.0.0-rc1 ###
