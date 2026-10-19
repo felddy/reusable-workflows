@@ -107,11 +107,15 @@ jobs:
           IMAGE_NAME: ${{ inputs.image-name }}
           TAGS_JSON: ${{ inputs.tags }}
         run: |
-          MATRIX=$(for tag in $(jq -r '.[]' <<<"${TAGS_JSON}"); do
+          # Collect entries in a file rather than a pipeline so a manifest
+          # fetch failure for any tag fails the step instead of silently
+          # producing a partial matrix.
+          ENTRIES=$(mktemp)
+          for tag in $(jq -r '.[]' <<<"${TAGS_JSON}"); do
             REF="ghcr.io/${IMAGE_NAME}:${tag}"
-            echo "Resolving ${REF}" >&2
+            echo "Resolving ${REF}"
             if ! manifest=$(crane manifest "${REF}"); then
-              echo "::error::Failed to fetch manifest for ${REF}" >&2
+              echo "::error::Failed to fetch manifest for ${REF}"
               exit 1
             fi
             jq -c --arg tag "${tag}" '
@@ -121,8 +125,9 @@ jobs:
                  platform: (.platform.os + "/" + .platform.architecture
                    + (if .platform.variant then "/" + .platform.variant else "" end)),
                  digest: .digest}
-            ' <<<"${manifest}"
-          done | jq -s -c '{include: .}')
+            ' <<<"${manifest}" >> "${ENTRIES}"
+          done
+          MATRIX=$(jq -s -c '{include: .}' "${ENTRIES}")
 
           COUNT=$(jq '.include | length' <<<"${MATRIX}")
           if [[ "${COUNT}" -eq 0 ]]; then
