@@ -47,7 +47,7 @@ jobs:
         uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # tag=v5.0.0
         with:
           password: ${{ secrets.docker-hub-password }}
-          readme-file-path: ${{ inputs.file-path }}
+          readme-filepath: ${{ inputs.file-path }}
           repository: ${{ inputs.image-name }}
           short-description: ${{ github.event.repository.description }}
           username: ${{ secrets.docker-hub-username }}
