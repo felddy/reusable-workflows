@@ -62,6 +62,9 @@ jobs:
       context: .
       dockerfile: ./Dockerfile
       scan-severity: CRITICAL,HIGH
+    secrets:
+      docker-hub-username: ${{ secrets.DOCKER_USERNAME }}
+      docker-hub-password: ${{ secrets.DOCKER_PASSWORD }}
 
   build-private:
     name: Build and Publish Container Private
@@ -81,6 +84,8 @@ jobs:
       scan-severity: CRITICAL,HIGH
     secrets:
       private-package-token: ${{ secrets.PRIVATE_PACKAGE_TOKEN }}
+      docker-hub-username: ${{ secrets.DOCKER_USERNAME }}
+      docker-hub-password: ${{ secrets.DOCKER_PASSWORD }}
 
   test:
     name: Test Container
