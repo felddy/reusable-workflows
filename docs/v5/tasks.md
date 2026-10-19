@@ -15,16 +15,18 @@ Conventions:
 
 ### A1 — Route base images through mirror.gcr.io (D1, R1.1) ###
 
-- [ ] Dockerfile: `FROM public.ecr.aws/docker/library/rust:trixie` →
+- [x] Dockerfile: `FROM public.ecr.aws/docker/library/rust:trixie` →
   `FROM rust:trixie` (canonical docker.io reference).
-- [ ] New composite action `.github/actions/docker-registry-mirror`:
-  writes `registry-mirrors: ["https://mirror.gcr.io"]` into
-  `/etc/docker/daemon.json` and restarts the daemon.
-- [ ] `container-build.yml`: use the composite before QEMU/buildx
-  setup; add inline buildkitd config to `setup-buildx-action`:
+- [x] Daemon-mirror step (writes `registry-mirrors` into
+  `/etc/docker/daemon.json` and restarts the daemon) inlined in both
+  workflows. A local composite action cannot be used: local `uses:`
+  paths resolve against the caller's checkout when a reusable
+  workflow runs in another repository.
+- [x] `container-build.yml`: daemon mirror before QEMU/buildx setup;
+  inline buildkitd config on `setup-buildx-action`:
   `[registry."docker.io"] mirrors = ["mirror.gcr.io"]`.
-- [ ] `container-test.yml`: use the composite before QEMU setup; add
-  `mirror.gcr.io:443` to the harden-runner allowlist.
+- [x] `container-test.yml`: daemon mirror before QEMU setup;
+  `mirror.gcr.io:443` added to the harden-runner allowlist.
 - [ ] Acceptance: dogfood PR green on all 10 platforms; a diagnostic
   step shows the daemon mirror via `docker system info`; no
   `public.ecr.aws` left in the Dockerfile; QEMU/binfmt pull succeeds
@@ -32,11 +34,12 @@ Conventions:
 
 ### A2 — Authenticated fallback and build retry (D1, R1.2, R1.3) ###
 
-- [ ] `container-build.yml`: optional `docker-hub-username` /
+- [x] `container-build.yml`: optional `docker-hub-username` /
   `docker-hub-password` secrets; when present, `docker/login-action`
   against `docker.io` so the mirror-miss fallback path is
-  authenticated. Additive, non-breaking.
-- [ ] Build retry: first build attempt `continue-on-error`, identical
+  authenticated. Additive, non-breaking. (Presence check runs through
+  job env — the secrets context is unavailable in step-level `if`.)
+- [x] Build retry: first build attempt `continue-on-error`, identical
   second attempt gated on failure, hard-fail step if both fail (GHA
   layer cache makes the retry cheap).
 - [ ] Acceptance: dogfood green with secrets absent (login skipped,
@@ -44,7 +47,7 @@ Conventions:
 
 ### A3 — Trivy DB resilience (D5, R3.5) ###
 
-- [ ] Set `TRIVY_DB_REPOSITORY` and `TRIVY_JAVA_DB_REPOSITORY` on all
+- [x] Set `TRIVY_DB_REPOSITORY` and `TRIVY_JAVA_DB_REPOSITORY` on all
   Trivy steps to an ordered fallback list
   (`ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2,
   public.ecr.aws/aquasecurity/trivy-db:2`; java-db equivalents).
@@ -53,13 +56,13 @@ Conventions:
 
 ### A4 — Rulesets as code (D8, R5.6) ###
 
-- [ ] Export this repo's live rulesets/branch protections
+- [x] Export this repo's live rulesets/branch protections
   (`gh api repos/felddy/reusable-workflows/rulesets`), reconcile with
   foundryvtt-docker's `development.json` shape.
-- [ ] Add `.github/rulesets/` (development.json, version-tag.json
+- [x] Add `.github/rulesets/` (development.json, version-tag.json
   locking `refs/tags/v*.*.*`, major-tag.json advance-only for bare
   `refs/tags/v*` excluding `v*.*`), plus the directory README.
-- [ ] Add a Makefile with only `apply-ruleset`, `export-ruleset`, and
+- [x] Add a Makefile with only `apply-ruleset`, `export-ruleset`, and
   the gh/jq guard targets (ported from foundryvtt-docker).
 - [ ] Operator step (Mark, admin): `make apply-ruleset`; then
   `make export-ruleset` round-trips with an empty diff.
@@ -74,28 +77,33 @@ Conventions:
 
 ### A5 — Hygiene batch (D9, R5.1, R5.2, R5.4) ###
 
-- [ ] dependabot.yml: remove the `npm` and `docker-compose` ecosystems.
-- [ ] Fix issue #485 (automerge label) per the issue's reproduction.
-- [ ] Fix the corrupted comment in `container-metadata.yml`
+- [x] dependabot.yml: remove the `npm` and `docker-compose` ecosystems
+  (and add a 7-day version-update cooldown; security updates bypass
+  it).
+- [x] Issue #485 (automerge label): the workflow already matches
+  labels.yml (`automerge :bell:`); verified and closed, no code
+  change.
+- [x] Fix the corrupted comment in `container-metadata.yml`
   (`# tag=v7.0.1.2.7.0.1`).
-- [ ] Sync `version.txt` to the latest release (4.2.1) so the next
+- [x] Sync `version.txt` to the latest release (4.2.1) so the next
   bump is correct.
 - [ ] Acceptance: nightly Dependabot run has no failing update jobs;
   #485 closed.
 
 ### A6 — Workflow static analysis (D9, R5.3) ###
 
-- [ ] Add `actionlint` and `zizmor` hooks to
-  `.pre-commit-config.yaml`.
-- [ ] Triage findings: fix high-severity (template-injection in `run:`
-  blocks is the likely bulk — move `${{ }}` interpolations into
-  `env:`); record accepted/deferred findings in a checked-in zizmor
-  config.
-- [ ] Add both hooks to `common-lint.yml`'s documented hook set so
-  consumers inherit them.
-- [ ] Acceptance: `pre-commit run --all-files` green; zizmor high
-  severity = 0. May split into two PRs (hooks + fixes) if the fix
-  diff is large.
+- [x] Add `actionlint` (shellcheck integration off until the embedded
+  scripts are shellcheck-clean — tracked as follow-up) and `zizmor`
+  (`--min-severity=medium`) hooks to `.pre-commit-config.yaml`.
+- [x] Triage findings: all template-injection fixed by hoisting
+  interpolations into `env:` (except dead `container-sign.yml`,
+  ignored pending its v5 removal); workflow-level write permissions
+  scoped per job; `persist-credentials: false` on all checkouts;
+  accepted findings recorded in `.github/zizmor.yml`.
+- [x] Consumers inherit the hooks through their own pre-commit
+  configs via the skeleton/lineage, not through `common-lint.yml`.
+- [x] Acceptance: `pre-commit run --all-files` green; zizmor
+  medium-and-above = 0.
 
 ### A7 — Release v4.3.0 ###
 
@@ -162,6 +170,14 @@ Conventions:
 ## Phase C — v5 breaking core (v5.0.0-rc) ##
 
 ### C1 — Composite actions extraction (D6, R4.6) — 2 PRs ###
+
+Constraint discovered in Phase A: a reusable workflow cannot reference
+its own composite actions by local path — `uses: ./...` resolves
+against the *caller's* checkout. The composites must either be
+referenced by full `owner/repo/path@ref` (requires a ref-update step
+at release time) or the workflow must first check out
+felddy/reusable-workflows at `github.workflow_ref` into a subdirectory
+and use path-based references into it. Decide at implementation.
 
 - [ ] PR 1: `.github/actions/container-metadata` composite replacing
   `container-metadata.yml` (absorbs `determine-visibility` and the
