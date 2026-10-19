@@ -280,6 +280,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          persist-credentials: false
 
       # Detect which package manager to use. Runs after checkout so uv.lock
       # is present on disk for the file existence check.
