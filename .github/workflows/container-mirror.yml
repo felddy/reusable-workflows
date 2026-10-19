@@ -157,6 +157,16 @@ jobs:
             # Construct target image reference
             target_image="${TARGET_REGISTRY}/${IMAGE_NAME}:${tag}"
 
+            # Skip when the target already matches the source digest. This
+            # keeps re-runs idempotent and tolerates target registries with
+            # immutable tags that reject re-pushing identical content.
+            source_digest=$(oras resolve "${source_image}" 2>/dev/null || true)
+            target_digest=$(oras resolve "${target_image}" 2>/dev/null || true)
+            if [[ -n "${source_digest}" && "${source_digest}" == "${target_digest}" ]]; then
+              echo "Target already matches source digest ${source_digest}; skipping"
+              continue
+            fi
+
             # Log mirroring operation start
             echo "Starting mirror operation"
             echo "Source: ${source_image}"
@@ -164,10 +174,16 @@ jobs:
 
             # Execute recursive copy with ORAS
             if ! oras cp --recursive "${source_image}" "${target_image}"; then
-              echo "Error: Image and artifact copy failed"
-              echo "Source: ${source_image}"
-              echo "Target: ${target_image}"
-              exit 1
+              # An immutable-tag rejection of identical content is a success.
+              target_digest=$(oras resolve "${target_image}" 2>/dev/null || true)
+              if [[ -n "${source_digest}" && "${source_digest}" == "${target_digest}" ]]; then
+                echo "Copy rejected but target already matches source digest; continuing"
+              else
+                echo "Error: Image and artifact copy failed"
+                echo "Source: ${source_image}"
+                echo "Target: ${target_image}"
+                exit 1
+              fi
             fi
             echo "Image and artifacts copied successfully"
 

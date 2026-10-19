@@ -128,6 +128,21 @@ on: # yamllint disable-line rule:truthy
         type: string
         default: auto
 
+      # Immutability
+      immutable-tag-pattern:
+        description: >
+          Tags matching this regex are never repointed to a different digest
+          once published (see container-publish-manifest.yml).
+        required: false
+        type: string
+        default: ^v?[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$
+
+      force-tag-overwrite:
+        description: Override the immutable-tag guard. Emergency use only.
+        required: false
+        type: boolean
+        default: false
+
       # Release publication (DockerHub is maintenance-only; opt in per flavor)
       mirror-on-release:
         description: Mirror the published tags to docker.io on non-prerelease releases.
@@ -759,6 +774,8 @@ jobs:
       image-name: ${{ inputs.image-name }}
       platforms: ${{ inputs.platforms }}
       image-tags: ${{ needs.metadata.outputs.image-tags }}
+      immutable-tag-pattern: ${{ inputs.immutable-tag-pattern }}
+      force-tag-overwrite: ${{ inputs.force-tag-overwrite }}
     secrets:
       private-package-token: ${{ inputs.private && secrets.private-package-token || '' }}
       private-package-username: ${{ inputs.private && secrets.private-package-username || '' }}

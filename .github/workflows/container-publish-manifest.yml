@@ -40,6 +40,25 @@ on: # yamllint disable-line rule:truthy
         type: boolean
         default: true
 
+      immutable-tag-pattern:
+        description: >
+          Tags matching this regex are immutable-class: once published they
+          are never repointed to a different digest (GHCR has no native tag
+          immutability, so the guard is enforced here). Floating tags
+          (latest, release, edge, MAJOR, MAJOR.MINOR, branch and pr tags)
+          intentionally do not match the default.
+        required: false
+        type: string
+        default: ^v?[0-9]+\.[0-9]+\.[0-9]+([-+].*)?$
+
+      force-tag-overwrite:
+        description: >
+          Override the immutable-tag guard and repoint existing
+          immutable-class tags. Emergency use only.
+        required: false
+        type: boolean
+        default: false
+
     secrets:
       private-package-token:
         description: >
@@ -188,35 +207,73 @@ jobs:
             DIGEST_REFS="${DIGEST_REFS} ghcr.io/${IMAGE_NAME}@sha256:${HEX}"
           done
 
-          echo "Creating manifest with tags:"
+          echo "Desired tags:"
           echo "${IMAGE_TAGS}"
           echo ""
           echo "From digests:"
           echo "${DIGEST_REFS}"
 
-          # shellcheck disable=SC2086
-          docker buildx imagetools create \
-            ${DRY_RUN_FLAG} \
-            ${TAG_FLAGS} ${DIGEST_REFS}
+          if [[ -n "${DRY_RUN_FLAG}" ]]; then
+            # Dry-run: evaluate the full tag set without pushing anything.
+            # shellcheck disable=SC2086
+            docker buildx imagetools create ${DRY_RUN_FLAG} ${TAG_FLAGS} ${DIGEST_REFS}
+          else
+            # Push the manifest under a mutable staging tag only; the final
+            # tags are applied by the guard step so immutable-class tags are
+            # never silently repointed.
+            # shellcheck disable=SC2086
+            docker buildx imagetools create --tag "ghcr.io/${IMAGE_NAME}:staging" ${DIGEST_REFS}
+          fi
 
       - name: Extract manifest digest
         id: manifest-digest
         if: inputs.push
         env:
-          IMAGE_TAGS: ${{ inputs.image-tags }}
+          IMAGE_NAME: ${{ inputs.image-name }}
         run: |
-          # Use the first tag to extract the manifest digest
-          FIRST_TAG=$(echo "${IMAGE_TAGS}" | head -n1)
-          echo "Extracting digest from: ${FIRST_TAG}"
-
-          DIGEST=$(crane digest "${FIRST_TAG}")
+          DIGEST=$(crane digest "ghcr.io/${IMAGE_NAME}:staging")
           if [[ -z "$DIGEST" ]]; then
-            echo "::error::Failed to extract manifest digest from ${FIRST_TAG}"
+            echo "::error::Failed to extract manifest digest from staging tag"
             exit 1
           fi
 
           echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
           echo "Manifest digest: ${DIGEST}"
+
+      - name: Apply tags with immutable-tag guard
+        if: inputs.push
+        env:
+          IMAGE_NAME: ${{ inputs.image-name }}
+          IMAGE_TAGS: ${{ inputs.image-tags }}
+          IMMUTABLE_PATTERN: ${{ inputs.immutable-tag-pattern }}
+          FORCE: ${{ inputs.force-tag-overwrite }}
+          NEW_DIGEST: ${{ steps.manifest-digest.outputs.digest }}
+        run: |
+          # GHCR has no native tag immutability; enforce it here. A tag whose
+          # existing digest already matches is a no-op (idempotent re-runs);
+          # repointing an immutable-class tag requires force-tag-overwrite.
+          while IFS= read -r full_tag; do
+            [[ -z "${full_tag}" ]] && continue
+            BARE="${full_tag##*:}"
+
+            if [[ "${BARE}" =~ ${IMMUTABLE_PATTERN} ]]; then
+              EXISTING=$(crane digest "${full_tag}" 2>/dev/null || true)
+              if [[ "${EXISTING}" == "${NEW_DIGEST}" ]]; then
+                echo "✓ ${BARE}: already points at ${NEW_DIGEST} (no-op)"
+                continue
+              fi
+              if [[ -n "${EXISTING}" && "${FORCE}" != "true" ]]; then
+                echo "::error::Tag '${BARE}' is immutable-class and already exists with digest ${EXISTING}; refusing to repoint it to ${NEW_DIGEST}. Set force-tag-overwrite to override."
+                exit 1
+              fi
+              if [[ -n "${EXISTING}" ]]; then
+                echo "::warning::Overwriting immutable-class tag '${BARE}' (force-tag-overwrite)"
+              fi
+            fi
+
+            crane tag "ghcr.io/${IMAGE_NAME}:staging" "${BARE}"
+            echo "Tagged ${BARE} -> ${NEW_DIGEST}"
+          done <<< "${IMAGE_TAGS}"
 
       - name: Install ORAS
         if: inputs.push
