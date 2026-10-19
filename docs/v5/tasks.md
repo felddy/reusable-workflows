@@ -125,52 +125,54 @@ digest artifacts are the hot path).
 
 ### B1 — Migrate SBOM attestation to actions/attest (D5, R3.1) ###
 
-- [ ] `container-build.yml`: replace `actions/attest-sbom` with
-  `actions/attest` (predicate-type
-  `https://spdx.dev/Document/v2.3`, `predicate-path` = Syft output);
-  keep `actions/attest-build-provenance` (it is the supported
-  provenance generator); confirm all attest steps are on the v4 line.
-- [ ] Add `artifact-metadata: write` to the build and publish job
-  permission blocks and to `_build.yml`; note it prominently for the
-  migration guide (C8).
+- [x] `container-build.yml`: replaced `actions/attest-sbom` with
+  `actions/attest` (native `sbom-path` input auto-detects SPDX and
+  applies the same predicate type); `actions/attest-build-provenance`
+  kept (it is the supported provenance generator); all attest steps on
+  the v4 line.
+- [x] Added `artifact-metadata: write` to every attesting job
+  (build, publish, index-SBOM, rescan) and the `_build.yml` caller
+  jobs; noted for the migration guide (C8).
 - [ ] Acceptance: dogfood attestations present for both flavors
   (`oras discover` shows SBOM + provenance + vuln referrers); the
   existing attestation-skip logic still detects them; closes #488.
 
 ### B2 — Index-level SBOM subjects + verification gate (D5, R3.2) ###
 
-- [ ] `container-publish-manifest.yml`: download the per-platform SBOM
-  artifacts (same `gh run download --name` pattern as digests) and
-  attest each against the index digest.
-- [ ] Add a post-sign verification gate: `gh attestation verify
-  oci://<image>@<index-digest> --repo <repo>` for provenance and SBOM
-  predicate types, plus `cosign verify` pinned to this repo's
-  certificate identity. Private flavor verifies with registry auth.
+- [x] `container-publish-manifest.yml`: a matrixed `attest-index-sbom`
+  job attests each platform SBOM against the index digest (artifact
+  first; falls back to extracting the platform image's SBOM
+  attestation when the build skipped generation). Index attestations
+  are now idempotent via the same `oras discover` check the build
+  uses.
+- [x] Post-sign `verify` job: `gh attestation verify` for provenance
+  and SBOM predicate types plus `cosign verify` pinned to this repo's
+  certificate identity; registry login covers the private flavor.
 - [ ] Acceptance: gate passes for both flavors in dogfood;
   deliberately altering the expected predicate type fails the gate
   (verified once manually via workflow_dispatch on a branch).
 
 ### B3 — Rescan workflow + schedule split (D5, R3.3, R1.4) ###
 
-- [ ] New `container-rescan.yml` (workflow_call): inputs `image-name`,
-  `tags` (JSON, default `["latest"]`), `scan-severity`, `vex-file`;
-  secret `private-package-token`. Per tag: resolve index → platform
-  digests (crane), download each platform's SBOM attestation, run
-  `trivy sbom` with the fallback DB config (A3), upload SARIF
-  (category `rescan-<tag>-<platform>`), refresh the vuln attestation
-  via `actions/attest`, fail the run above threshold.
-- [ ] New `_rescan.yml` caller in this repo: daily cron, both flavors,
+- [x] New `container-rescan.yml` (workflow_call): resolve job maps
+  tags → platform digests (crane); matrixed scan job downloads each
+  platform's SBOM attestation, runs `trivy sbom` with the fallback DB
+  config (A3), uploads SARIF (category `rescan-<tag>-<platform>`),
+  refreshes the vuln attestation via `actions/attest`, fails above
+  threshold.
+- [x] New `_rescan.yml` caller in this repo: daily cron, both flavors,
   tags `["latest","edge"]`.
-- [ ] `_build.yml`: schedule becomes weekly (Monday 10:00 UTC);
-  `edge` strategy unchanged.
+- [x] `_build.yml`: schedule is weekly (Monday 10:00 UTC); `edge`
+  strategy unchanged.
 - [ ] Acceptance: dispatched rescan green for both flavors with zero
   base-image pulls in logs; a seeded old tag with known CVEs
   (e.g. a pre-A1 image) turns the run red at CRITICAL,HIGH.
 
 ### B4 — VEX input (D5, R3.4) + release v4.4.0 ###
 
-- [ ] `container-build.yml` and `container-rescan.yml`: optional
-  `vex-file` input threaded to Trivy `--vex`.
+- [x] `container-build.yml` and `container-rescan.yml`: optional
+  `vex-file` input threaded to Trivy via `TRIVY_VEX` (set only when a
+  document is supplied).
 - [ ] Acceptance: dogfood passes with no VEX file; a sample OpenVEX
   statement suppresses a chosen finding in a branch test.
 - [ ] Release v4.4.0 after several green daily rescans.
