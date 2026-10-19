@@ -64,16 +64,18 @@ Conventions:
   `refs/tags/v*` excluding `v*.*`), plus the directory README.
 - [x] Add a Makefile with only `apply-ruleset`, `export-ruleset`, and
   the gh/jq guard targets (ported from foundryvtt-docker).
-- [ ] Operator step (Mark, admin): `make apply-ruleset`; then
-  `make export-ruleset` round-trips with an empty diff.
-- [ ] Verify and record: can a plain `git push --force` of a floating
-  major tag that moves it *forward* pass the non-fast-forward rule?
-  Document the answer in the ruleset README (D7's tag-mover job
-  depends on it; fallback is a bypass actor).
-- [ ] Acceptance: files merged; live rulesets match files; semver-tag
-  push without bypass is rejected (test with a scratch tag name
-  matching the pattern, e.g. `v0.0.0-rulesettest`, then clean up via
-  bypass).
+- [x] Operator step (Mark, admin): `make apply-ruleset`; then
+  `make export-ruleset` round-trips with an empty diff. Verified: all
+  three live rulesets match the files byte-for-byte.
+- [x] Verified and recorded in the ruleset README: a forward tag move
+  (to a descendant commit) evaluates as fast-forward — rule-suite
+  result `pass`, no bypass — so the Phase D tag mover needs no bypass
+  actor. Backward moves and deletions require bypass.
+- [x] Acceptance: files merged; live rulesets match files; semver-tag
+  create/update/delete all evaluate as rule violations (rule-suite
+  result `bypass` for an admin; non-bypass actors are rejected).
+  Consequence for D1: release-please's identity needs a
+  `version-tag.json` bypass entry to *create* release tags.
 
 ### A5 — Hygiene batch (D9, R5.1, R5.2, R5.4) ###
 
@@ -106,6 +108,13 @@ Conventions:
   medium-and-above = 0.
 
 ### A7 — Release v4.3.0 ###
+
+Known transient (observed 2026-10-19, post-merge run): artifact
+downloads can fail with `HTTP 503: Egress is over the account limit`
+— GitHub's Actions artifact-egress quota, unrelated to registries.
+`gh run rerun --failed` recovers once the quota window moves. If it
+recurs, Phase C should reduce artifact round-trips (the per-platform
+digest artifacts are the hot path).
 
 - [ ] After one week of green scheduled builds (Phase A exit
   criterion): bump-version minor → 4.3.0, tag, publish release.
@@ -289,9 +298,10 @@ and use path-based references into it. Decide at implementation.
 
 - [ ] release-please workflow (manifest config; `version.txt` as
   extra-file; publishes complete releases on release-PR merge).
-- [ ] Post-release job moves the floating `v5` tag (per A4's verified
-  mechanism or bypass actor); tag-ruleset bypass for the identity
-  release-please runs as.
+- [ ] Post-release job moves the floating `v5` tag — no bypass needed
+  (A4 verified forward moves are fast-forward). Add a
+  `version-tag.json` bypass entry for the identity release-please
+  runs as (semver tag creation is restricted).
 - [ ] Note in CONTRIBUTING: bump-version retired for this repo;
   release-please is canonical.
 - [ ] Acceptance: a dry-run release PR shows correct version + notes.
