@@ -77,53 +77,66 @@ jobs:
           RELEASE_TAG: ${{ inputs.release-tag }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Each channel is pointed at its rightful OWNER computed from the
+          # full release list — never blindly at the edited release. Editing
+          # an old release therefore cannot roll a channel backward, and
+          # demoting the latest release moves latest/release to the new
+          # rightful owner.
           VERSION="${RELEASE_TAG#v}"
-          SOURCE="ghcr.io/${IMAGE_NAME}:${VERSION}"
-
-          if ! DIGEST=$(crane digest "${SOURCE}"); then
-            echo "::error::No published image for ${SOURCE} — the release was never built, so there is nothing to reconcile"
-            exit 1
-          fi
-          echo "Release image: ${SOURCE} @ ${DIGEST}"
-
-          # Read the release's current state from the API so this works for
-          # both release events and manual dispatch.
-          RELEASE_JSON=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
-          PRERELEASE=$(jq -r '.prerelease' <<<"${RELEASE_JSON}")
-          LATEST_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name // empty' || true)
-
-          FLOATS=()
-          if [[ "${PRERELEASE}" == "true" ]]; then
-            FLOATS+=(prerelease)
-          else
-            if [[ "${VERSION}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-              FLOATS+=("${BASH_REMATCH[1]}.${BASH_REMATCH[2]}" "${BASH_REMATCH[1]}")
-            fi
-            if [[ -n "${LATEST_TAG}" && "${LATEST_TAG}" == "${RELEASE_TAG}" ]]; then
-              FLOATS+=(release latest)
-            fi
-          fi
-
-          if [[ ${#FLOATS[@]} -eq 0 ]]; then
-            echo "No floating tags apply to ${RELEASE_TAG}"
+          if [[ ! "${VERSION}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            echo "Release tag ${RELEASE_TAG} is not semver; nothing to reconcile"
             exit 0
           fi
+          MAJOR="${BASH_REMATCH[1]}"
+          MINOR="${BASH_REMATCH[2]}"
 
-          {
-            echo "## Floating tags reconciled"
-            echo ""
-            echo "**Image:** \`${SOURCE}\` @ \`${DIGEST}\`"
-            echo ""
-          } >> $GITHUB_STEP_SUMMARY
+          RELEASES=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+            --jq '[.[] | select(.draft | not) | {tag: .tag_name, prerelease: .prerelease, created: .created_at}]' \
+            | jq -s 'add')
 
-          for float in "${FLOATS[@]}"; do
-            EXISTING=$(crane digest "ghcr.io/${IMAGE_NAME}:${float}" 2>/dev/null || true)
-            if [[ "${EXISTING}" == "${DIGEST}" ]]; then
-              echo "✓ ${float}: already points at ${DIGEST}"
-              echo "- \`${float}\` (unchanged)" >> $GITHUB_STEP_SUMMARY
-            else
-              crane tag "${SOURCE}" "${float}"
-              echo "Repointed ${float}: ${EXISTING:-<absent>} -> ${DIGEST}"
-              echo "- \`${float}\` -> \`${DIGEST}\`" >> $GITHUB_STEP_SUMMARY
+          # Highest non-prerelease version matching a version-prefix regex
+          stable_owner() {
+            jq -r --arg re "$1" '
+              [.[] | select(.prerelease | not) | .tag | sub("^v"; "") | select(test($re))] | .[]
+            ' <<<"${RELEASES}" | sort -V | tail -n1
+          }
+
+          LATEST_TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name // empty' || true)
+          PRERELEASE_OWNER=$(jq -r '[.[] | select(.prerelease)] | sort_by(.created) | last | .tag // empty' <<<"${RELEASES}")
+
+          echo "## Floating tags reconciled" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          reconcile() {
+            local channel="$1" owner_version="$2"
+            if [[ -z "${owner_version}" ]]; then
+              echo "Channel '${channel}': no eligible owner; leaving untouched"
+              return
             fi
-          done
+            local owner_ref="ghcr.io/${IMAGE_NAME}:${owner_version}"
+            local owner_digest
+            if ! owner_digest=$(crane digest "${owner_ref}"); then
+              echo "::warning::Channel '${channel}': owner ${owner_version} has no published image; leaving untouched"
+              return
+            fi
+            local existing
+            existing=$(crane digest "ghcr.io/${IMAGE_NAME}:${channel}" 2>/dev/null || true)
+            if [[ "${existing}" == "${owner_digest}" ]]; then
+              echo "✓ ${channel} -> ${owner_version} (unchanged)"
+              echo "- \`${channel}\` -> \`${owner_version}\` (unchanged)" >> $GITHUB_STEP_SUMMARY
+            else
+              crane tag "ghcr.io/${IMAGE_NAME}@${owner_digest}" "${channel}"
+              echo "Repointed ${channel}: ${existing:-<absent>} -> ${owner_version} @ ${owner_digest}"
+              echo "- \`${channel}\` -> \`${owner_version}\` @ \`${owner_digest}\`" >> $GITHUB_STEP_SUMMARY
+            fi
+          }
+
+          reconcile "${MAJOR}" "$(stable_owner "^${MAJOR}\\.")"
+          reconcile "${MAJOR}.${MINOR}" "$(stable_owner "^${MAJOR}\\.${MINOR}\\.")"
+          if [[ -n "${LATEST_TAG}" ]]; then
+            reconcile "release" "${LATEST_TAG#v}"
+            reconcile "latest" "${LATEST_TAG#v}"
+          fi
+          if [[ -n "${PRERELEASE_OWNER}" ]]; then
+            reconcile "prerelease" "${PRERELEASE_OWNER#v}"
+          fi
