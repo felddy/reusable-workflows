@@ -93,7 +93,8 @@ attestations, and a cosign keyless signature:
 
 ```console
 gh attestation verify oci://ghcr.io/felddy/reusable-workflow:latest \
-  --repo felddy/reusable-workflows
+  --repo felddy/reusable-workflows \
+  --signer-repo felddy/reusable-workflows
 
 cosign verify \
   --certificate-identity-regexp \
@@ -101,6 +102,11 @@ cosign verify \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   ghcr.io/felddy/reusable-workflow:latest
 ```
+
+For images built by consumer repositories, `--repo` is the consumer
+repository and `--signer-repo` stays `felddy/reusable-workflows`: the
+attestations are signed by this reusable workflow (the trusted builder) on
+behalf of the calling repository (the source).
 
 Builds run on GitHub-hosted runners with provenance generated inside this
 reusable workflow, meeting SLSA v1.0 Build L3 expectations: consumers can
