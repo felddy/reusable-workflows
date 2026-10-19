@@ -183,6 +183,7 @@ jobs:
           IMAGE_TAGS: ${{ inputs.image-tags }}
           IMAGE_NAME: ${{ inputs.image-name }}
           DRY_RUN_FLAG: ${{ inputs.push == false && '--dry-run' || '' }}
+          STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           # Build --tag flags from newline-separated image-tags
           TAG_FLAGS=""
@@ -218,11 +219,14 @@ jobs:
             # shellcheck disable=SC2086
             docker buildx imagetools create ${DRY_RUN_FLAG} ${TAG_FLAGS} ${DIGEST_REFS}
           else
-            # Push the manifest under a mutable staging tag only; the final
-            # tags are applied by the guard step so immutable-class tags are
-            # never silently repointed.
+            # Push the manifest under a run-unique staging tag; final tags are
+            # applied by the guard step. The tag must be unique per run so an
+            # overlapping publish of the same image (different ref) cannot
+            # swap the manifest between creation and digest extraction. The
+            # staging tags point at the same manifest version as the final
+            # tags, so they add no storage.
             # shellcheck disable=SC2086
-            docker buildx imagetools create --tag "ghcr.io/${IMAGE_NAME}:staging" ${DIGEST_REFS}
+            docker buildx imagetools create --tag "ghcr.io/${IMAGE_NAME}:${STAGING_TAG}" ${DIGEST_REFS}
           fi
 
       - name: Extract manifest digest
@@ -230,8 +234,9 @@ jobs:
         if: inputs.push
         env:
           IMAGE_NAME: ${{ inputs.image-name }}
+          STAGING_TAG: staging-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
-          DIGEST=$(crane digest "ghcr.io/${IMAGE_NAME}:staging")
+          DIGEST=$(crane digest "ghcr.io/${IMAGE_NAME}:${STAGING_TAG}")
           if [[ -z "$DIGEST" ]]; then
             echo "::error::Failed to extract manifest digest from staging tag"
             exit 1
@@ -271,7 +276,9 @@ jobs:
               fi
             fi
 
-            crane tag "ghcr.io/${IMAGE_NAME}:staging" "${BARE}"
+            # Tag from the captured digest, never from a staging ref that
+            # another run could have moved.
+            crane tag "ghcr.io/${IMAGE_NAME}@${NEW_DIGEST}" "${BARE}"
             echo "Tagged ${BARE} -> ${NEW_DIGEST}"
           done <<< "${IMAGE_TAGS}"
 
