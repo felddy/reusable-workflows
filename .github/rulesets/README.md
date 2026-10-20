@@ -19,7 +19,10 @@ authenticated as a repository admin.
 
 - `development.json` — protections for the default branch and
   `develop-*` branches: PRs required, status checks, code scanning
-  gates, and signed commits.
+  gates, and signed commits. Repository admins hold a pull-request
+  bypass: release-please creates its commits through the REST git API,
+  which GitHub does not auto-sign, so merging a release PR requires
+  bypassing the signed-commit rule. Direct pushes are not exempt.
 - `version-tag.json` — full semver tags (`v*.*.*`, e.g. `v4.2.1`) are
   locked: no creation, update, or deletion except by bypass actors.
   Release tags are immutable once published.
