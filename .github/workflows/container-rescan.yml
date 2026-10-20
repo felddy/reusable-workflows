@@ -14,6 +14,7 @@ permissions: {}
 # Tool Versions - Update these to bump tool versions across the workflow
 # (Trivy is pinned literally on the setup-trivy step.)
 env:
+  # renovate: datasource=github-releases depName=google/go-containerregistry
   CRANE_VERSION: v0.21.1
 
 on: # yamllint disable-line rule:truthy
@@ -193,6 +194,7 @@ jobs:
       - name: Install Trivy
         uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # tag=v0.3.1
         with:
+          # renovate: datasource=github-releases depName=aquasecurity/trivy
           version: v0.76.0
 
       - name: Configure VEX

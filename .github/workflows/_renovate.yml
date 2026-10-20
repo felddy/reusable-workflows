@@ -1,0 +1,91 @@
+---
+name: Renovate
+
+# Updates the tool versions pinned inside the workflows (crane, trivy,
+# buildkit, shfmt) that Dependabot's github-actions ecosystem cannot see.
+# Each pin carries a `# renovate:` annotation naming its datasource; the
+# repository-level config at .github/renovate.json enables only the custom
+# regex managers so Renovate never overlaps with Dependabot.
+
+on: # yamllint disable-line rule:truthy
+  schedule:
+    - cron: 23 */6 * * * # four times a day, offset from the build cron
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        default: false
+        description: Log what would happen without creating branches or PRs
+        required: false
+        type: boolean
+      log-level:
+        default: info
+        description: Renovate log level
+        options:
+          - debug
+          - info
+        required: false
+        type: choice
+
+concurrency:
+  # Only one Renovate run at a time; a second scheduled run would race the
+  # first on branch creation and rebasing.
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            auth.docker.io:443
+            ghcr.io:443
+            github.com:443
+            index.docker.io:443
+            objects.githubusercontent.com:443
+            pkg-containers.githubusercontent.com:443
+            registry-1.docker.io:443
+            release-assets.githubusercontent.com:443
+
+      - name: Generate a GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # tag=v3.2.0
+        with:
+          client-id: ${{ vars.RENOVATE_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          # Scope the installation token to what Renovate needs here;
+          # workflows: write is required because the tracked version pins
+          # live inside workflow files.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
+
+      - name: Run Renovate
+        uses: renovatebot/github-action@dcfba84a42d1b5d5e49bf131b1bf53511851a123 # tag=v46.3.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+        env:
+          LOG_LEVEL: ${{ inputs.log-level || 'info' }}
+          # Only operate on this repository; the repository-level config at
+          # .github/renovate.json controls what gets updated.
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          # The config is committed, so skip onboarding PRs.
+          RENOVATE_ONBOARDING: "false"
+          # Commit via the GitHub API as the App: this produces
+          # GitHub-verified (signed) commits that satisfy the development
+          # ruleset's required-signatures rule.
+          RENOVATE_PLATFORM_COMMIT: enabled
+          RENOVATE_DRY_RUN: ${{ inputs.dry-run == true && 'full' || null }}
