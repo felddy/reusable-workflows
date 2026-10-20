@@ -172,9 +172,10 @@ jobs:
           disable-sudo: true
           egress-policy: audit
 
-      # Checkout is only needed so a caller-supplied VEX document is on disk.
+      # The checkout provides the caller's scan-policy files: a VEX document
+      # when supplied, and the .trivyignore that Trivy reads from the working
+      # directory — keeping rescan verdicts consistent with build-time scans.
       - name: Checkout repository
-        if: inputs.vex-file != ''
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
         with:
           persist-credentials: false
