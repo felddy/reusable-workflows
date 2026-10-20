@@ -196,6 +196,19 @@ Replace the local `_config.yml` + `make github-output` plumbing with
 
 Point the branch-protection required check at `CI Gate / Gate`.
 
+## Operational notes ##
+
+- **Apply rulesets from the PR branch.** When a PR changes both the gate
+  and a ruleset file, run `make apply-ruleset` (or the equivalent API
+  edit) from the PR branch — applying from develop re-applies the old
+  required check and blocks the very merge that carries the fix.
+- **Prefer VEX over `.trivyignore` for durable exceptions.** A
+  `.trivyignore` entry matches a CVE ID repo-wide, so each new advisory
+  against the same unfixable component (e.g. pip's vendored packages)
+  must be added by hand. An OpenVEX document via the pipeline's
+  `vex-file` input scopes the judgment to the component and carries a
+  machine-readable justification.
+
 ## Consumer checklists ##
 
 ### foundryvtt-docker ###

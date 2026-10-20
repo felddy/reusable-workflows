@@ -134,6 +134,15 @@ event workflow, the push run is cancelled and the PR run proceeds. For
 to `main` so concurrent scheduled runs cancel each other. This eliminates
 redundant duplicate runs without any per-job conditionals.
 
+## Releases ##
+
+Releases are cut by merging the release PR that
+[release-please](https://github.com/googleapis/release-please) maintains
+from conventional commits: merging it bumps `version.txt`, updates
+`CHANGELOG.md`, publishes the (immutable) GitHub release, and advances
+the floating major tag. The release event then runs the full container
+pipeline.
+
 ## Migrating from v4 ##
 
 See [docs/v5/migration.md](docs/v5/migration.md) for the complete v4 → v5
