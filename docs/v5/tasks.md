@@ -343,11 +343,18 @@ lines; acceptable until a better mechanism exists).
 
 ### D5 — Migrate weewx-docker ###
 
-- [ ] Same checklist, single flavor; remove the vestigial
-  `image-tag` dispatch input (or wire it through
-  `project-config.yml` if still wanted).
-- [ ] Acceptance: pipeline + rescan green; release flow verified on
-  the next weewx release.
+- [x] Migrated (felddy/weewx-docker#508, on v5.0.0-rc2): single
+  flavor, full project-config.yml adoption (local _config.yml
+  deleted), daily rescan + retag, `image-tag` dispatch input kept and
+  now honored. Required three preparatory fixes (felddy/weewx-docker
+  #507): stale transitive lock pins, Debian security updates in the
+  image build (foundry's archive-state pattern), and documented
+  .trivyignore exceptions for pip-vendored packages that no pip
+  release fixes yet.
+- [ ] Acceptance: pipeline green at merge ✓; daily rescans stay red
+  until fresh images publish (the v4-era latest/edge genuinely carry
+  since-fixed CVEs) and until the rescan checkout fix reaches the
+  consumer pin; release flow verified on the next weewx release.
 
 ### D6 — Close out ###
 
