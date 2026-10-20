@@ -1,0 +1,46 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track any version pin annotated with a `# renovate:` comment on the preceding line",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+?))?\\n\\s*[^:\\n]+:\\s*\"?(?<currentValue>[^\\s\"']+?)\"?\\n"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "moby/buildkit",
+      "description": "Track the BuildKit driver image inside the setup-buildx driver-opts block (block scalars cannot carry inline annotations)",
+      "managerFilePatterns": [
+        "/^\\.github\\/workflows\\/container-build\\.yml$/"
+      ],
+      "matchStrings": [
+        "image=moby/buildkit:(?<currentValue>v[\\d.]+)"
+      ],
+      "versioningTemplate": "docker"
+    }
+  ],
+  "enabledManagers": [
+    "custom.regex"
+  ],
+  "extends": [
+    "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "labels": [
+        "bot :robot:",
+        "dependencies :game_die:"
+      ],
+      "matchManagers": [
+        "custom.regex"
+      ]
+    }
+  ]
+}

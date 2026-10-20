@@ -41,6 +41,7 @@ on: # yamllint disable-line rule:truthy
         required: false
         type: string
       shfmt_version:
+        # renovate: datasource=github-releases depName=mvdan/sh
         default: v3.12.0
         description: The version of shfmt (shell format) to use.
         required: false

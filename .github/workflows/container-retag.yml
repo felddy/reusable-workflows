@@ -14,6 +14,7 @@ permissions: {}
 
 # Tool Versions - Update these to bump tool versions across the workflow
 env:
+  # renovate: datasource=github-releases depName=google/go-containerregistry
   CRANE_VERSION: v0.21.1
 
 on: # yamllint disable-line rule:truthy
