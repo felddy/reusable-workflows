@@ -305,14 +305,19 @@ lines; acceptable until a better mechanism exists).
 
 ### D1 — release-please + floating tag mover (D7, R2.6) ###
 
-- [ ] release-please workflow (manifest config; `version.txt` as
-  extra-file; publishes complete releases on release-PR merge).
-- [ ] Post-release job moves the floating `v5` tag — no bypass needed
-  (A4 verified forward moves are fast-forward). Add a
-  `version-tag.json` bypass entry for the identity release-please
-  runs as (semver tag creation is restricted).
-- [ ] Note in CONTRIBUTING: bump-version retired for this repo;
-  release-please is canonical.
+- [x] release-please workflow (manifest mode, `simple` release type
+  owning `version.txt` + CHANGELOG.md; publishes complete releases on
+  release-PR merge). Publishes via the RELEASE_PLEASE_TOKEN secret —
+  GITHUB_TOKEN fallback keeps the release PR working but a release
+  published that way does not trigger the Build pipeline.
+- [x] Post-release step advances the floating major tag via the git
+  refs API with GITHUB_TOKEN — no bypass needed (A4 verified forward
+  moves are fast-forward). No `version-tag.json` bypass entry needed
+  either: the PAT acts as the repository admin, whose bypass already
+  covers semver tag creation.
+- [x] README documents the release flow; bump-version remains only as
+  a skeleton-provided script and is no longer part of this repo's
+  release process.
 - [ ] Acceptance: a dry-run release PR shows correct version + notes.
 
 ### D2 — Enable release immutability (operator) ###
