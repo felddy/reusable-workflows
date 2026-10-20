@@ -5,3 +5,4 @@
 # Already being linted by yamllint
 *.yaml
 *.yml
+CHANGELOG.md
