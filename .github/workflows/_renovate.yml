@@ -71,6 +71,7 @@ jobs:
           # live inside workflow files, and vulnerability-alerts: read lets
           # Renovate prioritize updates that fix Dependabot alerts.
           permission-contents: write
+          permission-issues: write
           permission-pull-requests: write
           permission-vulnerability-alerts: read
           permission-workflows: write
