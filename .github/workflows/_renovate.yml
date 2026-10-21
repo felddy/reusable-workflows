@@ -68,9 +68,11 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           # Scope the installation token to what Renovate needs here;
           # workflows: write is required because the tracked version pins
-          # live inside workflow files.
+          # live inside workflow files, and vulnerability-alerts: read lets
+          # Renovate prioritize updates that fix Dependabot alerts.
           permission-contents: write
           permission-pull-requests: write
+          permission-vulnerability-alerts: read
           permission-workflows: write
 
       - name: Run Renovate
