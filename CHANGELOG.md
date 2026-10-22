@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.0.1](https://github.com/felddy/reusable-workflows/compare/v5.0.0...v5.0.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **deps:** upgrade virtualenv to patched 21.14.12 ([6b69e88](https://github.com/felddy/reusable-workflows/commit/6b69e88af02280a0091cb73ade8cc6c137700f8e))
+* **deps:** upgrade virtualenv to patched 21.14.12 ([7c1996b](https://github.com/felddy/reusable-workflows/commit/7c1996bc4da6b787eea734cd47567f31ae3a626e))
+
+
+### Miscellaneous Chores
+
+* **deps:** bump the github-actions-all group with 4 updates ([dcd49b5](https://github.com/felddy/reusable-workflows/commit/dcd49b56b0a8bb6347f312ecbe58de1961cda39b))
+* **release:** surface chores and deps in changelogs and releases ([f7726dc](https://github.com/felddy/reusable-workflows/commit/f7726dcd7759875cb3a30dff93557c5b2d476b91))
+* **release:** surface chores and deps in changelogs and releases ([46b92ab](https://github.com/felddy/reusable-workflows/commit/46b92abae579394f5aa8b326485d5c4a70a0b89e))
+
 ## [5.0.0](https://github.com/felddy/reusable-workflows/compare/v4.2.1...v5.0.0) (2026-10-21)
 
 
