@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.1.0](https://github.com/felddy/reusable-workflows/compare/v5.0.1...v5.1.0) (2026-10-23)
+
+
+### Features
+
+* **build:** warn when VEX statements go stale ([e02e04d](https://github.com/felddy/reusable-workflows/commit/e02e04d5ba571c19472466885acaf6ca2160adbd))
+* **build:** warn when VEX statements go stale ([f4d8446](https://github.com/felddy/reusable-workflows/commit/f4d844680b4f72494e65224eb66ab122d80a5ee5))
+
+
+### Bug Fixes
+
+* **rescan:** scan SBOMs with Grype so OS packages are matched ([1fe8b12](https://github.com/felddy/reusable-workflows/commit/1fe8b12ce3a9b5780aaf5bdf5165b46521589a6e))
+* **rescan:** scan SBOMs with Grype so OS packages are matched ([5b512c3](https://github.com/felddy/reusable-workflows/commit/5b512c323d6583b66d185de8813b33c77d20b10f))
+
 ## [5.0.1](https://github.com/felddy/reusable-workflows/compare/v5.0.0...v5.0.1) (2026-10-22)
 
 
