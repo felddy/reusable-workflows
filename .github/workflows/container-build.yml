@@ -109,7 +109,8 @@ on: # yamllint disable-line rule:truthy
         description: >
           Path to an OpenVEX document in the caller repository; passed to
           Trivy so known-not-exploitable findings are suppressed instead of
-          failing the severity gate.
+          failing the severity gate. Statements that no longer suppress any
+          finding raise a workflow warning so stale entries get removed.
         required: false
         type: string
         default: ""
@@ -613,6 +614,12 @@ jobs:
         id: trivy-json
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # tag=v0.36.0
+        env:
+          # Record which findings each VEX statement suppressed (the
+          # ExperimentalModifiedFindings section) so the staleness check
+          # below can tell live statements from obsolete ones. Scoped to the
+          # JSON scan so the SARIF upload and severity gate are unaffected.
+          TRIVY_SHOW_SUPPRESSED: ${{ inputs.vex-file != '' }}
         with:
           exit-code: 0
           format: json
@@ -620,6 +627,48 @@ jobs:
           image-ref: ghcr.io/${{ inputs.image-name }}@${{ steps.build.outputs.digest }}
           output: trivy-results-${{ strategy.job-index }}.json
           vuln-type: os,library
+
+      - name: Check VEX statements for staleness
+        if: inputs.push && inputs.vex-file != '' &&
+          steps.check-attestations.outputs.has_vuln != 'true'
+        env:
+          VEX_FILE: ${{ inputs.vex-file }}
+          SCAN_JSON: trivy-results-${{ strategy.job-index }}.json
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          # A VEX statement earns its keep by suppressing a current finding.
+          # A statement whose vulnerability appears in neither the suppressed
+          # list nor the active findings matches nothing in this image —
+          # the fix shipped, the package left the image, or the advisory was
+          # withdrawn — and should be removed from the document. A statement
+          # whose vulnerability is still ACTIVE is not matching at all
+          # (product or subcomponent drift) and needs attention instead.
+          STALE=0
+          for vuln in $(jq -r '[.statements[].vulnerability.name] | unique | .[]' "${VEX_FILE}"); do
+            suppressed=$(jq --arg v "${vuln}" \
+              '[.Results[]?.ExperimentalModifiedFindings[]? | select(.Finding.VulnerabilityID == $v)] | length' \
+              "${SCAN_JSON}")
+            active=$(jq --arg v "${vuln}" \
+              '[.Results[]?.Vulnerabilities[]? | select(.VulnerabilityID == $v)] | length' \
+              "${SCAN_JSON}")
+            if [[ "${suppressed}" -gt 0 ]]; then
+              echo "✓ ${vuln}: suppressing ${suppressed} finding(s)"
+            elif [[ "${active}" -gt 0 ]]; then
+              echo "::warning file=${VEX_FILE}::VEX statement for ${vuln} is not matching although the finding is ACTIVE on ${PLATFORM} — check the product/subcomponent identifiers"
+              STALE=1
+            else
+              echo "::warning file=${VEX_FILE}::VEX statement for ${vuln} no longer matches any finding on ${PLATFORM} — likely overtaken by events; remove it"
+              STALE=1
+            fi
+          done
+          if [[ "${STALE}" -eq 1 ]]; then
+            {
+              echo "## ⚠️ VEX staleness check (${PLATFORM})"
+              echo ""
+              echo "One or more statements in \`${VEX_FILE}\` no longer suppress a"
+              echo "finding; see the warnings on this run for which to remove."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Run Trivy vulnerability scanner (table)
         if: inputs.push && steps.check-attestations.outputs.has_vuln != 'true'
