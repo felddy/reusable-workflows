@@ -3,19 +3,25 @@ name: Container Rescan Workflow
 
 # This reusable workflow re-evaluates published container images for new
 # vulnerabilities WITHOUT rebuilding or pulling the images: it downloads the
-# SBOM attestations produced at build time, scans them with Trivy, refreshes
+# SBOM attestations produced at build time, scans them with Grype, refreshes
 # the vulnerability attestation on each platform digest, and fails the run
 # when findings exceed the severity threshold. Scheduled daily by callers, it
 # replaces daily full rebuilds as the CVE-freshness signal.
+#
+# Grype (not Trivy) scans the SBOMs: the build attests syft-generated SPDX
+# documents, which carry no OPERATING_SYSTEM element, and Trivy skips every
+# OS package when it cannot identify the distro ("Detected OS: none"). Grype
+# reads the distro from the package purls and matches the full document.
 
 # Permissions are set at the job level; default to none at workflow level.
 permissions: {}
 
 # Tool Versions - Update these to bump tool versions across the workflow
-# (Trivy is pinned literally on the setup-trivy step.)
 env:
   # renovate: datasource=github-releases depName=google/go-containerregistry
   CRANE_VERSION: v0.22.1
+  # renovate: datasource=github-releases depName=anchore/grype
+  GRYPE_VERSION: v0.121.0
 
 on: # yamllint disable-line rule:truthy
   workflow_call:
@@ -37,7 +43,8 @@ on: # yamllint disable-line rule:truthy
       scan-severity:
         description: >
           Fail on vulnerabilities at or above this severity (e.g.
-          CRITICAL,HIGH). Set to empty string to report without failing.
+          CRITICAL,HIGH — the lowest listed severity becomes the threshold).
+          Set to empty string to report without failing.
         required: false
         type: string
         default: CRITICAL,HIGH
@@ -45,7 +52,7 @@ on: # yamllint disable-line rule:truthy
       vex-file:
         description: >
           Path to an OpenVEX document in the caller repository; passed to
-          Trivy so known-not-exploitable findings are suppressed.
+          Grype so known-not-exploitable findings are suppressed.
         required: false
         type: string
         default: ""
@@ -160,10 +167,6 @@ jobs:
     env:
       PREDICATE_TYPE_SBOM: https://spdx.dev/Document/v2.3
       PREDICATE_TYPE_VULN: https://cosign.sigstore.dev/attestation/vuln/v1
-      # Ordered fallback lists so a single registry outage cannot fail the
-      # vulnerability scans (Trivy tries each repository in turn).
-      TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2,public.ecr.aws/aquasecurity/trivy-db:2
-      TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db:1,mirror.gcr.io/aquasec/trivy-java-db:1,public.ecr.aws/aquasecurity/trivy-java-db:1
       IMAGE_REF: ghcr.io/${{ inputs.image-name }}@${{ matrix.digest }}
 
     steps:
@@ -173,9 +176,9 @@ jobs:
           disable-sudo: true
           egress-policy: audit
 
-      # The checkout provides the caller's scan-policy files: a VEX document
-      # when supplied, and the .trivyignore that Trivy reads from the working
-      # directory — keeping rescan verdicts consistent with build-time scans.
+      # The checkout provides the caller's scan-policy file: the VEX document
+      # named by vex-file — keeping rescan verdicts consistent with
+      # build-time scans.
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
         with:
@@ -191,20 +194,11 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # tag=v4.1.2
 
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # tag=v0.3.1
-        with:
-          # renovate: datasource=github-releases depName=aquasecurity/trivy
-          version: v0.76.1
-
-      - name: Configure VEX
-        if: inputs.vex-file != ''
-        env:
-          VEX_FILE: ${{ inputs.vex-file }}
+      - name: Install Grype
         run: |
-          # Setting TRIVY_VEX only when a document is supplied avoids Trivy
-          # trying to load an empty path.
-          echo "TRIVY_VEX=${VEX_FILE}" >> "$GITHUB_ENV"
+          curl -sSL "https://github.com/anchore/grype/releases/download/${GRYPE_VERSION}/grype_${GRYPE_VERSION#v}_linux_amd64.tar.gz" \
+            | tar -xz -C /usr/local/bin grype
+          grype version
 
       - name: Derive slugs
         id: slugs
@@ -240,25 +234,39 @@ jobs:
           fi
           echo "SBOM: $(jq -r '.name // "unnamed"' sbom.spdx.json), $(jq '.packages | length' sbom.spdx.json) packages"
 
-      - name: Scan SBOM (severity gate)
+      - name: Scan SBOM
         id: scan-gate
         continue-on-error: true
         env:
           SCAN_SEVERITY: ${{ inputs.scan-severity }}
+          VEX_FILE: ${{ inputs.vex-file }}
         run: |
-          ARGS=(--ignore-unfixed --format sarif --output rescan.sarif)
-          if [[ -n "${SCAN_SEVERITY}" ]]; then
-            ARGS+=(--severity "${SCAN_SEVERITY}" --exit-code 1)
+          # One scan emits every output: the SARIF for code scanning, the
+          # JSON for the refreshed vulnerability attestation, and the table
+          # for the log. --only-fixed mirrors the build-time
+          # --ignore-unfixed policy: findings without an available fix
+          # (including distro won't-fix) are reported nowhere and never gate.
+          ARGS=(--only-fixed -o sarif=rescan.sarif -o json=rescan.json -o table)
+          if [[ -n "${VEX_FILE}" ]]; then
+            ARGS+=(--vex "${VEX_FILE}")
           fi
-          trivy sbom "${ARGS[@]}" sbom.spdx.json
-
-      - name: Scan SBOM (JSON for attestation)
-        run: |
-          trivy sbom --ignore-unfixed --format json --output rescan.json sbom.spdx.json
-
-      - name: Scan SBOM (table)
-        run: |
-          trivy sbom --ignore-unfixed --format table sbom.spdx.json
+          # Grype takes a single threshold that implies all higher
+          # severities, so the lowest severity listed becomes the threshold.
+          if [[ -n "${SCAN_SEVERITY}" ]]; then
+            FAIL_ON=""
+            for level in negligible low medium high critical; do
+              if grep -qiw "${level}" <<<"${SCAN_SEVERITY}"; then
+                FAIL_ON="${level}"
+                break
+              fi
+            done
+            if [[ -z "${FAIL_ON}" ]]; then
+              echo "::error::scan-severity '${SCAN_SEVERITY}' contains no recognized severity"
+              exit 1
+            fi
+            ARGS+=(--fail-on "${FAIL_ON}")
+          fi
+          grype "${ARGS[@]}" sbom:sbom.spdx.json
 
       - name: Upload SARIF to GitHub Security
         if: inputs.upload-scan-results
