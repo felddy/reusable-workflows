@@ -1,12 +1,8 @@
 ---
 name: Release Please
 
-# Maintains the release PR from conventional commits (version.txt bump plus
-# changelog) and publishes the GitHub release when that PR merges. The
-# release must be published with a personal access token: events created
-# with GITHUB_TOKEN do not trigger workflows, so a release published that
-# way would never run the Build pipeline. The PAT's identity is a repository
-# admin, whose ruleset bypass permits creating the semver tag.
+# Runs the reusable release-please workflow against this repository,
+# advancing the floating major tag that callers pin (for example, @v5).
 
 on: # yamllint disable-line rule:truthy
   push:
@@ -18,55 +14,11 @@ permissions: {}
 jobs:
   release-please:
     name: Release Please
-    runs-on: ubuntu-latest
-
     permissions:
-      # contents: write advances the floating major tag with GITHUB_TOKEN;
-      # forward tag moves are fast-forward and permitted by the major-tag
-      # ruleset without bypass. Both scopes also let the action operate in
-      # its degraded GITHUB_TOKEN fallback mode (see the token input).
       contents: write
       pull-requests: write
-
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1
-        with:
-          disable-sudo: true
-          egress-policy: block
-          allowed-endpoints: >
-            api.github.com:443
-            github.com:443
-
-      - name: Run release-please
-        id: release
-        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # tag=v5.0.0
-        with:
-          # Falls back to GITHUB_TOKEN so the release PR keeps working if
-          # the secret is absent — but a release published in fallback mode
-          # does NOT trigger the Build pipeline (no images are built).
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-
-      - name: Advance floating major tag
-        if: steps.release.outputs.releases_created == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ steps.release.outputs.tag_name }}
-          RELEASE_SHA: ${{ steps.release.outputs.sha }}
-        run: |
-          # Only full semver releases move the floating major tag.
-          if [[ ! "${TAG_NAME}" =~ ^v([0-9]+)\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Prerelease ${TAG_NAME}; floating tag unchanged"
-            exit 0
-          fi
-          MAJOR="v${BASH_REMATCH[1]}"
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${MAJOR}" > /dev/null 2>&1; then
-            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/tags/${MAJOR}" \
-              -f sha="${RELEASE_SHA}" -F force=true > /dev/null
-          else
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref="refs/tags/${MAJOR}" -f sha="${RELEASE_SHA}" > /dev/null
-          fi
-          echo "Floating tag ${MAJOR} -> ${RELEASE_SHA} (${TAG_NAME})"
+    uses: ./.github/workflows/release-please.yml
+    with:
+      advance-floating-major: true
+    secrets:
+      release-please-token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
