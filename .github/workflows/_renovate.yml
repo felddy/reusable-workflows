@@ -38,6 +38,9 @@ jobs:
   renovate:
     name: Renovate
     runs-on: ubuntu-latest
+    # A blocked or refused connection makes the token step retry for ~49
+    # minutes; fail fast so the next scheduled run can recover.
+    timeout-minutes: 10
 
     permissions:
       contents: read
