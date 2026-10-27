@@ -1,0 +1,61 @@
+---
+name: Label and close stale issues
+
+# Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): the
+# schedule runs it in this repository, and workflow_call serves
+# consumers' trigger-only stubs — both paths run this same file.
+
+on: # yamllint disable-line rule:truthy
+  schedule:
+    - cron: 0 10 * * * # everyday at 10am
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      days-before-stale:
+        default: 28
+        description: Days of inactivity before an issue is marked stale.
+        required: false
+        type: number
+      days-before-close:
+        default: 7
+        description: Days a stale issue waits before being closed.
+        required: false
+        type: number
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      # Schedule and dispatch runs have no call inputs; fall back to the
+      # same values the workflow_call defaults advertise.
+      DAYS_BEFORE_STALE: ${{ inputs.days-before-stale || 28 }}
+      DAYS_BEFORE_CLOSE: ${{ inputs.days-before-close || 7 }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+
+      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # tag=v11.0.0
+        with:
+          days-before-stale: ${{ env.DAYS_BEFORE_STALE }}
+          days-before-close: ${{ env.DAYS_BEFORE_CLOSE }}
+          stale-issue-message: >-
+            This issue has been automatically marked as stale because it has been
+            inactive for ${{ env.DAYS_BEFORE_STALE }} days. To reactivate the
+            issue, simply post a comment with the requested information to help
+            us diagnose this issue. If this issue remains inactive for another
+            ${{ env.DAYS_BEFORE_CLOSE }} days, it will be automatically closed.
+          close-issue-message: >-
+            This issue has been automatically closed due to inactivity. If you are
+            still experiencing problems, please open a new issue.
+          stale-issue-label: "stale :skull:"
+          only-labels: "needs more info :thinking:"

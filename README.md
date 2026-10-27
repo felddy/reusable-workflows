@@ -31,6 +31,7 @@ runs the exact file consumers call.
 | `dependency-review.yml` | Dual-trigger | Fail PRs that introduce known-vulnerable dependencies |
 | `diagnostics.yml` | Reusable | Emit runner and environment diagnostics |
 | `dockerhub-description.yml` | Reusable | Publish README to DockerHub (maintenance-only) |
+| `stale-issues.yml` | Dual-trigger | Label and close issues awaiting reporter information |
 | `_build.yml` | Orchestrator | This repo's CI: two flavors through the pipeline |
 | `_rescan.yml` | Orchestrator | Daily CVE rescan of published images |
 | `_retag.yml` | Orchestrator | Floating-tag reconciliation on release edits |
