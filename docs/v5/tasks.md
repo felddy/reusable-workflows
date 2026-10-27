@@ -398,10 +398,16 @@ without a pin change.
 
 ### E3 — sync-labels.yml callable + central label definitions (D10) ###
 
-- [ ] Central labels file in this repo; the callable checks it out
-  explicitly (`repository:` input to checkout), merges an optional
-  caller overlay at `.github/labels.yml`, applies with
-  ghaction-github-labeler.
+- [x] Central labels file in this repo; the callable checks it out
+  explicitly (`repository:` input at `central-ref`, default `v5`, so
+  consumers ride the same floating tag they call; `job_workflow_sha`
+  is an OIDC claim only, not a `github` context property), merges an
+  optional caller overlay at `.github/labels.yml` (last writer wins by
+  name), applies with ghaction-github-labeler.
+  Apply only on the caller's default branch; other refs dry-run. The
+  `autorelease: pending/tagged` labels joined the central set — the
+  labeler deletes unlisted labels, and losing release-please's state
+  labels mid-release was a latent defect in the per-repo copies.
 - [ ] Consumer stubs: weekly schedule + `workflow_dispatch` + push on
   their overlay path.
 - [ ] Acceptance: a dispatch run converges one consumer's labels; a

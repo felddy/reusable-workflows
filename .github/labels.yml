@@ -1,10 +1,23 @@
 ---
 ## more info https://github.com/crazy-max/ghaction-github-labeler
+##
+## Central label definitions for every repository calling
+## sync-labels.yml. A caller's own .github/labels.yml is merged over
+## this set (last writer wins by name). The labeler deletes labels that
+## are not listed, so labels other tooling depends on must appear here.
 - name: "ansible :scroll:"
   color: e60000
   description: ""
 - name: "automerge :bell:"
   color: 8f4fbc
+  description: ""
+## The autorelease labels are release-please's state tracking on
+## release PRs; without these entries a sync would delete them mid-release.
+- name: "autorelease: pending"
+  color: ededed
+  description: ""
+- name: "autorelease: tagged"
+  color: ededed
   description: ""
 - name: "bot :robot:"
   color: 69cde9

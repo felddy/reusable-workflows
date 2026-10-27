@@ -1,0 +1,90 @@
+---
+name: Sync Labels
+
+# Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): the push
+# trigger runs it in this repository, and workflow_call serves
+# consumers' trigger-only stubs — both paths run this same file.
+#
+# Label definitions are centralized in this repository's
+# .github/labels.yml. A caller's own .github/labels.yml, if present, is
+# merged over the central set (last writer wins by label name), so a
+# consumer may add repo-specific labels or override colors without
+# forking the whole list. This repository's own run merges the central
+# file with itself, which exercises the same code path consumers use.
+
+on: # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - develop
+    paths:
+      - .github/labels.yml
+      - .github/workflows/sync-labels.yml
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      central-ref:
+        default: v5
+        description: >
+          Ref of felddy/reusable-workflows to read the central label
+          definitions from. Callers pinning this workflow to an exact
+          ref should pass the same ref here.
+        required: false
+        type: string
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
+
+jobs:
+  labeler:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # for actions/checkout to fetch code
+      issues: write # for crazy-max/ghaction-github-labeler to create, rename, update and delete label
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+
+      - name: Checkout central label definitions
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          repository: felddy/reusable-workflows
+          # Consumers read the central definitions at central-ref (its
+          # default rides the same floating v5 tag they call); this
+          # repository's own runs have no call inputs and fall back to
+          # the triggering commit.
+          ref: ${{ inputs.central-ref || github.sha }}
+          path: central
+          persist-credentials: false
+
+      - name: Checkout caller labels overlay
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          path: caller
+          persist-credentials: false
+
+      - name: Merge central labels with caller overlay
+        run: |
+          if [[ -f caller/.github/labels.yml ]]; then
+            # Concatenate and keep the last definition of each name, so
+            # caller entries override central ones.
+            yq eval-all \
+              '. as $item ireduce ([]; . + $item) | group_by(.name) | map(.[-1]) | sort_by(.name)' \
+              central/.github/labels.yml caller/.github/labels.yml > merged-labels.yml
+          else
+            cp central/.github/labels.yml merged-labels.yml
+          fi
+          echo "::group::Merged label definitions"
+          cat merged-labels.yml
+          echo "::endgroup::"
+
+      - name: Sync repository labels
+        uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # tag=v6.0.0
+        with:
+          yaml-file: merged-labels.yml
+          # Apply only on the default branch; any other ref dry-runs.
+          dry-run: ${{ github.ref_name == github.event.repository.default_branch && 'false' || 'true' }}

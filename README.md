@@ -32,6 +32,7 @@ runs the exact file consumers call.
 | `diagnostics.yml` | Reusable | Emit runner and environment diagnostics |
 | `dockerhub-description.yml` | Reusable | Publish README to DockerHub (maintenance-only) |
 | `stale-issues.yml` | Dual-trigger | Label and close issues awaiting reporter information |
+| `sync-labels.yml` | Dual-trigger | Sync repo labels from the central definitions plus an optional caller overlay |
 | `_build.yml` | Orchestrator | This repo's CI: two flavors through the pipeline |
 | `_rescan.yml` | Orchestrator | Daily CVE rescan of published images |
 | `_retag.yml` | Orchestrator | Floating-tag reconciliation on release edits |
