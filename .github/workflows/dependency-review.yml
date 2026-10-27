@@ -1,15 +1,24 @@
 ---
 name: Dependency Review
 
-on: # yamllint disable-line rule:truthy
-  - pull_request
+# Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): the
+# pull_request trigger runs it in this repository, and workflow_call
+# serves consumers' trigger-only stubs — both paths run this same file.
 
-permissions:
-  contents: read
+on: # yamllint disable-line rule:truthy
+  pull_request:
+  workflow_call:
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
 
 jobs:
+  # The job id is the status-check context required by the development
+  # ruleset (here and in consumers); a display name would change it.
   dependency-review:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # tag=v2.22.1

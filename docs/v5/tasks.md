@@ -378,8 +378,10 @@ without a pin change.
 
 ### E1 — dependency-review.yml callable (D10) ###
 
-- [ ] Promote `_dependency-review.yml` to dual-trigger
-  `dependency-review.yml` (`workflow_call` + `pull_request`).
+- [x] Promote `_dependency-review.yml` to dual-trigger
+  `dependency-review.yml` (`workflow_call` + `pull_request`). The job
+  id stays `dependency-review` — it is the status-check context the
+  development rulesets require, here and in consumers.
 - [ ] Acceptance: this repo's own PR check runs the dual-trigger file;
   a branch call from one consumer passes.
 
