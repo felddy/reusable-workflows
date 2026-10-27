@@ -311,6 +311,63 @@ This repo's rulesets, shaped for the v5 design:
   and in every consumer via `common-lint.yml`).
 - Fix the corrupted action-version comment in the metadata source.
 
+### D10 — Housekeeping consolidation (post-GA) ###
+
+Third-party action pins still duplicate across consumers in the
+housekeeping workflows (codeql-analysis, dependency-review,
+scorecards, stale-issues, sync-labels, label-prs/label-automerge,
+renovate, render-release-docs). Each becomes a callable workflow here;
+consumers keep trigger-only stubs pinned `@v5`, which Dependabot
+ignores until a v6 exists. One upstream action bump then flows:
+Dependabot PR here → release-please patch → `v5` advances → consumers
+pick it up on their next run, with zero consumer PRs.
+
+- Dual-trigger files: one workflow carries both `workflow_call` and
+  this repo's own native trigger (schedule/push/pull_request), so this
+  repo dogfoods the exact file consumers call. Replaces the `_x.yml`
+  internal copies of the same workflows; the underscore prefix then
+  marks genuinely repo-local workflows only.
+- Reusable jobs run in the caller's context: checkout fetches the
+  caller's repo, SARIF uploads land on the caller, and
+  `secrets: inherit` passes what each needs (all proven by the v5
+  pipeline).
+- Labels: definitions live in this repo. The callable sync-labels
+  checks out this repo's labels file explicitly (`actions/checkout`
+  with `repository:`), merges an optional caller overlay
+  (`.github/labels.yml`), and applies with the labeler action under
+  the caller's token. Propagation is schedule + dispatch — labels
+  change rarely; a push-triggered fan-out via the GitHub App is the
+  documented upgrade if the lag ever matters.
+- Scorecards is centralizable: the publish-results enforcement
+  (ossf/scorecard-infra, `api/app/server/post_results.go`)
+  shape-verifies the file named by the OIDC cert's job_workflow_ref —
+  the called workflow, not the caller's stub — and handles the
+  cross-repo case explicitly ("Organization and repo of the (possibly)
+  reusable workflow"). The callable file must itself keep the approved
+  shape: only checkout / upload-artifact / upload-sarif /
+  scorecard-action / harden-runner steps, no env or defaults at any
+  level, a single `ubuntu-*` runner label, and id-token: write on the
+  scorecard job alone. Set `fail_on_publish_error: true` so a future
+  enforcement change fails loudly instead of silently; pilot one
+  consumer before converting the rest.
+- Community health files: the `felddy/.github` repo serves
+  account-wide defaults (ISSUE_TEMPLATE including config.yml, PR
+  template, SECURITY, CONTRIBUTING, SUPPORT) with no sync machinery —
+  GitHub falls back at view time. Personal accounts are supported; the
+  `.github` repo must be public. Fallback is all-or-nothing per file
+  type: a repo with any local issue template sees none of the
+  defaults, so foundry keeps its bespoke container forms local. Labels
+  assigned by default templates must exist in the `.github` repo and
+  every destination repo — the central label sync (above) is what
+  guarantees that.
+- render-docs generalizes with inputs (render command, toolchain) on
+  the existing PAT-push pattern so re-rendered commits re-run checks.
+- Stays per-repo: trigger stubs, dependabot.yml (org-level config
+  needs an org account), renovate.json, labels overlays, OpenVEX
+  files, and bespoke issue forms.
+- Blast radius matches the pipeline's accepted model: advance-only
+  `v5` tag, release-please process, emergency SHA re-pin available.
+
 ## Delivery phases ##
 
 Phases A and B are non-breaking and ship as v4.x releases, fixing the
@@ -366,6 +423,23 @@ Exit: this repo runs wholly on v5-rc; migration guide complete.
    weewx-docker; enable release immutability there.
 
 Exit: both consumers green on v5; v4 branch left in maintenance.
+
+### Phase E — housekeeping consolidation (v5.x) ###
+
+Post-GA, non-breaking. Callable workflows land one PR each here
+(feat → minor releases); consumer conversions land one PR per repo at
+the end.
+
+1. Promote the housekeeping set to dual-trigger callables:
+   dependency-review, stale-issues, sync-labels (+ central label
+   definitions), label-prs/label-automerge, codeql-analysis, renovate,
+   render-docs, scorecards (piloted).
+1. Create `felddy/.github` with the generic community health files.
+1. Convert consumers to trigger-only stubs.
+
+Exit: a full action-bump cycle reaches consumers with zero consumer
+PRs; consumers' remaining third-party pins are reduced to checkout in
+`_config.yml`.
 
 ## Risks and mitigations ##
 
