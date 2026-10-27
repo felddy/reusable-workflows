@@ -4,7 +4,7 @@ Stage 3 of 3. Decomposes [plan.md](plan.md) into PR-sized tasks.
 Conventions:
 
 - One task = one PR unless marked otherwise; IDs follow the plan's
-  phases (A–D). References like D1/R1.1 point at plan design sections
+  phases (A–E). References like D1/R1.1 point at plan design sections
   and requirements.
 - Order within a phase is dependency order; every merge leaves
   `develop` releasable (the dogfood build must pass on every PR).
@@ -369,3 +369,107 @@ lines; acceptable until a better mechanism exists).
   own-namespace sync contingency).
 - [ ] Update `docs/v5/` stage docs' status headers to "delivered";
   v4 goes to maintenance (security backports only).
+
+## Phase E — housekeeping consolidation (v5.x) ##
+
+Design in plan.md D10. Non-breaking post-GA minors; each rw task is
+one `feat:` PR cut as a release so consumers (on `@v5`) pick it up
+without a pin change.
+
+### E1 — dependency-review.yml callable (D10) ###
+
+- [ ] Promote `_dependency-review.yml` to dual-trigger
+  `dependency-review.yml` (`workflow_call` + `pull_request`).
+- [ ] Acceptance: this repo's own PR check runs the dual-trigger file;
+  a branch call from one consumer passes.
+
+### E2 — stale-issues.yml callable (D10) ###
+
+- [ ] Dual-trigger (`workflow_call` + schedule); inputs for the
+  stale/close day counts with current values as defaults.
+
+### E3 — sync-labels.yml callable + central label definitions (D10) ###
+
+- [ ] Central labels file in this repo; the callable checks it out
+  explicitly (`repository:` input to checkout), merges an optional
+  caller overlay at `.github/labels.yml`, applies with
+  ghaction-github-labeler.
+- [ ] Consumer stubs: weekly schedule + `workflow_dispatch` + push on
+  their overlay path.
+- [ ] Acceptance: a dispatch run converges one consumer's labels; a
+  consumer-only overlay label survives the sync.
+
+### E4 — label-prs.yml + label-automerge.yml callable (D10) ###
+
+- [ ] Includes SHA-pinning `actions/labeler` and
+  `cisagov/action-job-preamble` (currently tag-pinned in foundry).
+
+### E5 — codeql-analysis.yml callable (D10) ###
+
+- [ ] `languages` input; SARIF upload runs in the caller's context
+  (proven pattern).
+
+### E6 — renovate.yml callable (D10) ###
+
+- [ ] App id via `vars`, private key via `secrets: inherit`; the five
+  permission-* token inputs baked in (delivers the standing "tighten
+  foundry's renovate token" TODO); `renovate.json` stays per-repo.
+
+### E7 — render-docs.yml callable (D10) ###
+
+- [ ] Generalize `_render-release-docs.yml`: input for the render
+  command (default `./render-docs-update`); uv toolchain; PAT push so
+  re-rendered commits re-run checks; `raw.githubusercontent.com` in
+  the egress allowlist (setup-uv needs it).
+
+### E8 — scorecards.yml callable (D10) ###
+
+- [ ] Callable file in the approved shape (see D10);
+  `fail_on_publish_error: true`.
+- [ ] Pilot on weewx-docker only. Acceptance: fresh results visible
+  via the scorecard REST API / badge after the next scheduled run.
+- [ ] Convert the remaining repos only after the pilot publishes.
+
+### E9 — felddy/.github defaults (operator + content) ###
+
+- [ ] Create `felddy/.github` (public — required for defaults) with
+  the generic set: ISSUE_TEMPLATE + config.yml,
+  PULL_REQUEST_TEMPLATE, SECURITY, CONTRIBUTING, SUPPORT. Labels
+  referenced by templates must exist in `.github` and every
+  destination repo (E3's central sync covers the destinations; add
+  `.github` itself to the sync).
+- [ ] Remove now-redundant generic copies from consumers that don't
+  customize. foundry keeps its bespoke issue forms (all-or-nothing
+  folder fallback).
+
+### E10 — consumer conversions + close out ###
+
+- [ ] One PR per consumer: replace the housekeeping workflows with
+  `@v5` trigger stubs; delete the local copies.
+- [ ] Acceptance: one full action-bump cycle (Dependabot PR here →
+  release → `v5` advance) reaches consumers with zero consumer PRs;
+  consumers' remaining third-party pins are reduced to checkout in
+  `_config.yml`.
+- [ ] File an issue for the deferred labels fan-out dispatch.
+
+### E11 — lint-config consolidation (D10) ###
+
+Independent of E1–E6 and E8–E10; shares the render engine with E7.
+
+- [ ] Base `.pre-commit-config.yaml` template plus companion lint
+  dotfiles (.yamllint, .mdl_config.yaml, .flake8, .bandit.yml, …) in
+  this repo; per-repo overlay for local hooks and excludes (foundry:
+  shebang/chmod rule, local hooks).
+- [ ] Reusable config-sync workflow: renders base + overlay, opens an
+  auto-merge PR on drift (schedule + dispatch in consumers; PAT push
+  so checks run; squash per the bot-PR convention).
+- [ ] Enable Renovate's `pre-commit` manager in this repo only; remove
+  the pre-commit.ci `ci:` block (it has never filed an autoupdate PR
+  here or in any consumer).
+- [ ] common-lint.yml drift check: rendered != committed fails lint.
+- [ ] Converge consumers: the first sync PR closes the current rev
+  drift and finally delivers actionlint + zizmor to consumers; retire
+  `.github/lineage.yml` where the sync replaces it.
+- [ ] Acceptance: a hook bump merged here reaches both consumers as
+  auto-merged sync PRs; a hand edit to a consumer's rendered config
+  fails that repo's lint run.
