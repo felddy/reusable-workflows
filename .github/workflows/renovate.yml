@@ -1,11 +1,17 @@
 ---
 name: Renovate
 
-# Updates the tool versions pinned inside the workflows (crane, trivy,
-# buildkit, shfmt) that Dependabot's github-actions ecosystem cannot see.
-# Each pin carries a `# renovate:` annotation naming its datasource; the
-# repository-level config at .github/renovate.json enables only the custom
-# regex managers so Renovate never overlaps with Dependabot.
+# Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): the
+# schedule runs it in this repository, and workflow_call serves
+# consumers' trigger-only stubs — both paths run this same file.
+#
+# Runs self-hosted Renovate against the calling repository. What gets
+# updated is governed entirely by the caller's .github/renovate.json
+# (here: `# renovate:` annotated tool pins that Dependabot's
+# github-actions ecosystem cannot see, via custom regex managers only,
+# so Renovate never overlaps with Dependabot). The caller provides the
+# App id in the RENOVATE_APP_ID repository variable and the private key
+# in the RENOVATE_PRIVATE_KEY secret (stubs pass `secrets: inherit`).
 
 on: # yamllint disable-line rule:truthy
   schedule:
@@ -25,10 +31,24 @@ on: # yamllint disable-line rule:truthy
           - info
         required: false
         type: choice
+  workflow_call:
+    inputs:
+      dry-run:
+        default: false
+        description: Log what would happen without creating branches or PRs
+        required: false
+        type: boolean
+      log-level:
+        default: info
+        description: Renovate log level (info or debug)
+        required: false
+        type: string
 
 concurrency:
-  # Only one Renovate run at a time; a second scheduled run would race the
-  # first on branch creation and rebasing.
+  # Only one Renovate run at a time; a second scheduled run would race
+  # the first on branch creation and rebasing. Workflow-level
+  # concurrency is ignored when this file is called, so consumer stubs
+  # must declare their own concurrency group.
   group: ${{ github.workflow }}
   cancel-in-progress: false
 

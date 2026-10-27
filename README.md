@@ -34,6 +34,7 @@ runs the exact file consumers call.
 | `dockerhub-description.yml` | Reusable | Publish README to DockerHub (maintenance-only) |
 | `label-automerge.yml` | Dual-trigger | Track auto-merge arming with the automerge label |
 | `label-prs.yml` | Dual-trigger | Apply path-based labels from the caller's labeler.yml |
+| `renovate.yml` | Dual-trigger | Run self-hosted Renovate against the caller per its renovate.json |
 | `stale-issues.yml` | Dual-trigger | Label and close issues awaiting reporter information |
 | `sync-labels.yml` | Dual-trigger | Sync repo labels from the central definitions plus an optional caller overlay |
 | `_build.yml` | Orchestrator | This repo's CI: two flavors through the pipeline |
