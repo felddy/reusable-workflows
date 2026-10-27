@@ -424,8 +424,12 @@ without a pin change.
 
 ### E5 — codeql-analysis.yml callable (D10) ###
 
-- [ ] `languages` input; SARIF upload runs in the caller's context
-  (proven pattern).
+- [x] `languages` input (JSON-array string into the matrix via
+  fromJSON; default `["actions"]`, which is also this repo's own set);
+  SARIF upload runs in the caller's context (proven pattern). The
+  required "CodeQL" ruleset context is the code-scanning tool check
+  (integration 57789), not an Actions job name, so the call prefix on
+  "Analyze (…)" job names is cosmetic.
 
 ### E6 — renovate.yml callable (D10) ###
 

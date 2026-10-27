@@ -27,6 +27,7 @@ runs the exact file consumers call.
 | `container-mirror.yml` | Reusable | Mirror image to another registry |
 | `project-config.yml` | Reusable | Derive version, image name, and platform config |
 | `ci-gate.yml` | Reusable | Aggregate status check for branch protection |
+| `codeql-analysis.yml` | Dual-trigger | CodeQL scanning over a caller-supplied language matrix |
 | `common-lint.yml` | Reusable | Run pre-commit linters across the repository |
 | `dependency-review.yml` | Dual-trigger | Fail PRs that introduce known-vulnerable dependencies |
 | `diagnostics.yml` | Reusable | Emit runner and environment diagnostics |
