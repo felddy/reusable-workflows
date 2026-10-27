@@ -31,6 +31,8 @@ runs the exact file consumers call.
 | `dependency-review.yml` | Dual-trigger | Fail PRs that introduce known-vulnerable dependencies |
 | `diagnostics.yml` | Reusable | Emit runner and environment diagnostics |
 | `dockerhub-description.yml` | Reusable | Publish README to DockerHub (maintenance-only) |
+| `label-automerge.yml` | Dual-trigger | Track auto-merge arming with the automerge label |
+| `label-prs.yml` | Dual-trigger | Apply path-based labels from the caller's labeler.yml |
 | `stale-issues.yml` | Dual-trigger | Label and close issues awaiting reporter information |
 | `sync-labels.yml` | Dual-trigger | Sync repo labels from the central definitions plus an optional caller overlay |
 | `_build.yml` | Orchestrator | This repo's CI: two flavors through the pipeline |

@@ -1,11 +1,18 @@
 ---
 name: Label auto-merge PRs
 
+# Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): the
+# pull_request_target trigger runs it in this repository, and
+# workflow_call serves consumers' trigger-only stubs — both paths run
+# this same file. pull_request_target is safe here because no PR code
+# is checked out or executed; the job only edits labels via gh.
+
 on: # yamllint disable-line rule:truthy
   pull_request_target:
     types:
       - auto_merge_enabled
       - auto_merge_disabled
+  workflow_call:
 
 env:
   LABEL_NAME: "automerge :bell:"

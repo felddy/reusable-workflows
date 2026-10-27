@@ -415,8 +415,12 @@ without a pin change.
 
 ### E4 — label-prs.yml + label-automerge.yml callable (D10) ###
 
-- [ ] Includes SHA-pinning `actions/labeler` and
-  `cisagov/action-job-preamble` (currently tag-pinned in foundry).
+- [x] Both files gain `workflow_call` alongside their native triggers
+  (this repo's copies were already SHA-pinned; foundry's tag-pinned
+  `actions/labeler@v7` / `action-job-preamble@v1` disappear with its
+  E10 stub conversion). `label-automerge` keeps `pull_request_target`
+  — safe since no PR code is checked out or executed. The caller's own
+  `.github/labeler.yml` path rules stay per-repo.
 
 ### E5 — codeql-analysis.yml callable (D10) ###
 
