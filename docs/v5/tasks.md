@@ -382,13 +382,19 @@ without a pin change.
   `dependency-review.yml` (`workflow_call` + `pull_request`). The job
   id stays `dependency-review` — it is the status-check context the
   development rulesets require, here and in consumers.
-- [ ] Acceptance: this repo's own PR check runs the dual-trigger file;
-  a branch call from one consumer passes.
+- [x] Acceptance: this repo's own PR check runs the dual-trigger file
+  (#596); a branch call from foundryvtt-docker passed
+  (felddy/foundryvtt-docker#1595). Consumer check contexts gain the
+  caller-job prefix (`dependency-review` →
+  `dependency-review / dependency-review`) — ruleset updates folded
+  into E10.
 
 ### E2 — stale-issues.yml callable (D10) ###
 
-- [ ] Dual-trigger (`workflow_call` + schedule); inputs for the
-  stale/close day counts with current values as defaults.
+- [x] Dual-trigger (`workflow_call` + schedule); inputs for the
+  stale/close day counts with current values as defaults. The stale
+  message interpolates the day counts, and schedule/dispatch runs fall
+  back to the same values the call defaults advertise.
 
 ### E3 — sync-labels.yml callable + central label definitions (D10) ###
 
@@ -448,6 +454,11 @@ without a pin change.
 
 - [ ] One PR per consumer: replace the housekeeping workflows with
   `@v5` trigger stubs; delete the local copies.
+- [ ] Update consumer rulesets alongside: reusable-call check contexts
+  gain the caller-job prefix (`dependency-review` →
+  `dependency-review / dependency-review`, verified in
+  felddy/foundryvtt-docker#1595); apply from the PR branch per the
+  migration-guide gotcha.
 - [ ] Acceptance: one full action-bump cycle (Dependabot PR here →
   release → `v5` advance) reaches consumers with zero consumer PRs;
   consumers' remaining third-party pins are reduced to checkout in
