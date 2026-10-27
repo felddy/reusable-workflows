@@ -429,9 +429,13 @@ without a pin change.
 
 ### E6 — renovate.yml callable (D10) ###
 
-- [ ] App id via `vars`, private key via `secrets: inherit`; the five
+- [x] App id via `vars`, private key via `secrets: inherit`; the five
   permission-* token inputs baked in (delivers the standing "tighten
-  foundry's renovate token" TODO); `renovate.json` stays per-repo.
+  foundry's renovate token" TODO at its E10 conversion);
+  `renovate.json` stays per-repo. dry-run/log-level mirrored as
+  workflow_call inputs. Stub gotcha recorded: workflow-level
+  concurrency is ignored when called — consumer stubs declare their
+  own group (and their own offset cron).
 
 ### E7 — render-docs.yml callable (D10) ###
 
