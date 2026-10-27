@@ -1,12 +1,19 @@
 ---
 name: Label pull requests
 
+# Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): the
+# pull_request trigger runs it in this repository, and workflow_call
+# serves consumers' trigger-only stubs — both paths run this same file.
+# actions/labeler reads the caller's own .github/labeler.yml, so the
+# path-matching rules stay per-repo.
+
 on: # yamllint disable-line rule:truthy
   pull_request:
     types:
       - edited
       - opened
       - synchronize
+  workflow_call:
 
 permissions:
   pull-requests: write
