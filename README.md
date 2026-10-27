@@ -12,7 +12,9 @@ repositories.
 complete pipeline for one image flavor. Callers with multiple flavors (for
 example a public and a private image) express them as a job matrix over the
 pipeline. The `_*.yml` workflows are this repository's own orchestrators and
-double as reference implementations.
+double as reference implementations. Dual-trigger workflows carry both
+`workflow_call` and this repository's own native trigger, so this repository
+runs the exact file consumers call.
 
 | Workflow | Type | Purpose |
 | --- | --- | --- |
@@ -26,6 +28,7 @@ double as reference implementations.
 | `project-config.yml` | Reusable | Derive version, image name, and platform config |
 | `ci-gate.yml` | Reusable | Aggregate status check for branch protection |
 | `common-lint.yml` | Reusable | Run pre-commit linters across the repository |
+| `dependency-review.yml` | Dual-trigger | Fail PRs that introduce known-vulnerable dependencies |
 | `diagnostics.yml` | Reusable | Emit runner and environment diagnostics |
 | `dockerhub-description.yml` | Reusable | Publish README to DockerHub (maintenance-only) |
 | `_build.yml` | Orchestrator | This repo's CI: two flavors through the pipeline |
