@@ -1,9 +1,9 @@
 ---
-# For most projects, this workflow file will not need changing; you simply need
-# to commit it to your repository.
-#
-# You may wish to alter this file to override the set of languages analyzed,
-# or to provide custom queries or build logic.
+# Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): the native
+# triggers run it in this repository, and workflow_call serves
+# consumers' trigger-only stubs — both paths run this same file. SARIF
+# uploads run in the caller's context, so results land on the caller's
+# code-scanning dashboard.
 name: CodeQL
 
 # The use of on here as a key is part of the GitHub actions syntax.
@@ -23,6 +23,17 @@ on: # yamllint disable-line rule:truthy
       - dependabot/**
   schedule:
     - cron: 0 2 * * 6
+  workflow_call:
+    inputs:
+      languages:
+        default: '["actions"]'
+        description: >
+          JSON array of CodeQL languages to analyze, e.g.
+          '["actions", "javascript-typescript", "python"]'. Supported
+          values are actions, c-cpp, csharp, go, java-kotlin,
+          javascript-typescript, python, ruby, and swift.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -78,15 +89,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Override automatic language detection by changing the below
-        # list
+        # Callers pass their language list via the languages input; this
+        # repository's own runs have no call inputs and fall back to the
+        # same default the input advertises.
         #
-        # Supported options are actions, c-cpp, csharp, go,
-        # java-kotlin, javascript-typescript, python, ruby, and swift.
-        language:
-          - actions
         # Learn more...
         # https://docs.github.com/en/github/finding-security-vulnerabilities-and-errors-in-your-code/configuring-code-scanning#overriding-automatic-language-detection
+        language: ${{ fromJSON(inputs.languages || '["actions"]') }}
 
     steps:
       - name: Apply standard cisagov job preamble
