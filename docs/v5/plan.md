@@ -362,6 +362,23 @@ pick it up on their next run, with zero consumer PRs.
   guarantees that.
 - render-docs generalizes with inputs (render command, toolchain) on
   the existing PAT-push pattern so re-rendered commits re-run checks.
+- Lint config: local `git commit` needs a real `.pre-commit-config.yaml`
+  (and the dotfiles hooks read) in every repo, so the config cannot
+  become a stub — centralize the source instead. This repo holds a
+  base template plus a per-repo overlay (local hooks, excludes),
+  rendered into each consumer's config and companion lint dotfiles; a
+  reusable config-sync workflow opens auto-merge PRs on drift
+  (schedule + dispatch, PAT push so checks run); hook revs bump only
+  here via Renovate's native `pre-commit` manager; `common-lint.yml`
+  gains a rendered-vs-committed drift check. The floor is one
+  auto-merged sync PR per consumer per change — local execution
+  requires the file. The pre-commit.ci `ci:` block is removed (it has
+  never filed an autoupdate PR here or in any consumer), and lineage
+  is retired for this surface. A native pre-commit hook-repo
+  (consumers pointing `repo:` at this one) was rejected: pre-commit
+  builds tool environments from each hook's own repo, `rev:` must be
+  an immutable tag that `autoupdate` would fight with the floating
+  `v5` model, and it couples lint-tool churn to workflow releases.
 - Stays per-repo: trigger stubs, dependabot.yml (org-level config
   needs an org account), renovate.json, labels overlays, OpenVEX
   files, and bespoke issue forms.
@@ -436,6 +453,9 @@ the end.
    render-docs, scorecards (piloted).
 1. Create `felddy/.github` with the generic community health files.
 1. Convert consumers to trigger-only stubs.
+1. Lint-config consolidation: base template + per-repo overlay
+   rendered by a config-sync workflow; Renovate pre-commit manager
+   here only; drift check in common-lint.
 
 Exit: a full action-bump cycle reaches consumers with zero consumer
 PRs; consumers' remaining third-party pins are reduced to checkout in

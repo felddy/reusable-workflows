@@ -451,3 +451,25 @@ without a pin change.
   consumers' remaining third-party pins are reduced to checkout in
   `_config.yml`.
 - [ ] File an issue for the deferred labels fan-out dispatch.
+
+### E11 — lint-config consolidation (D10) ###
+
+Independent of E1–E6 and E8–E10; shares the render engine with E7.
+
+- [ ] Base `.pre-commit-config.yaml` template plus companion lint
+  dotfiles (.yamllint, .mdl_config.yaml, .flake8, .bandit.yml, …) in
+  this repo; per-repo overlay for local hooks and excludes (foundry:
+  shebang/chmod rule, local hooks).
+- [ ] Reusable config-sync workflow: renders base + overlay, opens an
+  auto-merge PR on drift (schedule + dispatch in consumers; PAT push
+  so checks run; squash per the bot-PR convention).
+- [ ] Enable Renovate's `pre-commit` manager in this repo only; remove
+  the pre-commit.ci `ci:` block (it has never filed an autoupdate PR
+  here or in any consumer).
+- [ ] common-lint.yml drift check: rendered != committed fails lint.
+- [ ] Converge consumers: the first sync PR closes the current rev
+  drift and finally delivers actionlint + zizmor to consumers; retire
+  `.github/lineage.yml` where the sync replaces it.
+- [ ] Acceptance: a hook bump merged here reaches both consumers as
+  auto-merged sync PRs; a hand edit to a consumer's rendered config
+  fails that repo's lint run.
