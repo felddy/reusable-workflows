@@ -459,8 +459,10 @@ without a pin change.
 
 ### E8 — scorecards.yml callable (D10) ###
 
-- [ ] Callable file in the approved shape (see D10);
-  `fail_on_publish_error: true`.
+- [x] Callable file in the approved shape (see D10, restated in the
+  file's header so future edits stay inside it);
+  `fail_on_publish_error: true` so an enforcement change fails runs
+  loudly — including this repo's own, which dogfoods the same file.
 - [ ] Pilot on weewx-docker only. Acceptance: fresh results visible
   via the scorecard REST API / badge after the next scheduled run.
 - [ ] Convert the remaining repos only after the pilot publishes.
