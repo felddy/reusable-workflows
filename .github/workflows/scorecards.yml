@@ -1,8 +1,22 @@
 ---
 name: Scorecards supply-chain security
 
+# Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): the native
+# triggers run it in this repository, and workflow_call serves
+# consumers' trigger-only stubs — both paths run this same file.
+#
+# The publish-results enforcement (ossf/scorecard-infra) shape-verifies
+# the file named by the OIDC cert's job_workflow_ref — this file, for
+# stub callers too — against an approved-actions allowlist: only uses:
+# steps from checkout / upload-artifact / upload-sarif /
+# scorecard-action / harden-runner / create-github-app-token, no env or
+# defaults at any level, a single ubuntu-* runner, and id-token: write
+# on this job alone. Keep any edits inside that shape;
+# fail_on_publish_error surfaces a rejection as a failed run instead of
+# a silent warning.
+
 on: # yamllint disable-line rule:truthy
-  # Only the default branch is supported.
+  # Only the caller's default branch is supported.
   branch_protection_rule:
   schedule:
     - cron: 43 4 * * 4
@@ -10,6 +24,7 @@ on: # yamllint disable-line rule:truthy
     branches:
       - develop
   workflow_dispatch:
+  workflow_call:
 
 # Declare default permissions as read only.
 permissions: read-all
@@ -68,6 +83,10 @@ jobs:
           # For private repositories, `publish_results` will automatically be set to `false`, regardless
           # of the value entered here.
           publish_results: true
+          # A publish rejection (e.g. a future enforcement change that
+          # stops accepting reusable workflows) must fail the run, not
+          # warn silently.
+          fail_on_publish_error: true
 
       # Upload the results as artifacts (optional). Commenting out will disable uploads of run results in SARIF
       # format to the repository Actions tab.
