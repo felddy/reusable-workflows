@@ -26,8 +26,11 @@ on: # yamllint disable-line rule:truthy
   workflow_dispatch:
   workflow_call:
 
-# Declare default permissions as read only.
-permissions: read-all
+# Permissions are set at the job level; default to none at workflow
+# level. A global read-all here breaks stub callers at startup: a
+# called workflow may not request more than the caller's job grants,
+# and read-all asks for read on every scope.
+permissions: {}
 
 jobs:
   analysis:
