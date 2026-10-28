@@ -41,6 +41,7 @@ issues = "https://github.com/felddy/reusable-workflows/issues"
 source = "https://github.com/felddy/reusable-workflows"
 
 [dependency-groups]
+docs = ["jinja2", "pyyaml"]
 test = [
     "coverage",
     "coveralls",
