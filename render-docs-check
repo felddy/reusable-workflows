@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+
+# render-docs-check: verify every rendered document is in sync with its
+# template.
+#
+# Re-renders every '*.j2' template in memory from the platform list in
+# .github/workflows/_build.yml and compares each against its committed
+# output. Exits 0 when everything matches; otherwise prints a unified
+# diff for each stale file and exits non-zero. Nothing is written.
+# Intended to run as a local pre-commit hook.
+
+set -eu
+
+if ! command -v uv > /dev/null 2>&1; then
+  echo "ERROR: uv is required but not on the PATH." >&2
+  exit 1
+fi
+
+exec uv run --group docs python tools/render_docs.py --check

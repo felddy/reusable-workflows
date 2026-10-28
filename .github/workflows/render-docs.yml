@@ -1,9 +1,11 @@
 ---
 name: Render Docs
 
-# Reusable housekeeping workflow (docs/v5/plan.md, D10): re-renders a
-# caller's template-generated documents and pushes the result back to
-# the triggering branch.
+# Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): re-renders
+# a caller's template-generated documents and pushes the result back to
+# the triggering branch. This repository's own release branch triggers
+# it directly (the README platforms badge renders from _build.yml);
+# workflow_call serves consumers' trigger-only stubs.
 #
 # The main consumer trigger is release-please's version bump: it edits
 # the version file on its release branch without knowing the committed
@@ -15,6 +17,9 @@ name: Render Docs
 # Re-triggering on its own push is harmless: a clean tree exits early.
 
 on: # yamllint disable-line rule:truthy
+  push:
+    branches:
+      - release-please--branches--develop
   workflow_call:
     inputs:
       render-command:
@@ -69,7 +74,9 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # tag=v10.3.2
         with:
-          enable-cache: true
+          # Rendering is cheap, and this job pushes commits — a shared
+          # cache would be a poisoning vector (zizmor: cache-poisoning).
+          enable-cache: false
 
       - name: Render documents from templates
         env:

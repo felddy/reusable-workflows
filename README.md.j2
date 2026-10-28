@@ -1,0 +1,177 @@
+# reusable-workflows #
+
+[![Build](https://github.com/felddy/reusable-workflows/actions/workflows/_build.yml/badge.svg)](https://github.com/felddy/reusable-workflows/actions/workflows/_build.yml)
+[![Platforms](https://img.shields.io/badge/platforms-{{ platforms_badge }}-blue)](https://github.com/felddy/reusable-workflows/pkgs/container/reusable-workflow/versions?filters%5Bversion_type%5D=tagged)
+
+This repository contains reusable GitHub Actions workflows for use in other
+repositories.
+
+## Workflow Composition ##
+
+`container-pipeline.yml` is the primary reusable entry point: it runs the
+complete pipeline for one image flavor. Callers with multiple flavors (for
+example a public and a private image) express them as a job matrix over the
+pipeline. The `_*.yml` workflows are this repository's own orchestrators and
+double as reference implementations. Dual-trigger workflows carry both
+`workflow_call` and this repository's own native trigger, so this repository
+runs the exact file consumers call.
+
+| Workflow | Type | Purpose |
+| --- | --- | --- |
+| `container-pipeline.yml` | Reusable | Full flavor pipeline: metadata → build → test → publish |
+| `container-build.yml` | Building block | Build all platforms, push digests, scan, attest |
+| `container-test.yml` | Building block | Pull image from registry by digest and run pytest |
+| `container-publish-manifest.yml` | Building block | Assemble, attest, sign, and verify the manifest |
+| `container-rescan.yml` | Reusable | Rescan published images from attested SBOMs |
+| `container-retag.yml` | Reusable | Reconcile floating tags after release edits |
+| `container-mirror.yml` | Reusable | Mirror image to another registry |
+| `project-config.yml` | Reusable | Derive version, image name, and platform config |
+| `ci-gate.yml` | Reusable | Aggregate status check for branch protection |
+| `codeql-analysis.yml` | Dual-trigger | CodeQL scanning over a caller-supplied language matrix |
+| `common-lint.yml` | Reusable | Run pre-commit linters across the repository |
+| `dependency-review.yml` | Dual-trigger | Fail PRs that introduce known-vulnerable dependencies |
+| `diagnostics.yml` | Reusable | Emit runner and environment diagnostics |
+| `dockerhub-description.yml` | Reusable | Publish README to DockerHub (maintenance-only) |
+| `label-automerge.yml` | Dual-trigger | Track auto-merge arming with the automerge label |
+| `label-prs.yml` | Dual-trigger | Apply path-based labels from the caller's labeler.yml |
+| `renovate.yml` | Dual-trigger | Run self-hosted Renovate against the caller per its renovate.json |
+| `render-docs.yml` | Dual-trigger | Re-render template-generated docs and push to the triggering branch |
+| `stale-issues.yml` | Dual-trigger | Label and close issues awaiting reporter information |
+| `sync-labels.yml` | Dual-trigger | Sync repo labels from the central definitions plus an optional caller overlay |
+| `_build.yml` | Orchestrator | This repo's CI: two flavors through the pipeline |
+| `_rescan.yml` | Orchestrator | Daily CVE rescan of published images |
+| `_retag.yml` | Orchestrator | Floating-tag reconciliation on release edits |
+
+### Pipeline Flow ###
+
+```mermaid
+graph TD
+    A[push / PR / release:published / weekly cron] --> C[project-config]
+    A --> L[common-lint]
+    A --> D[diagnostics]
+    C --> P["container-pipeline<br/>(matrix: one job per flavor)"]
+    L --> P
+    D --> P
+    P --> G[ci-gate]
+
+    E[release:edited] --> T["container-retag<br/>(repoint floating tags, no rebuild)"]
+    S[daily cron] --> R["container-rescan<br/>(scan attested SBOMs, no rebuild)"]
+
+    subgraph container-pipeline internals
+        M["metadata + matrices<br/>(computed once)"] --> B["build per platform<br/>(push by digest, scan, attest)"]
+        B --> X["test per platform<br/>(pull by digest)"]
+        X --> U["publish manifest<br/>(assemble, attest, sign, verify)"]
+        U --> V["record digest on release"]
+        U --> W["DockerHub mirror + README<br/>(opt-in, releases only)"]
+    end
+```
+
+### Stage Design ###
+
+**Metadata** is computed once per flavor: tags, labels, annotations,
+version, the platform/runner matrices, and the effective push decision.
+Fork pull requests are detected here and downgraded to build-only runs, so
+callers need no fork conditionals.
+
+**Build** pushes each platform image to ghcr.io by digest only, scans it
+with Trivy (gated by `scan-severity`, with OpenVEX suppression via
+`vex-file`), and attests SBOM and vulnerability results per platform.
+Base-image pulls route through mirror.gcr.io with authenticated Docker Hub
+fallback, and transient failures retry once.
+
+**Test** pulls the image from the registry by the digest produced by the
+build stage, so the tested image is byte-for-byte identical to what is
+published.
+
+**Publish** assembles the multi-arch manifest under a staging tag, applies
+the final tags behind an immutable-tag guard (semver tags are never
+repointed; identical digests are no-ops), attests SLSA provenance and the
+per-platform SBOMs against the index digest, signs with cosign keyless, and
+then **verifies** everything: `gh attestation verify` for provenance and
+SBOM plus `cosign verify` must pass or the pipeline fails. On release
+events the final digest is recorded in the release notes.
+
+**Rescan** (scheduled daily) downloads the attested SBOMs of published
+tags, scans them for new CVEs without pulling any image, refreshes the
+vulnerability attestations, and fails above the severity threshold — so
+full rebuilds only happen weekly.
+
+## Verifying published images ##
+
+Every published index carries SLSA provenance, SPDX SBOMs, vulnerability
+attestations, and a cosign keyless signature:
+
+```console
+gh attestation verify oci://ghcr.io/felddy/reusable-workflow:latest \
+  --repo felddy/reusable-workflows \
+  --signer-repo felddy/reusable-workflows
+
+cosign verify \
+  --certificate-identity-regexp \
+    '^https://github\.com/felddy/reusable-workflows/\.github/workflows/container-publish-manifest\.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/felddy/reusable-workflow:latest
+```
+
+For images built by consumer repositories, `--repo` is the consumer
+repository and `--signer-repo` stays `felddy/reusable-workflows`: the
+attestations are signed by this reusable workflow (the trusted builder) on
+behalf of the calling repository (the source).
+
+Builds run on GitHub-hosted runners with provenance generated inside this
+reusable workflow, meeting SLSA v1.0 Build L3 expectations: consumers can
+verify that an image was produced by this workflow, from which commit, and
+with which inputs. Release tags are protected by repository rulesets (see
+`.github/rulesets/`) and the publish-time immutable-tag guard; `gh release
+verify` covers releases themselves once release immutability is enabled.
+
+### Concurrency Group ###
+
+`_build.yml` defines a concurrency group keyed on the workflow name and the
+branch name:
+
+```yaml
+concurrency:
+  group: >-
+    ${{ github.workflow }}-${{
+      github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+```
+
+When a pull request event fires on a branch that already has a running push
+event workflow, the push run is cancelled and the PR run proceeds. For
+`schedule` and `workflow_dispatch` events on `main`, the group key resolves
+to `main` so concurrent scheduled runs cancel each other. This eliminates
+redundant duplicate runs without any per-job conditionals.
+
+## Releases ##
+
+Releases are cut by merging the release PR that
+[release-please](https://github.com/googleapis/release-please) maintains
+from conventional commits: merging it bumps `version.txt`, updates
+`CHANGELOG.md`, publishes the (immutable) GitHub release, and advances
+the floating major tag. The release event then runs the full container
+pipeline.
+
+## Migrating from v4 ##
+
+See [docs/v5/migration.md](docs/v5/migration.md) for the complete v4 → v5
+breaking-change list with before/after caller snippets.
+
+## Contributing ##
+
+We welcome contributions!  Please see [`CONTRIBUTING.md`](CONTRIBUTING.md) for
+details.
+
+## License ##
+
+This project is in the worldwide [public domain](LICENSE).
+
+This project is in the public domain within the United States, and
+copyright and related rights in the work worldwide are waived through
+the [CC0 1.0 Universal public domain
+dedication](https://creativecommons.org/publicdomain/zero/1.0/).
+
+All contributions to this project will be released under the CC0
+dedication. By submitting a pull request, you are agreeing to comply
+with this waiver of copyright interest.

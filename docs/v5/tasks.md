@@ -443,15 +443,19 @@ without a pin change.
 
 ### E7 — render-docs.yml callable (D10) ###
 
-- [x] Generalize `_render-release-docs.yml` into call-only
-  `render-docs.yml` (this repo has no templates to render, so no dual
-  trigger): `render-command` input (default `sh render-docs-update`,
-  the consumers' actual invocation, routed through env to satisfy the
-  template-injection audit); uv toolchain; PAT push via a declared
-  optional `RELEASE_PLEASE_TOKEN` secret so re-rendered commits re-run
-  checks; `raw.githubusercontent.com` in the egress allowlist (setup-uv
-  needs it). Commit message stays version-aware by probing
-  `src/version.txt`.
+- [x] Generalize `_render-release-docs.yml` into dual-trigger
+  `render-docs.yml`: `render-command` input (default
+  `sh render-docs-update`, the consumers' actual invocation, routed
+  through env to satisfy the template-injection audit); uv toolchain;
+  PAT push via a declared optional `RELEASE_PLEASE_TOKEN` secret so
+  re-rendered commits re-run checks; `raw.githubusercontent.com` in
+  the egress allowlist (setup-uv needs it). Commit message stays
+  version-aware by probing `src/version.txt`.
+- [x] Dogfood: this repo's README platforms badge renders from
+  `_build.yml`'s platform matrix (`README.md.j2` +
+  `tools/render_docs.py` + `render-docs-update`/`-check`, `docs`
+  dependency group, render-docs-check pre-commit hook); the workflow
+  runs directly on this repo's release branch.
 
 ### E8 — scorecards.yml callable (D10) ###
 
