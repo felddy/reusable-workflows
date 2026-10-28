@@ -130,6 +130,7 @@ verify` covers releases themselves once release immutability is enabled.
 `_build.yml` defines a concurrency group keyed on the workflow name and the
 branch name:
 
+{% raw -%}
 ```yaml
 concurrency:
   group: >-
@@ -137,6 +138,7 @@ concurrency:
       github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
 ```
+{% endraw %}
 
 When a pull request event fires on a branch that already has a running push
 event workflow, the push run is cancelled and the PR run proceeds. For

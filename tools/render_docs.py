@@ -46,17 +46,25 @@ def main() -> int:
     args = parser.parse_args()
 
     # Templates render Markdown, not HTML; autoescaping would corrupt
-    # the output and there is no XSS surface.
+    # the output and there is no XSS surface. Block tags (e.g. the
+    # raw guards around GitHub Actions ${{ }} examples) must not leave
+    # blank lines behind, hence the trim/lstrip settings.
     env = jinja2.Environment(  # nosec B701
         autoescape=False,
         keep_trailing_newline=True,
+        lstrip_blocks=True,
+        trim_blocks=True,
         undefined=jinja2.StrictUndefined,
     )
     context = platform_context()
 
     stale = False
     for template_path in sorted(REPO_ROOT.rglob("*.j2")):
-        if SKIP_PARTS.intersection(template_path.parts):
+        # Filter on the path relative to the repo root: the repo itself
+        # may live under a filtered directory name (e.g. a worktree in
+        # .claude/worktrees), which must not skip everything.
+        relative_parts = template_path.relative_to(REPO_ROOT).parts
+        if SKIP_PARTS.intersection(relative_parts):
             continue
         output_path = template_path.with_suffix("")
         rendered = env.from_string(template_path.read_text()).render(**context)
