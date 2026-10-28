@@ -1,0 +1,93 @@
+---
+name: Render Docs
+
+# Reusable housekeeping workflow (docs/v5/plan.md, D10): re-renders a
+# caller's template-generated documents and pushes the result back to
+# the triggering branch.
+#
+# The main consumer trigger is release-please's version bump: it edits
+# the version file on its release branch without knowing the committed
+# docs are rendered from that version, leaving them stale against their
+# templates and failing the render-docs pre-commit check. The push must
+# use the caller's RELEASE_PLEASE_TOKEN PAT so the pull request's checks
+# re-run (GITHUB_TOKEN pushes do not trigger workflows); the commit is
+# unsigned, which release PRs already require an admin bypass for.
+# Re-triggering on its own push is harmless: a clean tree exits early.
+
+on: # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      render-command:
+        default: sh render-docs-update
+        description: Command that renders the documents from templates.
+        required: false
+        type: string
+    secrets:
+      RELEASE_PLEASE_TOKEN:
+        description: >
+          PAT used to push the rendered commit so the branch's checks
+          re-run. Falls back to GITHUB_TOKEN (whose pushes do not
+          trigger workflows). Stubs normally pass `secrets: inherit`.
+        required: false
+
+permissions: {}
+
+jobs:
+  render:
+    name: Render docs
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.astral.sh:443
+
+      - name: Checkout triggering branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          # Credential persistence is the point: the final step pushes
+          # with this token, and no artifacts are uploaded that could
+          # leak it.
+          # zizmor: ignore[artipacked]
+          ref: ${{ github.ref }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # tag=v10.3.2
+        with:
+          enable-cache: true
+
+      - name: Render documents from templates
+        env:
+          RENDER_COMMAND: ${{ inputs.render-command }}
+        run: eval "${RENDER_COMMAND}"
+
+      - name: Commit and push rendered documents
+        run: |
+          if git diff --quiet; then
+            echo "Rendered documents already match the templates"
+            exit 0
+          fi
+          MESSAGE="chore: render docs"
+          if [[ -f src/version.txt ]]; then
+            MESSAGE="chore: render docs for $(tr -d '[:space:]' < src/version.txt)"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "${MESSAGE}"
+          git push

@@ -443,10 +443,15 @@ without a pin change.
 
 ### E7 — render-docs.yml callable (D10) ###
 
-- [ ] Generalize `_render-release-docs.yml`: input for the render
-  command (default `./render-docs-update`); uv toolchain; PAT push so
-  re-rendered commits re-run checks; `raw.githubusercontent.com` in
-  the egress allowlist (setup-uv needs it).
+- [x] Generalize `_render-release-docs.yml` into call-only
+  `render-docs.yml` (this repo has no templates to render, so no dual
+  trigger): `render-command` input (default `sh render-docs-update`,
+  the consumers' actual invocation, routed through env to satisfy the
+  template-injection audit); uv toolchain; PAT push via a declared
+  optional `RELEASE_PLEASE_TOKEN` secret so re-rendered commits re-run
+  checks; `raw.githubusercontent.com` in the egress allowlist (setup-uv
+  needs it). Commit message stays version-aware by probing
+  `src/version.txt`.
 
 ### E8 — scorecards.yml callable (D10) ###
 
