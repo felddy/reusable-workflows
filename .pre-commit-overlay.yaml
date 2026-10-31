@@ -1,0 +1,33 @@
+# Repo-specific layer over the central pre-commit base in
+# lint-config/pre-commit-base.yaml; tools/merge_precommit.py merges the
+# pair into the generated .pre-commit-config.yaml.
+---
+repos:
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v26.4.0
+    hooks:
+      - id: ansible-lint
+        additional_dependencies:
+          - ansible-core>=2.17.7
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - types-PyYAML
+  - repo: local
+    hooks:
+      - id: render-docs-check
+        name: render-docs-check
+        language: system
+        entry: ./render-docs-check
+        files: ^(.*\.j2|README\.md|\.github/workflows/_build\.yml|tools/render_docs\.py|render-docs-(check|update))$
+        pass_filenames: false
+      - id: lint-config-check
+        name: lint-config-check
+        language: system
+        entry: >-
+          python3 tools/merge_precommit.py
+          lint-config/pre-commit-base.yaml .pre-commit-overlay.yaml
+          --check .pre-commit-config.yaml
+        files: ^(lint-config/pre-commit-base\.yaml|\.pre-commit-(config|overlay)\.yaml|tools/merge_precommit\.py)$  # yamllint disable-line rule:line-length
+        pass_filenames: false

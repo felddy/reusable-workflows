@@ -1,0 +1,94 @@
+---
+name: Config Sync
+
+# Reusable housekeeping workflow (docs/v5/plan.md, D10): regenerates the
+# caller's .pre-commit-config.yaml from the central base in this
+# repository plus the caller's optional .pre-commit-overlay.yaml, and
+# opens an auto-merging PR when the committed file has drifted. This
+# repository syncs itself through the lint-config-check pre-commit hook
+# instead, so the workflow is call-only.
+
+on: # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      central-ref:
+        default: v5
+        description: >
+          Ref of felddy/reusable-workflows to read the central
+          pre-commit base and merge tool from. Callers pinning this
+          workflow to an exact ref should pass the same ref here.
+        required: false
+        type: string
+    secrets:
+      RELEASE_PLEASE_TOKEN:
+        description: >
+          PAT used to push the sync branch so the PR's checks run.
+          Falls back to GITHUB_TOKEN (whose pushes do not trigger
+          workflows). Stubs normally pass `secrets: inherit`.
+        required: false
+
+# Permissions are set at the job level; default to none at workflow level.
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+
+      - name: Checkout caller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          # Credential persistence is the point: the sync step pushes
+          # with this token, and no artifacts are uploaded that could
+          # leak it.
+          # zizmor: ignore[artipacked]
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout central lint config
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          repository: felddy/reusable-workflows
+          ref: ${{ inputs.central-ref }}
+          path: .lint-central
+          persist-credentials: false
+
+      - name: Regenerate pre-commit config
+        run: |
+          python3 .lint-central/tools/merge_precommit.py \
+            .lint-central/lint-config/pre-commit-base.yaml \
+            .pre-commit-overlay.yaml \
+            --output .pre-commit-config.yaml
+          rm -rf .lint-central
+
+      - name: Open auto-merging sync PR on drift
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          CENTRAL_REF: ${{ inputs.central-ref }}
+        run: |
+          if git diff --quiet; then
+            echo "Pre-commit config matches the central base"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B chore/lint-config-sync
+          git add .pre-commit-config.yaml
+          git commit -m "chore(lint): sync pre-commit config with the central base"
+          git push -f origin chore/lint-config-sync
+          if ! gh pr view chore/lint-config-sync > /dev/null 2>&1; then
+            gh pr create \
+              --title "chore(lint): sync pre-commit config with the central base" \
+              --body "Regenerated from felddy/reusable-workflows lint-config/pre-commit-base.yaml (ref ${CENTRAL_REF}) plus this repository's overlay."
+          fi
+          gh pr merge chore/lint-config-sync --auto --squash

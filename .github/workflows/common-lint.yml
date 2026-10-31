@@ -55,6 +55,15 @@ on: # yamllint disable-line rule:truthy
         required: false
         type: string
         default: auto
+      lint-config-ref:
+        default: v5
+        description: >
+          Ref of felddy/reusable-workflows to read the central
+          pre-commit base from when checking a generated
+          .pre-commit-config.yaml. Only used when the caller has a
+          .pre-commit-overlay.yaml.
+        required: false
+        type: string
 
 env:
   PIP_CACHE_DIR: ${{ inputs.pip_cache_dir }}
@@ -215,3 +224,27 @@ jobs:
 
       - name: Run pre-commit on all files
         run: pre-commit run --all-files
+
+      # Repositories with a .pre-commit-overlay.yaml generate their
+      # .pre-commit-config.yaml from the central base; a hand edit to
+      # the generated file must fail lint. The two central files are
+      # fetched raw rather than checked out: CodeQL flags a privileged
+      # checkout at an input-controlled ref as a cache-poisoning vector.
+      # This repository checks itself with its lint-config-check hook
+      # instead (its base may be ahead of any released ref).
+      - name: Check generated pre-commit config against the central base
+        if: hashFiles('.pre-commit-overlay.yaml') != '' && github.repository != 'felddy/reusable-workflows'
+        env:
+          CENTRAL_RAW: https://raw.githubusercontent.com/felddy/reusable-workflows
+          LINT_CONFIG_REF: ${{ inputs.lint-config-ref }}
+        run: |
+          central=$(mktemp -d)
+          trap 'rm -rf "${central}"' EXIT
+          curl -fsSL --output "${central}/merge_precommit.py" \
+            "${CENTRAL_RAW}/${LINT_CONFIG_REF}/tools/merge_precommit.py"
+          curl -fsSL --output "${central}/pre-commit-base.yaml" \
+            "${CENTRAL_RAW}/${LINT_CONFIG_REF}/lint-config/pre-commit-base.yaml"
+          python3 "${central}/merge_precommit.py" \
+            "${central}/pre-commit-base.yaml" \
+            .pre-commit-overlay.yaml \
+            --check .pre-commit-config.yaml

@@ -27,7 +27,8 @@
     }
   ],
   "enabledManagers": [
-    "custom.regex"
+    "custom.regex",
+    "pre-commit"
   ],
   "extends": [
     "config:recommended"
@@ -39,8 +40,31 @@
         "dependencies :game_die:"
       ],
       "matchManagers": [
-        "custom.regex"
+        "custom.regex",
+        "pre-commit"
       ]
+    },
+    {
+      "description": "A base bump must regenerate this repo's own config in the same commit, or the lint-config-check hook fails the PR",
+      "matchManagers": [
+        "pre-commit"
+      ],
+      "postUpgradeTasks": {
+        "commands": [
+          "python3 tools/merge_precommit.py lint-config/pre-commit-base.yaml .pre-commit-overlay.yaml --output .pre-commit-config.yaml"
+        ],
+        "executionMode": "branch",
+        "fileFilters": [
+          ".pre-commit-config.yaml"
+        ]
+      }
     }
-  ]
+  ],
+  "pre-commit": {
+    "description": "Hook revisions are pinned only in the central base; the generated .pre-commit-config.yaml follows it via the lint-config sync",
+    "enabled": true,
+    "managerFilePatterns": [
+      "/^lint-config\\/pre-commit-base\\.yaml$/"
+    ]
+  }
 }
