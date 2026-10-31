@@ -227,23 +227,24 @@ jobs:
 
       # Repositories with a .pre-commit-overlay.yaml generate their
       # .pre-commit-config.yaml from the central base; a hand edit to
-      # the generated file must fail lint. This repository checks
-      # itself with its lint-config-check hook instead (its base may be
-      # ahead of any released ref).
-      - name: Checkout central lint config
-        if: hashFiles('.pre-commit-overlay.yaml') != '' && github.repository != 'felddy/reusable-workflows'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
-        with:
-          repository: felddy/reusable-workflows
-          ref: ${{ inputs.lint-config-ref }}
-          path: .lint-central
-          persist-credentials: false
-
+      # the generated file must fail lint. The two central files are
+      # fetched raw rather than checked out: CodeQL flags a privileged
+      # checkout at an input-controlled ref as a cache-poisoning vector.
+      # This repository checks itself with its lint-config-check hook
+      # instead (its base may be ahead of any released ref).
       - name: Check generated pre-commit config against the central base
         if: hashFiles('.pre-commit-overlay.yaml') != '' && github.repository != 'felddy/reusable-workflows'
+        env:
+          CENTRAL_RAW: https://raw.githubusercontent.com/felddy/reusable-workflows
+          LINT_CONFIG_REF: ${{ inputs.lint-config-ref }}
         run: |
-          python3 .lint-central/tools/merge_precommit.py \
-            .lint-central/lint-config/pre-commit-base.yaml \
+          central=$(mktemp -d)
+          trap 'rm -rf "${central}"' EXIT
+          curl -fsSL --output "${central}/merge_precommit.py" \
+            "${CENTRAL_RAW}/${LINT_CONFIG_REF}/tools/merge_precommit.py"
+          curl -fsSL --output "${central}/pre-commit-base.yaml" \
+            "${CENTRAL_RAW}/${LINT_CONFIG_REF}/lint-config/pre-commit-base.yaml"
+          python3 "${central}/merge_precommit.py" \
+            "${central}/pre-commit-base.yaml" \
             .pre-commit-overlay.yaml \
             --check .pre-commit-config.yaml
-          rm -rf .lint-central
