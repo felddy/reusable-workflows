@@ -437,9 +437,12 @@ without a pin change.
   permission-* token inputs baked in (delivers the standing "tighten
   foundry's renovate token" TODO at its E10 conversion);
   `renovate.json` stays per-repo. dry-run/log-level mirrored as
-  workflow_call inputs. Stub gotcha recorded: workflow-level
-  concurrency is ignored when called — consumer stubs declare their
-  own group (and their own offset cron).
+  workflow_call inputs. Stub gotcha, corrected after foundry's first
+  cron deadlocked (run 41203604569): workflow-level concurrency IS
+  evaluated when called, with `github.workflow` resolving to the
+  caller's name — the callable's group alone serializes runs per
+  caller, and a stub declaring the same group deadlocks against it.
+  Stubs keep their own offset cron and no concurrency block.
 
 ### E7 — render-docs.yml callable (D10) ###
 

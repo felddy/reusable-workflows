@@ -46,9 +46,12 @@ on: # yamllint disable-line rule:truthy
 
 concurrency:
   # Only one Renovate run at a time; a second scheduled run would race
-  # the first on branch creation and rebasing. Workflow-level
-  # concurrency is ignored when this file is called, so consumer stubs
-  # must declare their own concurrency group.
+  # the first on branch creation and rebasing. This block also applies
+  # when the file is called: github.workflow evaluates to the CALLER's
+  # workflow name, so runs serialize per caller — and a stub declaring
+  # the same group deadlocks parent against child
+  # (felddy/foundryvtt-docker run 41203604569). Stubs must not declare
+  # a concurrency group.
   group: ${{ github.workflow }}
   cancel-in-progress: false
 
