@@ -29,6 +29,7 @@ runs the exact file consumers call.
 | `ci-gate.yml` | Reusable | Aggregate status check for branch protection |
 | `codeql-analysis.yml` | Dual-trigger | CodeQL scanning over a caller-supplied language matrix |
 | `common-lint.yml` | Reusable | Run pre-commit linters across the repository |
+| `config-sync.yml` | Reusable | Regenerate a caller's pre-commit config from the central base; auto-PR on drift |
 | `dependency-review.yml` | Dual-trigger | Fail PRs that introduce known-vulnerable dependencies |
 | `diagnostics.yml` | Reusable | Emit runner and environment diagnostics |
 | `dockerhub-description.yml` | Reusable | Publish README to DockerHub (maintenance-only) |

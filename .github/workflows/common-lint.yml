@@ -55,6 +55,15 @@ on: # yamllint disable-line rule:truthy
         required: false
         type: string
         default: auto
+      lint-config-ref:
+        default: v5
+        description: >
+          Ref of felddy/reusable-workflows to read the central
+          pre-commit base from when checking a generated
+          .pre-commit-config.yaml. Only used when the caller has a
+          .pre-commit-overlay.yaml.
+        required: false
+        type: string
 
 env:
   PIP_CACHE_DIR: ${{ inputs.pip_cache_dir }}
@@ -215,3 +224,26 @@ jobs:
 
       - name: Run pre-commit on all files
         run: pre-commit run --all-files
+
+      # Repositories with a .pre-commit-overlay.yaml generate their
+      # .pre-commit-config.yaml from the central base; a hand edit to
+      # the generated file must fail lint. This repository checks
+      # itself with its lint-config-check hook instead (its base may be
+      # ahead of any released ref).
+      - name: Checkout central lint config
+        if: hashFiles('.pre-commit-overlay.yaml') != '' && github.repository != 'felddy/reusable-workflows'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          repository: felddy/reusable-workflows
+          ref: ${{ inputs.lint-config-ref }}
+          path: .lint-central
+          persist-credentials: false
+
+      - name: Check generated pre-commit config against the central base
+        if: hashFiles('.pre-commit-overlay.yaml') != '' && github.repository != 'felddy/reusable-workflows'
+        run: |
+          python3 .lint-central/tools/merge_precommit.py \
+            .lint-central/lint-config/pre-commit-base.yaml \
+            .pre-commit-overlay.yaml \
+            --check .pre-commit-config.yaml
+          rm -rf .lint-central

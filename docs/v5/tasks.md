@@ -463,26 +463,42 @@ without a pin change.
   file's header so future edits stay inside it);
   `fail_on_publish_error: true` so an enforcement change fails runs
   loudly — including this repo's own, which dogfoods the same file.
-- [ ] Pilot on weewx-docker only. Acceptance: fresh results visible
-  via the scorecard REST API / badge after the next scheduled run.
-- [ ] Convert the remaining repos only after the pilot publishes.
+- [x] Pilot on weewx-docker only. Acceptance met 2026-10-29: fresh
+  results published by the stub's own run (score intact), verified via
+  the scorecard REST API. The pilot paid for itself: a global
+  `permissions: read-all` in the called file failed stub callers at
+  startup (a called workflow may not request more than the caller's
+  job grants) — now workflow-level none, like the rest of the set.
+- [x] Convert the remaining repos only after the pilot publishes:
+  folded into the E10 conversions.
 
 ### E9 — felddy/.github defaults (operator + content) ###
 
-- [ ] Create `felddy/.github` (public — required for defaults) with
-  the generic set: ISSUE_TEMPLATE + config.yml,
-  PULL_REQUEST_TEMPLATE, SECURITY, CONTRIBUTING, SUPPORT. Labels
-  referenced by templates must exist in `.github` and every
-  destination repo (E3's central sync covers the destinations; add
-  `.github` itself to the sync).
-- [ ] Remove now-redundant generic copies from consumers that don't
-  customize. foundry keeps its bespoke issue forms (all-or-nothing
+- [x] `felddy/.github` already existed (2023 skeleton era); glowed up
+  instead of created (felddy/.github#12): issue forms replace markdown
+  templates, SUPPORT.md replaces the cisagov QUESTIONS catalog,
+  SECURITY.md adds private vulnerability reporting, FUNDING.yml goes
+  account-wide, skeleton machinery (lineage, broken 2023 pre-commit
+  stack, build workflow) retired, default branch renamed to develop,
+  and a sync-labels stub keeps form-assigned labels present.
+- [x] Remove now-redundant generic copies from consumers that don't
+  customize: FUNDING.yml dropped from weewx (#539) and foundry (in its
+  E10 PR). foundry keeps its bespoke issue forms (all-or-nothing
   folder fallback).
 
 ### E10 — consumer conversions + close out ###
 
-- [ ] One PR per consumer: replace the housekeeping workflows with
-  `@v5` trigger stubs; delete the local copies.
+- [x] weewx converted (felddy/weewx-docker#537, merged): seven `@v5`
+  stubs, local labels.yml deleted (first sync delivered the full
+  central set), render-docs proven live on the release branch
+  (render + PAT push + clean-tree early exit), ruleset context updated.
+  Gotcha recorded: weewx's ruleset FILE lagged its live ruleset
+  (`CI Gate` vs `CI Gate / Gate`) and applying the file regressed it —
+  audit file-vs-live before every ruleset apply.
+- [ ] foundry conversion open (felddy/foundryvtt-docker#1599): nine
+  stubs, FUNDING.yml + labels.yml deleted, ruleset context updated
+  (file-vs-live audited clean up front). felddy/.github re-pin to
+  `@v5` open (felddy/.github#14).
 - [ ] Update consumer rulesets alongside: reusable-call check contexts
   gain the caller-job prefix (`dependency-review` →
   `dependency-review / dependency-review`, verified in
@@ -498,20 +514,34 @@ without a pin change.
 
 Independent of E1–E6 and E8–E10; shares the render engine with E7.
 
-- [ ] Base `.pre-commit-config.yaml` template plus companion lint
-  dotfiles (.yamllint, .mdl_config.yaml, .flake8, .bandit.yml, …) in
-  this repo; per-repo overlay for local hooks and excludes (foundry:
-  shebang/chmod rule, local hooks).
-- [ ] Reusable config-sync workflow: renders base + overlay, opens an
-  auto-merge PR on drift (schedule + dispatch in consumers; PAT push
-  so checks run; squash per the bot-PR convention).
-- [ ] Enable Renovate's `pre-commit` manager in this repo only; remove
-  the pre-commit.ci `ci:` block (it has never filed an autoupdate PR
-  here or in any consumer).
-- [ ] common-lint.yml drift check: rendered != committed fails lint.
-- [ ] Converge consumers: the first sync PR closes the current rev
-  drift and finally delivers actionlint + zizmor to consumers; retire
-  `.github/lineage.yml` where the sync replaces it.
+- [x] Base in `lint-config/pre-commit-base.yaml` (the 49 hook entries
+  byte-identical between this repo and foundry, plus actionlint,
+  zizmor, and the terraform hooks, which no-op where no matching files
+  exist); per-repo `.pre-commit-overlay.yaml` for local hooks and
+  overrides. This repo's own config is now generated (ansible-lint,
+  the mypy stubs dep, and render-docs-check live in its overlay); the
+  dead pre-commit.ci `ci:` block is gone. Dotfiles (.yamllint,
+  .flake8, …) deferred: all differ materially between repos today —
+  phase 2 after configs converge.
+- [x] `tools/merge_precommit.py` merges base + overlay
+  deterministically in the house yamllint style (indented sequences,
+  double quotes); a `lint-config-check` hook in this repo's overlay
+  fails commits when the generated file is stale.
+- [x] Reusable `config-sync.yml`: regenerates the caller's config from
+  the central base at `central-ref` (default `v5`) plus the caller's
+  overlay, and opens an auto-merging squash PR on drift (PAT push so
+  checks run).
+- [x] Renovate `pre-commit` manager enabled, scoped to the base file
+  only; a `postUpgradeTasks` regenerates this repo's own config in the
+  bump commit so the lint-config-check hook stays green.
+- [x] `common-lint.yml` drift check: when a caller has an overlay, the
+  generated config is re-derived from the base at `lint-config-ref`
+  and a mismatch fails lint (skipped for this repo, whose unreleased
+  base would false-fail; its local hook covers it).
+- [ ] Converge consumers: overlay + generated config + config-sync
+  stub per consumer (closes weewx's rev drift and finally delivers
+  actionlint + zizmor); retire `.github/lineage.yml` where the sync
+  replaces it. Needs a release carrying this task first.
 - [ ] Acceptance: a hook bump merged here reaches both consumers as
   auto-merged sync PRs; a hand edit to a consumer's rendered config
   fails that repo's lint run.
