@@ -565,7 +565,7 @@ Independent of E1–E6 and E8–E10; shares the render engine with E7.
   default-branch runs publish a shields endpoint JSON to the caller's
   badges branch via GITHUB_TOKEN — README embeds
   img.shields.io/endpoint over the raw file.
-- [x] Dogfood: a fixture library under `dogfood/python-library` (the
+- [x] Dogfood: a fixture library under `src/python-library` (the
   badge banding logic, 100% covered) runs the real pipeline on every
   PR via a `project-directory` input (also the monorepo affordance),
   gated by ci-gate — a breaking change fails this repo before any
