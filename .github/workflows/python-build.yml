@@ -138,7 +138,7 @@ jobs:
             github.com:443
 
       - name: Download the coverage summary
-        uses: actions/download-artifact@9000827ccba63b55e8a124e7c56687f73e79b4ed # tag=v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # tag=v8.0.2
         with:
           name: coverage-summary
           path: ${{ inputs.project-directory }}
@@ -260,7 +260,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Download built distributions
-        uses: actions/download-artifact@9000827ccba63b55e8a124e7c56687f73e79b4ed # tag=v8.0.2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # tag=v8.0.2
         with:
           name: dist
           path: ${{ inputs.project-directory }}/dist
