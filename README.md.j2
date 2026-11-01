@@ -26,6 +26,7 @@ runs the exact file consumers call.
 | `container-retag.yml` | Reusable | Reconcile floating tags after release edits |
 | `container-mirror.yml` | Reusable | Mirror image to another registry |
 | `project-config.yml` | Reusable | Derive version, image name, and platform config |
+| `python-build.yml` | Reusable | Test, build, and wheel-verify a uv-managed Python library across interpreters |
 | `ci-gate.yml` | Reusable | Aggregate status check for branch protection |
 | `codeql-analysis.yml` | Dual-trigger | CodeQL scanning over a caller-supplied language matrix |
 | `common-lint.yml` | Reusable | Run pre-commit linters across the repository |
