@@ -548,3 +548,36 @@ Independent of E1–E6 and E8–E10; shares the render engine with E7.
 - [ ] Acceptance: a hook bump merged here reaches both consumers as
   auto-merged sync PRs; a hand edit to a consumer's rendered config
   fails that repo's lint run.
+
+## Follow-on — post-Phase-E features ##
+
+### F1 — python-build.yml callable ###
+
+- [x] Clean-room reusable pipeline for uv-managed Python libraries
+  (Mark's call 2026-11-01: standardize on uv; keep the consumer's
+  build backend untouched so `pip install git+…@tag` keeps working):
+  test the source across a caller-supplied interpreter matrix
+  (`uv sync --locked` so a stale lock fails fast), `uv build` once,
+  then install the wheel plus the test group into a clean venv and run
+  the suite against it (src layout keeps the working tree off
+  sys.path). Coverage stays local (Mark's call 2026-11-01, retiring
+  coveralls): measurement comes from the repo's pytest config, and
+  default-branch runs publish a shields endpoint JSON to the caller's
+  badges branch via GITHUB_TOKEN — README embeds
+  img.shields.io/endpoint over the raw file.
+- [x] Dogfood: a fixture library under `src/python-library` (the
+  badge banding logic, 100% covered) runs the real pipeline on every
+  PR via a `project-directory` input (also the monorepo affordance),
+  gated by ci-gate — a breaking change fails this repo before any
+  consumer. Oldest + newest interpreters only; badge disabled for the
+  fixture.
+- [ ] Convert weewx-home-assistant after the release carrying this:
+  pyproject gains a `test` dependency group + uv.lock
+  (requirements-test.txt retires), `render-docs-update` also re-locks
+  on release-branch version bumps, build.yml collapses to a stub, and
+  the ruleset swaps the per-matrix contexts for the reusable-call
+  names (verify display names from the PR's checks first).
+- [ ] Acceptance: consumer CI green across the matrix; a wheel-install
+  regression (missing package data or dependency) fails the
+  test-built-wheel leg; `pip install git+…` still works from the
+  conversion commit.

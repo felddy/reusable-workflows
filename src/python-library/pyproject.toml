@@ -1,0 +1,19 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools"]
+
+[dependency-groups]
+test = ["pytest", "pytest-cov"]
+
+[project]
+description = "Fixture library exercising python-build.yml on every PR"
+name = "rw-dogfood"
+requires-python = ">=3.10"
+version = "0.1.0"
+
+[tool.coverage.run]
+source = ["rw_dogfood"]
+
+[tool.pytest.ini_options]
+addopts = "--cov"
+testpaths = ["tests"]

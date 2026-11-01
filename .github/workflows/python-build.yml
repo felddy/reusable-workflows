@@ -1,0 +1,279 @@
+---
+name: Python Build
+
+# Reusable pipeline for a uv-managed Python library: test the source
+# tree across a caller-supplied interpreter matrix, build the sdist and
+# wheel once, then prove the built wheel passes the same test suite in
+# a clean environment. The caller's uv.lock is authoritative: syncs use
+# --locked, so a stale lockfile fails fast instead of floating.
+#
+# Coverage stays local: measurement comes from the repository's own
+# pytest configuration, and when coverage-badge is enabled, runs on the
+# caller's default branch publish a shields.io endpoint JSON to the
+# caller's badges branch — no external coverage service. Embed with:
+#   https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/REPO/badges/coverage.json
+
+on: # yamllint disable-line rule:truthy
+  workflow_call:
+    inputs:
+      python-versions:
+        description: >
+          JSON array of interpreter versions to test against, e.g.
+          '["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]'.
+        required: true
+        type: string
+      coverage-badge:
+        default: true
+        description: >
+          Publish a coverage badge endpoint to the badges branch on
+          default-branch runs.
+        required: false
+        type: boolean
+      dependency-group:
+        default: test
+        description: uv dependency group that carries the test tooling.
+        required: false
+        type: string
+      project-directory:
+        default: .
+        description: >
+          Directory containing the project's pyproject.toml and uv.lock,
+          for monorepos and fixture layouts.
+        required: false
+        type: string
+
+# Permissions are explicit on every job except coverage-badge, which
+# inherits the caller's grant: a called job may not statically request
+# more than the caller grants — even when skipped — so the optional
+# write permission must come from badge-enabled callers
+# (contents: write) rather than a declaration here. A workflow-level
+# "permissions: {}" would cap the inherited grant, so there is none.
+
+jobs:
+  test:
+    name: test source - py${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.project-directory }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            coveralls.io:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.astral.sh:443
+
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # tag=v10.3.2
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install the project with its test group
+        env:
+          DEPENDENCY_GROUP: ${{ inputs.dependency-group }}
+        run: uv sync --locked --group "${DEPENDENCY_GROUP}"
+
+      - name: Run tests
+        # Coverage comes from the repository's own pytest configuration.
+        run: uv run --no-sync pytest
+
+      - name: Export the coverage percentage
+        # One leg is enough for the badge: the suite is identical across
+        # interpreters.
+        if: inputs.coverage-badge && strategy.job-index == 0
+        run: uv run --no-sync coverage json -o coverage-summary.json
+
+      - name: Upload the coverage summary
+        if: inputs.coverage-badge && strategy.job-index == 0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # tag=v7.0.2
+        with:
+          name: coverage-summary
+          path: ${{ inputs.project-directory }}/coverage-summary.json
+          retention-days: 1
+
+  coverage-badge:
+    # Publish only from the default branch: the badge describes the
+    # released state of the code, and the badges branch is unprotected.
+    if: inputs.coverage-badge && github.ref_name == github.event.repository.default_branch
+    needs:
+      - test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # The download-artifact step creates this directory before any
+        # run step executes.
+        working-directory: ${{ inputs.project-directory }}
+    # No permissions block: inherits the caller's grant (see the note
+    # above the jobs key). Badge-enabled callers grant contents: write.
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+
+      - name: Download the coverage summary
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # tag=v8.0.2
+        with:
+          name: coverage-summary
+          path: ${{ inputs.project-directory }}
+
+      - name: Publish the badge endpoint to the badges branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - << 'EOF'
+          import json
+
+          percent = json.load(open("coverage-summary.json"))["totals"]["percent_covered"]
+          bands = [(95, "brightgreen"), (85, "green"), (70, "yellow"), (50, "orange"), (0, "red")]
+          color = next(c for floor, c in bands if percent >= floor)
+          badge = {
+              "schemaVersion": 1,
+              "label": "coverage",
+              "message": f"{percent:.0f}%",
+              "color": color,
+          }
+          json.dump(badge, open("coverage-badge.json", "w"))
+          EOF
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/badges" > /dev/null 2>&1; then
+            default_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${GITHUB_REF_NAME}" --jq '.object.sha')
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/heads/badges" -f sha="${default_sha}" > /dev/null
+          fi
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/contents/coverage.json?ref=badges" --jq '.sha' 2> /dev/null || true)
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/coverage.json" \
+            -f message="chore: update coverage badge" \
+            -f content="$(base64 -w0 coverage-badge.json 2> /dev/null || base64 -i coverage-badge.json)" \
+            -f branch="badges" \
+            ${existing:+-f sha="${existing}"} > /dev/null
+          echo "Published coverage badge: $(cat coverage-badge.json)"
+
+  build:
+    name: build distributions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.project-directory }}
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.astral.sh:443
+
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # tag=v10.3.2
+        with:
+          enable-cache: true
+
+      - name: Build the sdist and wheel
+        run: uv build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # tag=v7.0.2
+        with:
+          name: dist
+          path: ${{ inputs.project-directory }}/dist/
+          retention-days: 7
+
+  test-build:
+    name: test built wheel - py${{ matrix.python-version }}
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.project-directory }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
+        with:
+          disable-sudo: true
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+            releases.astral.sh:443
+
+      - name: Checkout source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # tag=v10.3.2
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download built distributions
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # tag=v8.0.2
+        with:
+          name: dist
+          path: ${{ inputs.project-directory }}/dist
+
+      - name: Install the wheel with the test group into a clean venv
+        env:
+          DEPENDENCY_GROUP: ${{ inputs.dependency-group }}
+        run: |
+          uv venv wheel-env
+          uv pip install --python wheel-env --group "${DEPENDENCY_GROUP}" \
+            dist/*.whl
+
+      - name: Run the test suite against the installed wheel
+        # The src layout keeps the working tree off sys.path, so imports
+        # resolve to the installed wheel, not the source.
+        run: wheel-env/bin/python -m pytest
