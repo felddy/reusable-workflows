@@ -42,8 +42,12 @@ on: # yamllint disable-line rule:truthy
         required: false
         type: string
 
-# Permissions are set at the job level; default to none at workflow level.
-permissions: {}
+# Permissions are explicit on every job except coverage-badge, which
+# inherits the caller's grant: a called job may not statically request
+# more than the caller grants — even when skipped — so the optional
+# write permission must come from badge-enabled callers
+# (contents: write) rather than a declaration here. A workflow-level
+# "permissions: {}" would cap the inherited grant, so there is none.
 
 jobs:
   test:
@@ -121,8 +125,8 @@ jobs:
         # The download-artifact step creates this directory before any
         # run step executes.
         working-directory: ${{ inputs.project-directory }}
-    permissions:
-      contents: write
+    # No permissions block: inherits the caller's grant (see the note
+    # above the jobs key). Badge-enabled callers grant contents: write.
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
