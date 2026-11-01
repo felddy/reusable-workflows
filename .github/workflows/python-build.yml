@@ -7,10 +7,11 @@ name: Python Build
 # a clean environment. The caller's uv.lock is authoritative: syncs use
 # --locked, so a stale lockfile fails fast instead of floating.
 #
-# Coverage reporting is optional: coverage-service "coveralls" uploads
-# per-interpreter runs in parallel mode and closes them in a finish
-# job; "none" skips the service while still running pytest under
-# coverage locally.
+# Coverage stays local: measurement comes from the repository's own
+# pytest configuration, and when coverage-badge is enabled, runs on the
+# caller's default branch publish a shields.io endpoint JSON to the
+# caller's badges branch — no external coverage service. Embed with:
+#   https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/REPO/badges/coverage.json
 
 on: # yamllint disable-line rule:truthy
   workflow_call:
@@ -21,11 +22,13 @@ on: # yamllint disable-line rule:truthy
           '["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]'.
         required: true
         type: string
-      coverage-service:
-        default: coveralls
-        description: Coverage upload service ("coveralls" or "none").
+      coverage-badge:
+        default: true
+        description: >
+          Publish a coverage badge endpoint to the badges branch on
+          default-branch runs.
         required: false
-        type: string
+        type: boolean
       dependency-group:
         default: test
         description: uv dependency group that carries the test tooling.
@@ -82,22 +85,29 @@ jobs:
         # Coverage comes from the repository's own pytest configuration.
         run: uv run --no-sync pytest
 
-      - name: Upload coverage to Coveralls
-        if: inputs.coverage-service == 'coveralls'
-        env:
-          COVERALLS_FLAG_NAME: py${{ matrix.python-version }}
-          COVERALLS_PARALLEL: "true"
-          COVERALLS_SERVICE_NAME: github
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: uv run --no-sync coveralls
+      - name: Export the coverage percentage
+        # One leg is enough for the badge: the suite is identical across
+        # interpreters.
+        if: inputs.coverage-badge && strategy.job-index == 0
+        run: uv run --no-sync coverage json -o coverage-summary.json
 
-  coveralls-finish:
-    if: inputs.coverage-service == 'coveralls'
+      - name: Upload the coverage summary
+        if: inputs.coverage-badge && strategy.job-index == 0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # tag=v7.0.2
+        with:
+          name: coverage-summary
+          path: coverage-summary.json
+          retention-days: 1
+
+  coverage-badge:
+    # Publish only from the default branch: the badge describes the
+    # released state of the code, and the badges branch is unprotected.
+    if: inputs.coverage-badge && github.ref_name == github.event.repository.default_branch
     needs:
       - test
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # tag=v2.22.2
@@ -106,23 +116,43 @@ jobs:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
-            coveralls.io:443
-            files.pythonhosted.org:443
             github.com:443
-            objects.githubusercontent.com:443
-            pypi.org:443
-            raw.githubusercontent.com:443
-            release-assets.githubusercontent.com:443
-            releases.astral.sh:443
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # tag=v10.3.2
+      - name: Download the coverage summary
+        uses: actions/download-artifact@9000827ccba63b55e8a124e7c56687f73e79b4ed # tag=v8.0.2
+        with:
+          name: coverage-summary
 
-      - name: Close the parallel coverage session
+      - name: Publish the badge endpoint to the badges branch
         env:
-          COVERALLS_SERVICE_NAME: github
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: uvx coveralls --finish
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - << 'EOF'
+          import json
+
+          percent = json.load(open("coverage-summary.json"))["totals"]["percent_covered"]
+          bands = [(95, "brightgreen"), (85, "green"), (70, "yellow"), (50, "orange"), (0, "red")]
+          color = next(c for floor, c in bands if percent >= floor)
+          badge = {
+              "schemaVersion": 1,
+              "label": "coverage",
+              "message": f"{percent:.0f}%",
+              "color": color,
+          }
+          json.dump(badge, open("coverage-badge.json", "w"))
+          EOF
+          if ! gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/badges" > /dev/null 2>&1; then
+            default_sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${GITHUB_REF_NAME}" --jq '.object.sha')
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/heads/badges" -f sha="${default_sha}" > /dev/null
+          fi
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/contents/coverage.json?ref=badges" --jq '.sha' 2> /dev/null || true)
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/coverage.json" \
+            -f message="chore: update coverage badge" \
+            -f content="$(base64 -w0 coverage-badge.json 2> /dev/null || base64 -i coverage-badge.json)" \
+            -f branch="badges" \
+            ${existing:+-f sha="${existing}"} > /dev/null
+          echo "Published coverage badge: $(cat coverage-badge.json)"
 
   build:
     name: build distributions

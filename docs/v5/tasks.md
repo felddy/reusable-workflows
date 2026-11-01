@@ -560,8 +560,11 @@ Independent of E1–E6 and E8–E10; shares the render engine with E7.
   (`uv sync --locked` so a stale lock fails fast), `uv build` once,
   then install the wheel plus the test group into a clean venv and run
   the suite against it (src layout keeps the working tree off
-  sys.path). Coverage service is an input (`coveralls` default with
-  parallel-mode finish job, or `none`).
+  sys.path). Coverage stays local (Mark's call 2026-11-01, retiring
+  coveralls): measurement comes from the repo's pytest config, and
+  default-branch runs publish a shields endpoint JSON to the caller's
+  badges branch via GITHUB_TOKEN — README embeds
+  img.shields.io/endpoint over the raw file.
 - [ ] Convert weewx-home-assistant after the release carrying this:
   pyproject gains a `test` dependency group + uv.lock
   (requirements-test.txt retires), `render-docs-update` also re-locks
