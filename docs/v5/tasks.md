@@ -565,6 +565,12 @@ Independent of E1–E6 and E8–E10; shares the render engine with E7.
   default-branch runs publish a shields endpoint JSON to the caller's
   badges branch via GITHUB_TOKEN — README embeds
   img.shields.io/endpoint over the raw file.
+- [x] Dogfood: a fixture library under `dogfood/python-library` (the
+  badge banding logic, 100% covered) runs the real pipeline on every
+  PR via a `project-directory` input (also the monorepo affordance),
+  gated by ci-gate — a breaking change fails this repo before any
+  consumer. Oldest + newest interpreters only; badge disabled for the
+  fixture.
 - [ ] Convert weewx-home-assistant after the release carrying this:
   pyproject gains a `test` dependency group + uv.lock
   (requirements-test.txt retires), `render-docs-update` also re-locks

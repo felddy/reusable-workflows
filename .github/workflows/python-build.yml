@@ -34,6 +34,13 @@ on: # yamllint disable-line rule:truthy
         description: uv dependency group that carries the test tooling.
         required: false
         type: string
+      project-directory:
+        default: .
+        description: >
+          Directory containing the project's pyproject.toml and uv.lock,
+          for monorepos and fixture layouts.
+        required: false
+        type: string
 
 # Permissions are set at the job level; default to none at workflow level.
 permissions: {}
@@ -42,6 +49,9 @@ jobs:
   test:
     name: test source - py${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.project-directory }}
     permissions:
       contents: read
     strategy:
@@ -96,7 +106,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # tag=v7.0.2
         with:
           name: coverage-summary
-          path: coverage-summary.json
+          path: ${{ inputs.project-directory }}/coverage-summary.json
           retention-days: 1
 
   coverage-badge:
@@ -106,6 +116,11 @@ jobs:
     needs:
       - test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        # The download-artifact step creates this directory before any
+        # run step executes.
+        working-directory: ${{ inputs.project-directory }}
     permissions:
       contents: write
     steps:
@@ -122,6 +137,7 @@ jobs:
         uses: actions/download-artifact@9000827ccba63b55e8a124e7c56687f73e79b4ed # tag=v8.0.2
         with:
           name: coverage-summary
+          path: ${{ inputs.project-directory }}
 
       - name: Publish the badge endpoint to the badges branch
         env:
@@ -157,6 +173,9 @@ jobs:
   build:
     name: build distributions
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.project-directory }}
     permissions:
       contents: read
     steps:
@@ -192,7 +211,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # tag=v7.0.2
         with:
           name: dist
-          path: dist/
+          path: ${{ inputs.project-directory }}/dist/
           retention-days: 7
 
   test-build:
@@ -200,6 +219,9 @@ jobs:
     needs:
       - build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.project-directory }}
     permissions:
       contents: read
     strategy:
@@ -237,7 +259,7 @@ jobs:
         uses: actions/download-artifact@9000827ccba63b55e8a124e7c56687f73e79b4ed # tag=v8.0.2
         with:
           name: dist
-          path: dist
+          path: ${{ inputs.project-directory }}/dist
 
       - name: Install the wheel with the test group into a clean venv
         env:

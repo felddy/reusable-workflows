@@ -56,6 +56,23 @@ jobs:
       contents: read
     uses: ./.github/workflows/common-lint.yml
 
+  # Dogfood for python-build.yml: a fixture library under
+  # dogfood/python-library runs the real pipeline on every PR, so a
+  # breaking change here fails this repository before any consumer.
+  # Two interpreters (oldest and newest supported) keep it cheap; the
+  # badge is skipped — the fixture's coverage is not a project metric.
+  python-build:
+    name: Python Build (dogfood)
+    needs:
+      - diagnostics
+    permissions:
+      contents: read
+    uses: ./.github/workflows/python-build.yml
+    with:
+      coverage-badge: false
+      project-directory: dogfood/python-library
+      python-versions: '["3.10", "3.15"]'
+
   pipeline:
     name: Pipeline (${{ matrix.flavor }})
     needs:
@@ -107,6 +124,7 @@ jobs:
       - config
       - lint
       - pipeline
+      - python-build
     if: always()
     permissions: {}
     uses: ./.github/workflows/ci-gate.yml
