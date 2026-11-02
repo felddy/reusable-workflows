@@ -3,12 +3,6 @@
 # pair into the generated .pre-commit-config.yaml.
 ---
 repos:
-  - repo: https://github.com/ansible/ansible-lint
-    rev: v26.4.0
-    hooks:
-      - id: ansible-lint
-        additional_dependencies:
-          - ansible-core>=2.17.7
   - repo: https://github.com/pre-commit/mirrors-mypy
     hooks:
       - id: mypy
