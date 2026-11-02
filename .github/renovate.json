@@ -45,18 +45,32 @@
       ]
     },
     {
-      "description": "A base bump must regenerate this repo's own config in the same commit, or the lint-config-check hook fails the PR",
+      "description": "The manager's built-in .pre-commit-config.yaml pattern cannot be removed (managerFilePatterns is additive, so the pattern below only adds the base); the file is generated, never update it directly",
+      "enabled": false,
+      "matchFileNames": [
+        ".pre-commit-config.yaml"
+      ],
+      "matchManagers": [
+        "pre-commit"
+      ]
+    },
+    {
+      "description": "A base bump must regenerate this repo's own config in the same commit, or the lint-config-check hook fails the PR; the commands must stay in sync with RENOVATE_ALLOWED_COMMANDS in .github/workflows/renovate.yml",
       "matchManagers": [
         "pre-commit"
       ],
       "postUpgradeTasks": {
         "commands": [
+          "python3 -m pip install --user pyyaml==6.0.3",
           "python3 tools/merge_precommit.py lint-config/pre-commit-base.yaml .pre-commit-overlay.yaml --output .pre-commit-config.yaml"
         ],
         "executionMode": "branch",
         "fileFilters": [
           ".pre-commit-config.yaml"
-        ]
+        ],
+        "installTools": {
+          "python": {}
+        }
       }
     }
   ],

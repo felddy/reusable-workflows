@@ -76,11 +76,13 @@ jobs:
           allowed-endpoints: >
             api.github.com:443
             auth.docker.io:443
+            files.pythonhosted.org:443
             ghcr.io:443
             github.com:443
             index.docker.io:443
             objects.githubusercontent.com:443
             pkg-containers.githubusercontent.com:443
+            pypi.org:443
             registry-1.docker.io:443
             release-assets.githubusercontent.com:443
 
@@ -117,4 +119,12 @@ jobs:
           # GitHub-verified (signed) commits that satisfy the development
           # ruleset's required-signatures rule.
           RENOVATE_PLATFORM_COMMIT: enabled
+          # postUpgradeTasks commands are blocked unless they match one of
+          # these anchored regexes; keep them in sync with the commands in
+          # .github/renovate.json.
+          RENOVATE_ALLOWED_COMMANDS: >-
+            ["^python3 -m pip install --user pyyaml==6\\.0\\.3$",
+            "^python3 tools/merge_precommit\\.py
+            lint-config/pre-commit-base\\.yaml \\.pre-commit-overlay\\.yaml
+            --output \\.pre-commit-config\\.yaml$"]
           RENOVATE_DRY_RUN: ${{ inputs.dry-run == true && 'full' || null }}
