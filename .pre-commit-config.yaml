@@ -182,7 +182,7 @@ repos:
         files: ^(lint-config/pre-commit-base\.yaml|\.pre-commit-(config|overlay)\.yaml|tools/merge_precommit\.py)$
         pass_filenames: false
   - repo: https://github.com/ansible/ansible-lint
-    rev: v26.4.0
+    rev: v26.10.1
     hooks:
       - id: ansible-lint
         always_run: false

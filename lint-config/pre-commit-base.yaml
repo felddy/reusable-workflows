@@ -168,7 +168,7 @@ repos:
         files: ^uv.lock$
         pass_filenames: false
   - repo: https://github.com/ansible/ansible-lint
-    rev: v26.4.0
+    rev: v26.10.1
     hooks:
       - id: ansible-lint
         # The upstream manifest sets always_run: true, which would make
