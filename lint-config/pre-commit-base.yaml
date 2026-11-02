@@ -171,6 +171,11 @@ repos:
     rev: v26.4.0
     hooks:
       - id: ansible-lint
+        # The upstream manifest sets always_run: true, which would make
+        # every consumer scan on every run; gate on Ansible content so
+        # repos without any show the hook as Skipped.
+        always_run: false
+        files: (^|/)(ansible|playbooks|roles|molecule|group_vars|host_vars)/|(^|/)(ansible\.cfg|\.ansible-lint(\.ya?ml)?)$  # yamllint disable-line rule:line-length
         additional_dependencies:
           - ansible-core>=2.17.7
   - repo: https://github.com/antonbabenko/pre-commit-terraform
