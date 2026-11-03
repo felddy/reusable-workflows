@@ -323,7 +323,7 @@ jobs:
             [registry."docker.io"]
               mirrors = ["mirror.gcr.io"]
           driver-opts: |
-            image=moby/buildkit:v0.34.1
+            image=moby/buildkit:v0.34.2
             network=host
 
       - name: Log in to container registry
