@@ -43,6 +43,14 @@ on: # yamllint disable-line rule:truthy
         description: Renovate log level (info or debug)
         required: false
         type: string
+      allowed-commands:
+        default: ""
+        description: >-
+          JSON array of anchored regexes permitting the caller's
+          postUpgradeTasks commands; empty uses this repository's own
+          command list
+        required: false
+        type: string
 
 concurrency:
   # Only one Renovate run at a time; a second scheduled run would race
@@ -62,8 +70,9 @@ jobs:
     name: Renovate
     runs-on: ubuntu-latest
     # A blocked or refused connection makes the token step retry for ~49
-    # minutes; fail fast so the next scheduled run can recover.
-    timeout-minutes: 10
+    # minutes; fail fast so the next scheduled run can recover. The
+    # budget covers pulling the full Renovate image (~2 GB).
+    timeout-minutes: 15
 
     permissions:
       contents: read
@@ -73,6 +82,12 @@ jobs:
         uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # tag=v2.22.3
         with:
           egress-policy: block
+          # This list must cover every datasource that any caller's
+          # renovate.json uses: a blocked registry surfaces to Renovate
+          # as ECONNREFUSED, which aborts the caller's entire run
+          # (npm: registry.npmjs.org, node-version: nodejs.org).
+          # RENOVATE_EXIT_CODE_FOR_ERRORS below turns such aborts into
+          # job failures instead of silent green runs.
           allowed-endpoints: >
             api.github.com:443
             auth.docker.io:443
@@ -80,10 +95,12 @@ jobs:
             ghcr.io:443
             github.com:443
             index.docker.io:443
+            nodejs.org:443
             objects.githubusercontent.com:443
             pkg-containers.githubusercontent.com:443
             pypi.org:443
             registry-1.docker.io:443
+            registry.npmjs.org:443
             release-assets.githubusercontent.com:443
 
       - name: Generate a GitHub App installation token
@@ -108,6 +125,9 @@ jobs:
         uses: renovatebot/github-action@2804199d260ad00c1fae0e9e842888369391c776 # tag=v46.3.10
         with:
           token: ${{ steps.app-token.outputs.token }}
+          # The full image ships python and uv, which postUpgradeTasks
+          # need (the slim default image has neither).
+          renovate-version: full
         env:
           LOG_LEVEL: ${{ inputs.log-level || 'info' }}
           # Only operate on this repository; the repository-level config at
@@ -120,11 +140,18 @@ jobs:
           # ruleset's required-signatures rule.
           RENOVATE_PLATFORM_COMMIT: enabled
           # postUpgradeTasks commands are blocked unless they match one of
-          # these anchored regexes; keep them in sync with the commands in
-          # .github/renovate.json.
+          # these anchored regexes. Callers pass their own list via the
+          # allowed-commands input; the fallback is this repository's own
+          # commands — keep it in sync with .github/renovate.json.
           RENOVATE_ALLOWED_COMMANDS: >-
-            ["^python3 -m pip install --user pyyaml==6\\.0\\.3$",
+            ${{ inputs.allowed-commands ||
+            '["^python3 -m pip install --user pyyaml==6\\.0\\.3$",
             "^python3 tools/merge_precommit\\.py
             lint-config/pre-commit-base\\.yaml \\.pre-commit-overlay\\.yaml
-            --output \\.pre-commit-config\\.yaml$"]
+            --output \\.pre-commit-config\\.yaml$"]' }}
+          # A repository run that ends in a known error state (for
+          # example an external host error) exits non-zero and fails
+          # this job; without it the action exits 0 and an aborted run
+          # looks green.
+          RENOVATE_EXIT_CODE_FOR_ERRORS: "true"
           RENOVATE_DRY_RUN: ${{ inputs.dry-run == true && 'full' || null }}
