@@ -86,9 +86,16 @@ jobs:
           git add .pre-commit-config.yaml
           git commit -m "chore(lint): sync pre-commit config with the central base"
           git push -f origin chore/lint-config-sync
-          if ! gh pr view chore/lint-config-sync > /dev/null 2>&1; then
+          # gh pr view resolves a branch name to its most recent PR even
+          # when that PR is merged or closed, so it cannot serve as an
+          # "is there an open PR" guard; list open PRs for the head instead.
+          if [ -z "$(gh pr list --head chore/lint-config-sync --state open --json number --jq '.[].number')" ]; then
             gh pr create \
               --title "chore(lint): sync pre-commit config with the central base" \
               --body "Regenerated from felddy/reusable-workflows lint-config/pre-commit-base.yaml (ref ${CENTRAL_REF}) plus this repository's overlay."
           fi
-          gh pr merge chore/lint-config-sync --auto --squash
+          # Not every consumer allows squash merges; fall back to a merge
+          # commit, then rebase, so arming auto-merge works everywhere.
+          gh pr merge chore/lint-config-sync --auto --squash ||
+            gh pr merge chore/lint-config-sync --auto --merge ||
+            gh pr merge chore/lint-config-sync --auto --rebase
