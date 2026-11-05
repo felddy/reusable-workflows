@@ -782,16 +782,19 @@ jobs:
 
   # Release notes remain editable after publish even under immutable
   # releases, so the exact image digest is recorded there, linking the
-  # frozen release to the image it produced.
+  # frozen release to the image it produced. Private images are skipped:
+  # release notes are public, and pull/verify instructions for packages
+  # the reader cannot access only invite confusion.
   record-release-digest:
     name: Record digest on release
     needs:
       - metadata
       - publish
-    if: github.event_name == 'release' && needs.metadata.outputs.push == 'true'
+    if: github.event_name == 'release' && needs.metadata.outputs.push == 'true' && !inputs.private
     runs-on: ubuntu-latest
 
-    # Both flavors patch the same release body; serialize the read-modify-write.
+    # Concurrent public flavors patch the same release body; serialize the
+    # read-modify-write.
     concurrency:
       group: release-digest-${{ github.event.release.tag_name }}
       cancel-in-progress: false
