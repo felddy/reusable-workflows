@@ -21,7 +21,7 @@ env:
   # renovate: datasource=github-releases depName=google/go-containerregistry
   CRANE_VERSION: v0.22.1
   # renovate: datasource=github-releases depName=anchore/grype
-  GRYPE_VERSION: v0.121.0
+  GRYPE_VERSION: v0.121.1
 
 on: # yamllint disable-line rule:truthy
   workflow_call:
