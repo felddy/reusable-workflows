@@ -37,14 +37,14 @@ jobs:
       DAYS_BEFORE_CLOSE: ${{ inputs.days-before-close || 7 }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # tag=v2.22.3
+        uses: step-security/harden-runner@v2.22.3
         with:
           disable-sudo: true
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
 
-      - uses: actions/stale@4391f3da665fdf50b6810c1a66712fb9ba21aa93 # tag=v11.0.0
+      - uses: actions/stale@v11.0.0
         with:
           days-before-stale: ${{ env.DAYS_BEFORE_STALE }}
           days-before-close: ${{ env.DAYS_BEFORE_CLOSE }}

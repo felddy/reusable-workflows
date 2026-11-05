@@ -49,7 +49,7 @@ jobs:
       # Note that a duplicate of this step must be added at the top of
       # each job.
       - name: Apply standard cisagov job preamble
-        uses: cisagov/action-job-preamble@f3e1d43556bc9fef1fa4d6f27fa88b1b5c82c788 # tag=v1.2.0
+        uses: cisagov/action-job-preamble@v1.2.0
         with:
           check_github_status: "true"
           # This functionality is poorly implemented and has been
@@ -99,7 +99,7 @@ jobs:
 
     steps:
       - name: Apply standard cisagov job preamble
-        uses: cisagov/action-job-preamble@f3e1d43556bc9fef1fa4d6f27fa88b1b5c82c788 # tag=v1.2.0
+        uses: cisagov/action-job-preamble@v1.2.0
         with:
           # This functionality is poorly implemented and has been
           # causing problems due to the MITM implementation hogging or
@@ -126,13 +126,13 @@ jobs:
           permissions_monitoring_config: ${{ vars.ACTIONS_PERMISSIONS_CONFIG }}
 
       - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # tag=v4.39.1
+        uses: github/codeql-action/init@v4.39.1
         with:
           languages: ${{ matrix.language }}
 
@@ -140,7 +140,7 @@ jobs:
       # Java). If this step fails, then you should remove it and run the build
       # manually (see below).
       - name: Autobuild
-        uses: github/codeql-action/autobuild@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # tag=v4.39.1
+        uses: github/codeql-action/autobuild@v4.39.1
 
       # ℹ️ Command-line programs to run using the OS shell.
       # 📚 https://git.io/JvXDl
@@ -154,4 +154,4 @@ jobs:
       #     make release
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # tag=v4.39.1
+        uses: github/codeql-action/analyze@v4.39.1
