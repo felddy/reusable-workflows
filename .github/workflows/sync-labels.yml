@@ -42,7 +42,7 @@ jobs:
       issues: write # for crazy-max/ghaction-github-labeler to create, rename, update and delete label
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # tag=v2.22.3
+        uses: step-security/harden-runner@v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -50,7 +50,7 @@ jobs:
             github.com:443
 
       - name: Checkout central label definitions
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           repository: felddy/reusable-workflows
           # Consumers read the central definitions at central-ref (its
@@ -62,7 +62,7 @@ jobs:
           persist-credentials: false
 
       - name: Checkout caller labels overlay
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           path: caller
           persist-credentials: false
@@ -83,7 +83,7 @@ jobs:
           echo "::endgroup::"
 
       - name: Sync repository labels
-        uses: crazy-max/ghaction-github-labeler@548a7c3603594ec17c819e1239f281a3b801ab4d # tag=v6.0.0
+        uses: crazy-max/ghaction-github-labeler@v6.0.0
         with:
           yaml-file: merged-labels.yml
           # Apply only on the default branch; any other ref dry-runs.

@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # tag=v2.22.3
+        uses: step-security/harden-runner@v2.22.3
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -28,10 +28,10 @@ jobs:
             www.githubstatus.com:443
 
       - name: Check GitHub Status
-        uses: crazy-max/ghaction-github-status@f0ef9e1cf727f9f76f8485f8c525fa03afc4ec02 # tag=v5.0.0
+        uses: crazy-max/ghaction-github-status@v5.0.0
         with:
           overall_threshold: major
           packages_threshold: major_outage
 
       - name: Dump context
-        uses: crazy-max/ghaction-dump-context@4d9eeaf15dd59aa4346919ea84a84ccf514b4db8 # tag=v3.1.0
+        uses: crazy-max/ghaction-dump-context@v3.1.0

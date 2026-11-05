@@ -77,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # tag=v2.22.3
+        uses: step-security/harden-runner@v2.22.3
         with:
           disable-sudo: true
           egress-policy: block
@@ -100,7 +100,7 @@ jobs:
 
       # We need the Go version and Go cache location for the actions/cache step,
       # so the Go installation must happen before that.
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # tag=v7.0.0
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ inputs.go_version }}
           cache: false
@@ -116,7 +116,7 @@ jobs:
           echo "dir=$(go env GOCACHE)" >> $GITHUB_OUTPUT
 
       - name: Checkout source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # tag=v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
 
@@ -140,7 +140,7 @@ jobs:
 
       - name: Set up uv
         if: steps.pkg-manager.outputs.use-uv == 'true'
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # tag=v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
           python-version: ${{ inputs.python_version }}
@@ -158,13 +158,13 @@ jobs:
       - name: Set up Python
         if: steps.pkg-manager.outputs.use-uv == 'false'
         id: setup-python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # tag=v7.1.0
+        uses: actions/setup-python@v7.1.0
         with:
           python-version: ${{ inputs.python_version }}
 
       - name: Cache pip and pre-commit (pip)
         if: steps.pkg-manager.outputs.use-uv == 'false'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # tag=v6.1.0
+        uses: actions/cache@v6.1.0
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ inputs.python_version }}-\
@@ -192,7 +192,7 @@ jobs:
 
       - name: Cache Go and pre-commit (uv)
         if: steps.pkg-manager.outputs.use-uv == 'true'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # tag=v6.1.0
+        uses: actions/cache@v6.1.0
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
             py${{ inputs.python_version }}-\

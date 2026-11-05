@@ -105,7 +105,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # tag=v2.22.3
+        uses: step-security/harden-runner@v2.22.3
         with:
           disable-sudo: true
           egress-policy: audit
@@ -162,10 +162,10 @@ jobs:
           echo "Found ${COUNT} platform digest(s)"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # tag=v4.4.0
+        uses: docker/setup-buildx-action@v4.4.0
 
       - name: Log in to container registry
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # tag=v4.7.0
+        uses: docker/login-action@v4.7.0
         with:
           registry: ghcr.io
           username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
@@ -299,7 +299,7 @@ jobs:
 
       - name: Install ORAS
         if: inputs.push
-        uses: oras-project/setup-oras@5e2f2482b30b0cb3e14e67f89a80c88c659a7c63 # tag=v2.0.3
+        uses: oras-project/setup-oras@v2.0.3
 
       # Re-publishing the same digests (e.g. a scheduled edge run with a warm
       # cache) yields the same index digest; skip attestations that already
@@ -345,7 +345,7 @@ jobs:
 
       - name: Attest manifest (SLSA provenance)
         if: inputs.push && steps.check-attestations.outputs.has_provenance != 'true'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # tag=v4.2.2
+        uses: actions/attest-build-provenance@v4.2.2
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.manifest-digest.outputs.digest }}
@@ -353,7 +353,7 @@ jobs:
 
       - name: Attest manifest (build environment)
         if: inputs.push && steps.check-attestations.outputs.has_build_env != 'true'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # tag=v4.2.2
+        uses: actions/attest@v4.2.2
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ steps.manifest-digest.outputs.digest }}
@@ -369,7 +369,7 @@ jobs:
 
       - name: Install cosign
         if: inputs.push
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # tag=v4.1.2
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Sign manifest (keyless)
         if: inputs.push
@@ -427,20 +427,20 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # tag=v2.22.3
+        uses: step-security/harden-runner@v2.22.3
         with:
           disable-sudo: true
           egress-policy: audit
 
       - name: Log in to container registry
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # tag=v4.7.0
+        uses: docker/login-action@v4.7.0
         with:
           registry: ghcr.io
           username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # tag=v4.1.2
+        uses: sigstore/cosign-installer@v4.1.2
 
       - name: Obtain platform SBOM
         id: sbom
@@ -494,7 +494,7 @@ jobs:
           echo "sbom-file=${SBOM_FILE}" >> "$GITHUB_OUTPUT"
 
       - name: Attest SBOM against index
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # tag=v4.2.2
+        uses: actions/attest@v4.2.2
         with:
           subject-name: ghcr.io/${{ inputs.image-name }}
           subject-digest: ${{ needs.publish.outputs.image-digest }}
@@ -527,20 +527,20 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # tag=v2.22.3
+        uses: step-security/harden-runner@v2.22.3
         with:
           disable-sudo: true
           egress-policy: audit
 
       - name: Log in to container registry
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # tag=v4.7.0
+        uses: docker/login-action@v4.7.0
         with:
           registry: ghcr.io
           username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # tag=v4.1.2
+        uses: sigstore/cosign-installer@v4.1.2
 
       # --signer-repo names the trusted builder: attestations are signed by
       # this reusable workflow, so for every caller repository the signer
