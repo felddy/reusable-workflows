@@ -94,4 +94,8 @@ jobs:
               --title "chore(lint): sync pre-commit config with the central base" \
               --body "Regenerated from felddy/reusable-workflows lint-config/pre-commit-base.yaml (ref ${CENTRAL_REF}) plus this repository's overlay."
           fi
-          gh pr merge chore/lint-config-sync --auto --squash
+          # Not every consumer allows squash merges; fall back to a merge
+          # commit, then rebase, so arming auto-merge works everywhere.
+          gh pr merge chore/lint-config-sync --auto --squash ||
+            gh pr merge chore/lint-config-sync --auto --merge ||
+            gh pr merge chore/lint-config-sync --auto --rebase
