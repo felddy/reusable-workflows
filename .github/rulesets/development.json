@@ -87,13 +87,6 @@
       "type": "code_scanning"
     },
     {
-      "parameters": {
-        "review_draft_pull_requests": false,
-        "review_on_push": false
-      },
-      "type": "copilot_code_review"
-    },
-    {
       "type": "required_signatures"
     }
   ],
