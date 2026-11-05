@@ -2,13 +2,15 @@
 name: Label auto-merge PRs
 
 # Dual-trigger housekeeping workflow (docs/v5/plan.md, D10): the
-# pull_request_target trigger runs it in this repository, and
-# workflow_call serves consumers' trigger-only stubs — both paths run
-# this same file. pull_request_target is safe here because no PR code
-# is checked out or executed; the job only edits labels via gh.
+# pull_request trigger runs it in this repository, and workflow_call
+# serves consumers' trigger-only stubs — both paths run this same file.
+# The plain pull_request event suffices: same-repository PRs get a
+# write-capable token for the label edit, and no PR code is checked out
+# or executed. (GitHub blocks pull_request_target by default in public
+# repositories as of 2026-12-02.)
 
 on: # yamllint disable-line rule:truthy
-  pull_request_target:
+  pull_request:
     types:
       - auto_merge_enabled
       - auto_merge_disabled
@@ -19,6 +21,9 @@ env:
 
 jobs:
   add-remove-label:
+    # Fork PRs get a read-only token; auto-merge labeling is a
+    # same-repository flow, so skip them instead of failing.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
