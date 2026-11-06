@@ -238,6 +238,15 @@ jobs:
           CENTRAL_RAW: https://raw.githubusercontent.com/felddy/reusable-workflows
           LINT_CONFIG_REF: ${{ inputs.lint-config-ref }}
         run: |
+          # A repository may pin its lint base to an exact release with a
+          # "# lint-base-version: vX.Y.Z" comment in its overlay (bumped
+          # by Renovate, which regenerates the config in the same PR);
+          # the floating input ref is the fallback. The pin must look
+          # like a version tag so it cannot smuggle URL path segments.
+          pin=$(sed -n 's/^# lint-base-version: *//p' .pre-commit-overlay.yaml | head -1)
+          if printf '%s' "${pin}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            LINT_CONFIG_REF="${pin}"
+          fi
           central=$(mktemp -d)
           trap 'rm -rf "${central}"' EXIT
           curl -fsSL --output "${central}/merge_precommit.py" \
