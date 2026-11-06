@@ -315,7 +315,7 @@ jobs:
           platforms: all
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4.4.0
+        uses: docker/setup-buildx-action@v4.4.1
         with:
           # Mirror docker.io inside BuildKit as well, so Dockerfile FROM
           # images avoid Docker Hub rate limits with the same fallback.

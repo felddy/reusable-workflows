@@ -31,7 +31,7 @@ workflows:
         - 'aquasecurity/trivy-action@v0.36.0'
         - 'docker/build-push-action@v7.4.0'
         - 'docker/login-action@v4.7.0'
-        - 'docker/setup-buildx-action@v4.4.0'
+        - 'docker/setup-buildx-action@v4.4.1'
         - 'docker/setup-qemu-action@v4.4.0'
         - 'github/codeql-action@v4.39.1'
         - 'oras-project/setup-oras@v2.0.3'
@@ -49,7 +49,7 @@ workflows:
         - 'actions/attest-build-provenance@v4.2.2'
         - 'actions/attest@v4.2.2'
         - 'docker/login-action@v4.7.0'
-        - 'docker/setup-buildx-action@v4.4.0'
+        - 'docker/setup-buildx-action@v4.4.1'
         - 'oras-project/setup-oras@v2.0.3'
         - 'sigstore/cosign-installer@v4.1.2'
         - 'step-security/harden-runner@v2.22.3'
@@ -106,7 +106,7 @@ workflows:
         - 'step-security/harden-runner@v2.22.3'
     '.github/workflows/renovate.yml':
         - 'actions/create-github-app-token@v3.3.0'
-        - 'renovatebot/github-action@v46.3.10'
+        - 'renovatebot/github-action@v46.3.11'
         - 'step-security/harden-runner@v2.22.3'
     '.github/workflows/scorecards.yml':
         - 'actions/checkout@v7.0.1'
@@ -294,9 +294,9 @@ dependencies:
         commit: 'sha1-dc802804100637a589fabce1cb79ff13a1411302'
         owner_id: 5429470
         repo_id: 306769011
-    'docker/setup-buildx-action@v4.4.0':
-        ref: 'v4.4.0'
-        commit: 'sha1-594f3bf4285d9ea8dc53c9a0c9c4092420091003'
+    'docker/setup-buildx-action@v4.4.1':
+        ref: 'v4.4.1'
+        commit: 'sha1-f87e5991a6d7451dcb8d9637bfbc97413f497069'
         owner_id: 5429470
         repo_id: 288485773
     'docker/setup-qemu-action@v4.4.0':
@@ -334,9 +334,9 @@ dependencies:
         commit: 'sha1-1b9a80c056b620d92cedb9d9b5a223409c68ddfa'
         owner_id: 18365890
         repo_id: 193685475
-    'renovatebot/github-action@v46.3.10':
-        ref: 'v46.3.10'
-        commit: 'sha1-2804199d260ad00c1fae0e9e842888369391c776'
+    'renovatebot/github-action@v46.3.11':
+        ref: 'v46.3.11'
+        commit: 'sha1-43b963bf5dd5e57f1f95c59765a018d782870211'
         owner_id: 38656520
         repo_id: 252754603
     'sigstore/cosign-installer@v4.1.2':
