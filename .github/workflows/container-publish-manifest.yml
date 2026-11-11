@@ -369,7 +369,7 @@ jobs:
 
       - name: Install cosign
         if: inputs.push
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@v4.1.3
 
       - name: Sign manifest (keyless)
         if: inputs.push
@@ -440,7 +440,7 @@ jobs:
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@v4.1.3
 
       - name: Obtain platform SBOM
         id: sbom
@@ -540,7 +540,7 @@ jobs:
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@v4.1.3
 
       # --signer-repo names the trusted builder: attestations are signed by
       # this reusable workflow, so for every caller repository the signer
