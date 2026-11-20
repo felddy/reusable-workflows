@@ -287,13 +287,17 @@ jobs:
         # the caller's checkout when this reusable workflow runs in another
         # repository. Keep in sync with the copy in container-test.yml.
         run: |
+          # Stage via mktemp: a fixed /tmp path can collide with a
+          # root-owned leftover on the runner image (seen intermittently
+          # on ubuntu-26.04), failing the redirect with EACCES.
+          staged=$(mktemp)
           if [[ -s /etc/docker/daemon.json ]]; then
-            jq '."registry-mirrors" = ["https://mirror.gcr.io"]' /etc/docker/daemon.json > /tmp/daemon.json
+            jq '."registry-mirrors" = ["https://mirror.gcr.io"]' /etc/docker/daemon.json > "${staged}"
           else
-            jq -n '{"registry-mirrors": ["https://mirror.gcr.io"]}' > /tmp/daemon.json
+            jq -n '{"registry-mirrors": ["https://mirror.gcr.io"]}' > "${staged}"
           fi
           sudo mkdir -p /etc/docker
-          sudo mv /tmp/daemon.json /etc/docker/daemon.json
+          sudo mv "${staged}" /etc/docker/daemon.json
           sudo systemctl restart docker
           echo "Docker daemon registry mirrors:"
           docker info --format '{{json .RegistryConfig.Mirrors}}'
