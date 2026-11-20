@@ -1,13 +1,15 @@
 ---
 name: Lint
 
-# This reusable workflow runs the configured pre-commit hooks on the repository.
-# It handles caching and installation of the hooks.
+# This reusable workflow runs the configured pre-commit hooks on the
+# repository.  It handles caching and installation of the hooks.
 #
-# Python dependency installation supports both uv (preferred) and pip:
-#   - auto (default): uses uv if uv.lock is present, otherwise pip
-#   - uv: always use uv sync --frozen --only-group test
-#   - pip: always use pip install --requirement requirements-test.txt
+# uv provisions Python and a pinned pre-commit (pre-commit-version
+# input), so a repository whose only Python artifact is
+# .pre-commit-config.yaml lints with no extra files.  Repositories
+# whose local hooks import project code can opt in to
+# sync-project-deps, which installs the caller's test dependency group
+# from uv.lock before the hooks run.
 
 # Permissions are set at the job level; default to none at workflow level.
 permissions: {}
@@ -15,48 +17,13 @@ permissions: {}
 on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
-      curl_cache_dir:
-        default: ~/.cache/curl
-        description: The directory to use for caching curl downloads.
-        required: false
-        type: string
-      pip_cache_dir:
-        default: ~/.cache/pip
-        description: The directory to use for caching pip downloads.
-        required: false
-        type: string
-      pre_commit_cache_dir:
-        default: ~/.cache/pre-commit
-        description: The directory to use for caching pre-commit downloads.
-        required: false
-        type: string
-      go_version:
+      go-version:
         default: "1.26"
         description: The version of Go to use.
         required: false
         type: string
-      python_version:
-        default: "3.14"
-        description: The version of Python to use.
-        required: false
-        type: string
-      shfmt_version:
-        # renovate: datasource=github-releases depName=mvdan/sh
-        default: v3.14.1
-        description: The version of shfmt (shell format) to use.
-        required: false
-        type: string
-      package-manager:
-        description: >
-          Python package manager to use for installing lint dependencies.
-          'auto' detects based on the presence of uv.lock in the repository.
-          'uv' always uses uv sync --frozen --only-group test.
-          'pip' always uses pip install --requirement requirements-test.txt.
-        required: false
-        type: string
-        default: auto
       lint-config-ref:
-        default: v5
+        default: v6
         description: >
           Ref of felddy/reusable-workflows to read the central
           pre-commit base from when checking a generated
@@ -64,10 +31,32 @@ on: # yamllint disable-line rule:truthy
           .pre-commit-overlay.yaml.
         required: false
         type: string
-
-env:
-  PIP_CACHE_DIR: ${{ inputs.pip_cache_dir }}
-  PRE_COMMIT_CACHE_DIR: ~/.cache/pre-commit
+      pre-commit-version:
+        # renovate: datasource=pypi depName=pre-commit
+        default: 4.7.0
+        description: The version of pre-commit to use.
+        required: false
+        type: string
+      python-version:
+        default: "3.14"
+        description: The version of Python to use.
+        required: false
+        type: string
+      shfmt-version:
+        # renovate: datasource=github-releases depName=mvdan/sh
+        default: v3.14.1
+        description: The version of shfmt (shell format) to use.
+        required: false
+        type: string
+      sync-project-deps:
+        default: false
+        description: >
+          Install the caller's test dependency group with uv before
+          running the hooks, for repositories whose local hooks import
+          project code. Requires a uv.lock and a test group under
+          [dependency-groups] in pyproject.toml.
+        required: false
+        type: boolean
 
 jobs:
   lint:
@@ -102,7 +91,7 @@ jobs:
       # so the Go installation must happen before that.
       - uses: actions/setup-go@v7.0.0
         with:
-          go-version: ${{ inputs.go_version }}
+          go-version: ${{ inputs.go-version }}
           cache: false
 
       - name: Store installed Go version
@@ -120,110 +109,69 @@ jobs:
         with:
           persist-credentials: false
 
-      # Detect which package manager to use. Runs after checkout so uv.lock
-      # is present on disk for the file existence check.
-      - name: Detect package manager
-        id: pkg-manager
-        env:
-          PACKAGE_MANAGER: ${{ inputs.package-manager }}
-        run: |
-          if [[ "${PACKAGE_MANAGER}" == "uv" ]] || \
-             { [[ "${PACKAGE_MANAGER}" == "auto" ]] && [[ -f uv.lock ]]; }; then
-            echo "use-uv=true" >> $GITHUB_OUTPUT
-            echo "Package manager: uv"
-          else
-            echo "use-uv=false" >> $GITHUB_OUTPUT
-            echo "Package manager: pip"
-          fi
-
-      # ── uv path ────────────────────────────────────────────────────────────
-
       - name: Set up uv
-        if: steps.pkg-manager.outputs.use-uv == 'true'
         uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
-          python-version: ${{ inputs.python_version }}
+          python-version: ${{ inputs.python-version }}
 
-      - name: Install dependencies (uv)
-        if: steps.pkg-manager.outputs.use-uv == 'true'
-        run: uv sync --frozen --only-group test
-
-      - name: Add venv to PATH (uv)
-        if: steps.pkg-manager.outputs.use-uv == 'true'
-        run: echo "${{ github.workspace }}/.venv/bin" >> $GITHUB_PATH
-
-      # ── pip path ───────────────────────────────────────────────────────────
-
-      - name: Set up Python
-        if: steps.pkg-manager.outputs.use-uv == 'false'
-        id: setup-python
-        uses: actions/setup-python@v7.1.0
-        with:
-          python-version: ${{ inputs.python_version }}
-
-      - name: Cache pip and pre-commit (pip)
-        if: steps.pkg-manager.outputs.use-uv == 'false'
-        uses: actions/cache@v6.1.0
-        env:
-          BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
-            py${{ inputs.python_version }}-\
-            go${{ steps.go-version.outputs.version }}-"
-        with:
-          path: |
-            ${{ inputs.pip_cache_dir }}
-            ${{ inputs.pre_commit_cache_dir }}
-            ${{ inputs.curl_cache_dir }}
-            ${{ steps.go-cache.outputs.dir }}
-          key: "${{ env.BASE_CACHE_KEY }}\
-            ${{ hashFiles('**/requirements-test.txt') }}-\
-            ${{ hashFiles('**/requirements.txt') }}-\
-            ${{ hashFiles('**/.pre-commit-config.yaml') }}"
-          restore-keys: |
-            ${{ env.BASE_CACHE_KEY }}
-
-      - name: Install dependencies (pip)
-        if: steps.pkg-manager.outputs.use-uv == 'false'
+      # Local hooks that import project code (mypy-style) need the
+      # caller's test dependency group on the PATH; every other hook
+      # runs without touching project dependencies.
+      - name: Sync project dependencies
+        if: inputs.sync-project-deps
         run: |
-          python -m pip install --upgrade pip
-          pip install --upgrade --requirement requirements-test.txt
+          if [[ ! -f uv.lock ]]; then
+            echo "::error::sync-project-deps is set but uv.lock is missing from the repository root."
+            exit 1
+          fi
+          if [[ ! -f pyproject.toml ]]; then
+            echo "::error::sync-project-deps is set but pyproject.toml is missing from the repository root."
+            exit 1
+          fi
+          if ! python3 -c 'import pathlib, sys, tomllib; sys.exit("test" not in tomllib.loads(pathlib.Path("pyproject.toml").read_text()).get("dependency-groups", {}))'; then
+            echo "::error::sync-project-deps is set but pyproject.toml defines no test group under [dependency-groups]."
+            exit 1
+          fi
+          uv sync --frozen --only-group test
+          echo "${GITHUB_WORKSPACE}/.venv/bin" >> "$GITHUB_PATH"
 
-      # ── shared path ────────────────────────────────────────────────────────
-
-      - name: Cache Go and pre-commit (uv)
-        if: steps.pkg-manager.outputs.use-uv == 'true'
+      # uv's own package cache is handled by setup-uv.
+      - name: Cache Go and pre-commit hook environments
         uses: actions/cache@v6.1.0
         env:
           BASE_CACHE_KEY: "${{ github.job }}-${{ runner.os }}-\
-            py${{ inputs.python_version }}-\
+            py${{ inputs.python-version }}-\
+            pc${{ inputs.pre-commit-version }}-\
             go${{ steps.go-version.outputs.version }}-"
         with:
           path: |
-            ${{ inputs.pre_commit_cache_dir }}
-            ${{ inputs.curl_cache_dir }}
+            ~/.cache/pre-commit
             ${{ steps.go-cache.outputs.dir }}
           key: "${{ env.BASE_CACHE_KEY }}\
-            ${{ hashFiles('uv.lock') }}-\
-            ${{ hashFiles('**/.pre-commit-config.yaml') }}"
+            ${{ hashFiles('.pre-commit-config.yaml') }}"
           restore-keys: |
             ${{ env.BASE_CACHE_KEY }}
-
-      - name: Setup curl cache
-        env:
-          CURL_CACHE_DIR: ${{ inputs.curl_cache_dir }}
-        # Expand a leading ~ ourselves; it does not expand inside a variable.
-        run: mkdir -p "${CURL_CACHE_DIR/#~/$HOME}"
 
       - name: Install shfmt
         env:
-          SHFMT_VERSION: ${{ inputs.shfmt_version }}
+          SHFMT_VERSION: ${{ inputs.shfmt-version }}
         run: go install "mvdan.cc/sh/v3/cmd/shfmt@${SHFMT_VERSION}"
 
+      # pre-commit runs as a pinned uv tool rather than from a project
+      # environment, so a consumer's lockfile cannot shift the linter
+      # version; uvx reuses the cached tool environment across steps.
       - name: Set up pre-commit hook environments
-        run: pre-commit install-hooks
+        env:
+          PRE_COMMIT_VERSION: ${{ inputs.pre-commit-version }}
+          PYTHON_VERSION: ${{ inputs.python-version }}
+        run: uvx --python "${PYTHON_VERSION}" "pre-commit@${PRE_COMMIT_VERSION}" install-hooks
 
       - name: Run pre-commit on all files
-        run: pre-commit run --all-files
+        env:
+          PRE_COMMIT_VERSION: ${{ inputs.pre-commit-version }}
+          PYTHON_VERSION: ${{ inputs.python-version }}
+        run: uvx --python "${PYTHON_VERSION}" "pre-commit@${PRE_COMMIT_VERSION}" run --all-files
 
       # Repositories with a .pre-commit-overlay.yaml generate their
       # .pre-commit-config.yaml from the central base; a hand edit to
@@ -253,7 +201,11 @@ jobs:
             "${CENTRAL_RAW}/${LINT_CONFIG_REF}/tools/merge_precommit.py"
           curl -fsSL --output "${central}/pre-commit-base.yaml" \
             "${CENTRAL_RAW}/${LINT_CONFIG_REF}/lint-config/pre-commit-base.yaml"
-          python3 "${central}/merge_precommit.py" \
+          # merge_precommit.py needs PyYAML, which the runner's Python
+          # does not guarantee; uv supplies it in an ephemeral
+          # environment.
+          uv run --no-project --with pyyaml python \
+            "${central}/merge_precommit.py" \
             "${central}/pre-commit-base.yaml" \
             .pre-commit-overlay.yaml \
             --check .pre-commit-config.yaml

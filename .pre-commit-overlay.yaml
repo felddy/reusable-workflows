@@ -19,8 +19,11 @@ repos:
       - id: lint-config-check
         name: lint-config-check
         language: system
+        # merge_precommit.py needs PyYAML; uv supplies it from the
+        # locked docs group so the hook does not depend on whatever
+        # python3 is on the PATH.
         entry: >-
-          python3 tools/merge_precommit.py
+          uv run --group docs python tools/merge_precommit.py
           lint-config/pre-commit-base.yaml .pre-commit-overlay.yaml
           --check .pre-commit-config.yaml
         files: ^(lint-config/pre-commit-base\.yaml|\.pre-commit-(config|overlay)\.yaml|tools/merge_precommit\.py)$  # yamllint disable-line rule:line-length
