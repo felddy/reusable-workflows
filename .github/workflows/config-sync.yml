@@ -12,7 +12,7 @@ on: # yamllint disable-line rule:truthy
   workflow_call:
     inputs:
       central-ref:
-        default: v5
+        default: v6
         description: >
           Ref of felddy/reusable-workflows to read the central
           pre-commit base and merge tool from. Callers pinning this
