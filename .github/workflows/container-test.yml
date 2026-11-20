@@ -170,9 +170,10 @@ jobs:
         # the caller's checkout when this reusable workflow runs in another
         # repository. Keep in sync with the copy in container-build.yml.
         run: |
-          # Stage via mktemp: a fixed /tmp path can collide with a
-          # root-owned leftover on the runner image (seen intermittently
-          # on ubuntu-26.04), failing the redirect with EACCES.
+          # ubuntu-26.04 images churn docker.service at boot: a root-owned
+          # /tmp/daemon.json leftover breaks a fixed staging path (EACCES),
+          # and the churn can exhaust the unit's start-rate limit, failing
+          # a plain restart. Stage via mktemp and clear the limit first.
           staged=$(mktemp)
           if [[ -s /etc/docker/daemon.json ]]; then
             jq '."registry-mirrors" = ["https://mirror.gcr.io"]' /etc/docker/daemon.json > "${staged}"
@@ -181,6 +182,7 @@ jobs:
           fi
           sudo mkdir -p /etc/docker
           sudo mv "${staged}" /etc/docker/daemon.json
+          sudo systemctl reset-failed docker.service
           sudo systemctl restart docker
           echo "Docker daemon registry mirrors:"
           docker info --format '{{json .RegistryConfig.Mirrors}}'
