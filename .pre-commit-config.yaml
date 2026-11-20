@@ -176,7 +176,7 @@ repos:
       - id: lint-config-check
         name: lint-config-check
         language: system
-        entry: python3 tools/merge_precommit.py lint-config/pre-commit-base.yaml .pre-commit-overlay.yaml --check .pre-commit-config.yaml
+        entry: uv run --group docs python tools/merge_precommit.py lint-config/pre-commit-base.yaml .pre-commit-overlay.yaml --check .pre-commit-config.yaml
         files: ^(lint-config/pre-commit-base\.yaml|\.pre-commit-(config|overlay)\.yaml|tools/merge_precommit\.py)$
         pass_filenames: false
   - repo: https://github.com/ansible/ansible-lint

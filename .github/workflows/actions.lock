@@ -17,7 +17,6 @@ workflows:
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-go@v7.0.0'
-        - 'actions/setup-python@v7.1.0'
         - 'astral-sh/setup-uv@v10.3.3'
         - 'step-security/harden-runner@v2.22.3'
     '.github/workflows/config-sync.yml':
