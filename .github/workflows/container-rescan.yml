@@ -91,13 +91,13 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.3
+        uses: step-security/harden-runner@v2.22.4
         with:
           disable-sudo: true
           egress-policy: audit
 
       - name: Log in to container registry
-        uses: docker/login-action@v4.7.0
+        uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io
           username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
@@ -171,7 +171,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.3
+        uses: step-security/harden-runner@v2.22.4
         with:
           disable-sudo: true
           egress-policy: audit
@@ -185,14 +185,14 @@ jobs:
           persist-credentials: false
 
       - name: Log in to container registry
-        uses: docker/login-action@v4.7.0
+        uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io
           username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
           password: ${{ secrets.private-package-token || secrets.GITHUB_TOKEN }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v4.1.2
+        uses: sigstore/cosign-installer@v4.1.3
 
       - name: Install Grype
         run: |
@@ -270,7 +270,7 @@ jobs:
 
       - name: Upload SARIF to GitHub Security
         if: inputs.upload-scan-results
-        uses: github/codeql-action/upload-sarif@v4.39.1
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
           category: ${{ steps.slugs.outputs.sarif-category }}
           sarif_file: rescan.sarif
