@@ -37,7 +37,7 @@ jobs:
       DAYS_BEFORE_CLOSE: ${{ inputs.days-before-close || 7 }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.3
+        uses: step-security/harden-runner@v2.22.4
         with:
           disable-sudo: true
           egress-policy: block

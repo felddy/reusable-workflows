@@ -54,13 +54,13 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.3
+        uses: step-security/harden-runner@v2.22.4
         with:
           disable-sudo: true
           egress-policy: audit
 
       - name: Log in to container registry
-        uses: docker/login-action@v4.7.0
+        uses: docker/login-action@v4.8.0
         with:
           registry: ghcr.io
           username: ${{ secrets.private-package-token && (secrets.private-package-username || github.repository_owner) || github.actor }}
