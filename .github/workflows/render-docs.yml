@@ -42,6 +42,18 @@ jobs:
     name: Render docs
     runs-on: ubuntu-latest
 
+    # release-please force-pushes its branch several times in quick
+    # succession (create, then regenerate), spawning overlapping render
+    # runs; the loser fails its push with "cannot lock ref" after the
+    # winner moves the branch. Only the newest run matters — it renders
+    # from the newest tip — so cancel the stale one instead of letting
+    # it lose the race. github.ref here is the caller's ref when invoked
+    # via workflow_call, and concurrency groups are repo-scoped, so this
+    # serializes renders per consumer branch.
+    concurrency:
+      group: render-docs-${{ github.ref }}
+      cancel-in-progress: true
+
     permissions:
       contents: write
 
