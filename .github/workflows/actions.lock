@@ -16,7 +16,7 @@ workflows:
     '.github/workflows/common-lint.yml':
         - 'actions/cache@v6.1.0'
         - 'actions/checkout@v7.0.1'
-        - 'actions/setup-go@v7.0.0'
+        - 'actions/setup-go@v7.1.0'
         - 'astral-sh/setup-uv@v10.3.3'
         - 'step-security/harden-runner@v2.22.4'
     '.github/workflows/config-sync.yml':
@@ -73,7 +73,7 @@ workflows:
         - 'step-security/harden-runner@v2.22.4'
     '.github/workflows/dependency-review.yml':
         - 'actions/checkout@v7.0.1'
-        - 'actions/dependency-review-action@v5.0.0'
+        - 'actions/dependency-review-action@v5.0.1'
         - 'step-security/harden-runner@v2.22.4'
     '.github/workflows/diagnostics.yml':
         - 'crazy-max/ghaction-dump-context@v3.1.0'
@@ -105,7 +105,7 @@ workflows:
         - 'step-security/harden-runner@v2.22.4'
     '.github/workflows/renovate.yml':
         - 'actions/create-github-app-token@v3.3.0'
-        - 'renovatebot/github-action@v46.3.13'
+        - 'renovatebot/github-action@v46.3.14'
         - 'step-security/harden-runner@v2.22.4'
     '.github/workflows/scorecards.yml':
         - 'actions/checkout@v7.0.1'
@@ -168,9 +168,9 @@ dependencies:
         commit: 'sha1-64ab729a6294000f5aa4a4bc0b73d1f32bc45510'
         owner_id: 44036562
         repo_id: 642580244
-    'actions/dependency-review-action@v5.0.0':
-        ref: 'v5.0.0'
-        commit: 'sha1-a1d282b36b6f3519aa1f3fc636f609c47dddb294'
+    'actions/dependency-review-action@v5.0.1':
+        ref: 'v5.0.1'
+        commit: 'sha1-bbc44d14a204704ccc493733616cd1e93a0321ec'
         owner_id: 44036562
         repo_id: 476372928
     'actions/download-artifact@v8.0.2':
@@ -193,9 +193,9 @@ dependencies:
         commit: 'sha1-bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13'
         owner_id: 44036562
         repo_id: 177139928
-    'actions/setup-go@v7.0.0':
-        ref: 'v7.0.0'
-        commit: 'sha1-b7ad1dad31e06c5925ef5d2fc7ad053ef454303e'
+    'actions/setup-go@v7.1.0':
+        ref: 'v7.1.0'
+        commit: 'sha1-d8cbb8045d7f43706b9177cceb36c1f91a6644d5'
         owner_id: 44036562
         repo_id: 192624594
     'actions/setup-python@v7.1.0':
@@ -333,9 +333,9 @@ dependencies:
         commit: 'sha1-1b9a80c056b620d92cedb9d9b5a223409c68ddfa'
         owner_id: 18365890
         repo_id: 193685475
-    'renovatebot/github-action@v46.3.13':
-        ref: 'v46.3.13'
-        commit: 'sha1-266fef21329c44765ad42f9dea1f01f5d2d91084'
+    'renovatebot/github-action@v46.3.14':
+        ref: 'v46.3.14'
+        commit: 'sha1-acdd6bda8b035c99ce59d5675816af2aa65a1774'
         owner_id: 38656520
         repo_id: 252754603
     'sigstore/cosign-installer@v4.1.3':
