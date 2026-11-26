@@ -105,7 +105,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           disable-sudo: true
           egress-policy: audit
@@ -299,7 +299,7 @@ jobs:
 
       - name: Install ORAS
         if: inputs.push
-        uses: oras-project/setup-oras@v2.0.3
+        uses: oras-project/setup-oras@v2.0.4
 
       # Re-publishing the same digests (e.g. a scheduled edge run with a warm
       # cache) yields the same index digest; skip attestations that already
@@ -427,7 +427,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           disable-sudo: true
           egress-policy: audit
@@ -527,7 +527,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           disable-sudo: true
           egress-policy: audit

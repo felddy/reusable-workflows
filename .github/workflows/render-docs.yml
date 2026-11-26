@@ -59,7 +59,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           disable-sudo: true
           egress-policy: block
@@ -84,7 +84,7 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           # Rendering is cheap, and this job pushes commits — a shared
           # cache would be a poisoning vector (zizmor: cache-poisoning).

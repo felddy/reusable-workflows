@@ -42,7 +42,7 @@ jobs:
       issues: write # for crazy-max/ghaction-github-labeler to create, rename, update and delete label
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           egress-policy: block
           allowed-endpoints: >
