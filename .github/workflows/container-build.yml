@@ -259,7 +259,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           # sudo is required to configure the Docker daemon registry mirror.
           # This job already controls the Docker daemon (root-equivalent),
@@ -550,7 +550,7 @@ jobs:
 
       - name: Install ORAS
         if: inputs.push
-        uses: oras-project/setup-oras@v2.0.3
+        uses: oras-project/setup-oras@v2.0.4
 
       - name: Check attestation existence
         id: check-attestations

@@ -64,7 +64,7 @@ jobs:
         python-version: ${{ fromJSON(inputs.python-versions) }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           disable-sudo: true
           egress-policy: block
@@ -85,7 +85,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
@@ -129,7 +129,7 @@ jobs:
     # above the jobs key). Badge-enabled callers grant contents: write.
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           disable-sudo: true
           egress-policy: block
@@ -184,7 +184,7 @@ jobs:
       contents: read
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           disable-sudo: true
           egress-policy: block
@@ -204,7 +204,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
 
@@ -234,7 +234,7 @@ jobs:
         python-version: ${{ fromJSON(inputs.python-versions) }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2.22.4
+        uses: step-security/harden-runner@v2.23.0
         with:
           disable-sudo: true
           egress-policy: block
@@ -254,7 +254,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
           python-version: ${{ matrix.python-version }}
